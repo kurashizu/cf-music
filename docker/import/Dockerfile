@@ -25,7 +25,7 @@ ENV PATH="/opt/venv/bin:${PATH}"
 RUN pip install --no-cache-dir yt-dlp boto3 websockets
 
 WORKDIR /import
-COPY import.py start.sh ./
+COPY import.py warp_identity.py start.sh ./
 RUN chmod +x start.sh
 
 ENTRYPOINT ["/import/start.sh"]
