@@ -139,6 +139,22 @@ def estimate_song_size_bytes(entry: dict) -> int:
         return 0
 
 
+def resolve_batch(source_url: str) -> tuple[list[dict], list[dict], int]:
+    """Extracts the playlist, drops songs already owned by someone, and
+    sums the real download size of what's left — everything this touches
+    (yt-dlp, urllib) is synchronous/blocking, so this whole function is
+    meant to be run via asyncio.to_thread from run(), not awaited directly;
+    see the comment at that call site for why that matters here
+    specifically (a long-running sync call on the event loop starves
+    websockets' own keepalive pings)."""
+    entries = extract_playlist_entries(source_url)
+    video_ids = [e["id"] for e in entries]
+    known_video_ids = fetch_known_video_ids(video_ids)
+    pending_entries = [e for e in entries if e["id"] not in known_video_ids]
+    estimated_total_bytes = sum(estimate_song_size_bytes(e) for e in pending_entries)
+    return entries, pending_entries, estimated_total_bytes
+
+
 def fetch_remaining_quota_bytes() -> int:
     body = json.dumps({"userId": USER_ID}).encode()
     request = urllib.request.Request(
@@ -272,8 +288,20 @@ async def run() -> None:
     # Same reasoning as fetch_known_video_ids' explicit User-Agent: avoid
     # whatever default header value might read as a bot signature to
     # Cloudflare's edge in front of our own Worker.
+    #
+    # ping_interval/ping_timeout are set explicitly (not left at whatever
+    # this library version defaults to) since they're load-bearing here:
+    # this connection needs to survive several minutes of a large
+    # playlist's per-song size lookups with no application-level messages
+    # at all, and the only thing keeping it alive through that is these
+    # protocol-level ping/pong frames — see resolve_batch's to_thread usage
+    # for the other half of why that alone wasn't enough (the event loop
+    # has to actually be free to send them).
     async with websockets.connect(
-        websocket_url(), additional_headers={"User-Agent": "cf-music-import-job/1.0"}
+        websocket_url(),
+        additional_headers={"User-Agent": "cf-music-import-job/1.0"},
+        ping_interval=20,
+        ping_timeout=20,
     ) as ws:
 
         async def send_event(event: dict) -> None:
@@ -286,17 +314,23 @@ async def run() -> None:
         # whatever status it already had, forever — the process just exits
         # non-zero and the WebSocket connection drops with no explanation.
         try:
-            entries = extract_playlist_entries(SOURCE_URL)
-            video_ids = [e["id"] for e in entries]
-            known_video_ids = fetch_known_video_ids(video_ids)
-            pending_entries = [e for e in entries if e["id"] not in known_video_ids]
-
-            # Resolves each not-yet-owned song's real download size (not
-            # duration-estimated — extract_flat carries no size info) and
-            # rejects the whole batch upfront if it won't fit, rather than
-            # downloading partway into a quota that runs out mid-batch.
-            estimated_total_bytes = sum(estimate_song_size_bytes(e) for e in pending_entries)
-            remaining_bytes = fetch_remaining_quota_bytes()
+            # Every yt-dlp/urllib call here is a *synchronous*, blocking
+            # call — run entirely in a worker thread via asyncio.to_thread.
+            # A large playlist's extraction + per-song size lookups can take
+            # several minutes; running them directly on the event loop
+            # blocks it completely, including the websockets library's own
+            # background ping/pong keepalive, which needs the loop to
+            # actually get scheduled to run. That's exactly what caused a
+            # real incident: the WARP/Worker WebSocket got silently killed
+            # (connection reset, no close frame) partway through resolving a
+            # 183-song playlist, and the except block below couldn't even
+            # report it — send_event() itself needs that same dead
+            # connection. to_thread keeps the loop free to actually send
+            # those keepalive frames while this runs.
+            entries, pending_entries, estimated_total_bytes = await asyncio.to_thread(
+                resolve_batch, SOURCE_URL
+            )
+            remaining_bytes = await asyncio.to_thread(fetch_remaining_quota_bytes)
             if estimated_total_bytes > remaining_bytes:
                 raise QuotaExceededError(
                     f"This import needs ~{estimated_total_bytes / 1_000_000:.1f} MB but only "
@@ -344,7 +378,12 @@ async def run() -> None:
                 pass
 
             try:
-                song = download_and_upload_song(entry, s3_client)
+                # Same reasoning as resolve_batch above: download/transcode/
+                # upload is synchronous and can run long on a large file or
+                # slow network, so it goes through to_thread rather than
+                # blocking the loop (and this connection's keepalive pings)
+                # directly.
+                song = await asyncio.to_thread(download_and_upload_song, entry, s3_client)
                 await send_event({"type": "song_success", "song": song})
             except Exception as exc:  # noqa: BLE001 - one failed song must not abort the batch
                 await send_event(
