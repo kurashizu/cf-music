@@ -27,7 +27,15 @@ dbus-daemon --config-file=/usr/share/dbus-1/system.conf || {
 # endpoint at all is worth doing even though it isn't currently rate-limited.
 # Must happen before warp-svc starts below: it loads/watches this directory
 # on startup, so writing into it afterward isn't guaranteed to be picked up.
-python3 /import/warp_identity.py restore
+#
+# Timeout-guarded like the warp-cli calls further down: this runs before
+# any of those, so a hung MinIO connection here would otherwise block the
+# whole job before reaching code that's already guarded. restore() is
+# best-effort internally (a missing/corrupt cache just means a fresh
+# registration happens next), so a timeout here is treated the same way —
+# log it and move on rather than failing the job.
+timeout 30 python3 /import/warp_identity.py restore \
+	|| echo "WARP identity restore failed or timed out; will register fresh" >&2
 
 # warp-svc is a Rust binary using the standard RUST_LOG convention; left at
 # its default it emits its own internal connection/tunnel-negotiation debug
@@ -59,7 +67,10 @@ fail_warp() {
 if [ ! -f /var/lib/cloudflare-warp/reg.json ]; then
 	timeout "$WARP_CMD_TIMEOUT" warp-cli --accept-tos registration new \
 		|| fail_warp "WARP registration failed or timed out after ${WARP_CMD_TIMEOUT}s"
-	python3 /import/warp_identity.py save
+	# Best-effort: failing to cache the identity just means the next job
+	# registers fresh again too, not a reason to fail this one.
+	timeout 30 python3 /import/warp_identity.py save \
+		|| echo "WARP identity save failed or timed out; next job will register fresh" >&2
 fi
 
 timeout "$WARP_CMD_TIMEOUT" warp-cli --accept-tos mode proxy \

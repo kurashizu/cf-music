@@ -24,6 +24,7 @@ import tarfile
 from pathlib import Path
 
 import boto3
+from botocore.config import Config
 from botocore.exceptions import ClientError
 
 MINIO_ENDPOINT = os.environ["MINIO_ENDPOINT"]
@@ -34,6 +35,11 @@ MINIO_SECRET_KEY = os.environ["MINIO_SECRET_KEY"]
 STATE_DIR = Path("/var/lib/cloudflare-warp")
 OBJECT_KEY = "ci-state/warp-identity.tar.gz"
 
+# This runs before any of start.sh's own warp-cli timeouts kick in, so it
+# needs its own: a hung MinIO connection here would block the whole job
+# before the parts that are already guarded even start.
+BOTO_CONFIG = Config(connect_timeout=10, read_timeout=20, retries={"max_attempts": 2})
+
 
 def s3_client():
     return boto3.client(
@@ -41,6 +47,7 @@ def s3_client():
         endpoint_url=MINIO_ENDPOINT,
         aws_access_key_id=MINIO_ACCESS_KEY,
         aws_secret_access_key=MINIO_SECRET_KEY,
+        config=BOTO_CONFIG,
     )
 
 
