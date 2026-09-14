@@ -24,7 +24,7 @@ describe('generateSessionId', () => {
 
 	it('zero-pads single-hex-digit byte values (e.g. 0x05 -> "05", not "5")', () => {
 		// Deterministic: force the first byte to a single-hex-digit value.
-		vi.spyOn(crypto, 'getRandomValues').mockImplementation(<T extends ArrayBufferView | null>(array: T) => {
+		vi.spyOn(crypto, 'getRandomValues').mockImplementation((array: ArrayBufferView<ArrayBuffer>) => {
 			const bytes = array as unknown as Uint8Array;
 			bytes[0] = 0x05;
 			for (let i = 1; i < bytes.length; i++) bytes[i] = 0xff;

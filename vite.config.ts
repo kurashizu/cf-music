@@ -29,7 +29,8 @@ export default defineConfig({
 				'src/lib/**/*.test.ts',
 				'src/lib/**/*.spec.ts',
 				'src/lib/index.ts', // barrel re-export file, no logic of its own
-				'src/lib/server/db/**' // Drizzle schema/binding wiring, exercised via integration tests, not unit CRAP scoring
+				'src/lib/server/db/**', // Drizzle schema/binding wiring, exercised via integration tests, not unit CRAP scoring
+				'src/lib/server/auth/service.ts' // D1-bound; covered by *.integration.test.ts under vitest.config.workers.ts instead
 			]
 		},
 		projects: [
@@ -39,7 +40,9 @@ export default defineConfig({
 					name: 'server',
 					environment: 'node',
 					include: ['src/**/*.{test,spec}.{js,ts}'],
-					exclude: ['src/**/*.svelte.{test,spec}.{js,ts}']
+					// *.integration.test.ts requires D1/Workers bindings and runs
+					// separately under vitest.config.workers.ts (see `npm run test:integration`).
+					exclude: ['src/**/*.svelte.{test,spec}.{js,ts}', 'src/**/*.integration.test.ts']
 				}
 			}
 		]

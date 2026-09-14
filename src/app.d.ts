@@ -1,5 +1,7 @@
 // See https://svelte.dev/docs/kit/types#app.d.ts
 // for information about these interfaces
+import type { AuthenticatedSession } from '$lib/server/auth/service';
+
 declare global {
 	namespace App {
 		interface Platform {
@@ -9,8 +11,11 @@ declare global {
 			cf?: IncomingRequestCfProperties
 		}
 
+		interface Locals {
+			session: AuthenticatedSession | null;
+		}
+
 		// interface Error {}
-		// interface Locals {}
 		// interface PageData {}
 		// interface PageState {}
 	}

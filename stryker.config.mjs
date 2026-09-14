@@ -10,14 +10,17 @@ export default {
 	// Stryker's sandbox too, or TS transform resolution fails there.
 	files: ['src/**', 'vitest.config.unit.ts', 'tsconfig.json', '.svelte-kit/**'],
 	// Only mutate pure logic that vitest.config.unit.ts actually exercises.
-	// D1/Durable Object-bound code is intentionally excluded — see the
-	// comment in vitest.config.unit.ts for why mutation testing doesn't
-	// apply there.
+	// D1/Durable Object-bound code (service.ts) and SvelteKit-request-bound
+	// code (guard.ts) are intentionally excluded — see the comment in
+	// vitest.config.unit.ts for why mutation testing doesn't apply there.
 	mutate: [
-		'src/lib/server/auth/**/*.ts',
-		'!src/lib/server/auth/**/*.test.ts',
+		'src/lib/server/auth/password.ts',
+		'src/lib/server/auth/tokens.ts',
+		'src/lib/server/auth/cookie.ts',
 		'src/lib/server/eviction/**/*.ts',
 		'!src/lib/server/eviction/**/*.test.ts',
+		'src/lib/server/http/**/*.ts',
+		'!src/lib/server/http/**/*.test.ts',
 		'src/lib/shared/**/*.ts',
 		'!src/lib/shared/**/*.test.ts'
 	],

@@ -17,13 +17,15 @@
 		"test:unit": "vitest",
 		"test": "npm run test:unit -- --run",
 		"test:coverage": "vitest run --coverage",
+		"test:integration": "vitest run --config vitest.config.workers.ts",
 		"test:mutation": "stryker run",
-		"test:crap": "crap-typescript src/lib/server/auth src/lib/server/eviction src/lib/shared",
-		"test:all": "npm run test && npm run test:crap && npm run test:mutation"
+		"test:crap": "crap-typescript src/lib/server/auth src/lib/server/eviction src/lib/server/http src/lib/shared",
+		"test:all": "npm run test && npm run test:integration && npm run test:crap && npm run test:mutation"
 	},
 	"devDependencies": {
 		"@barney-media/crap-typescript": "^0.5.2",
 		"@barney-media/crap-typescript-vitest": "^0.5.2",
+		"@cloudflare/vitest-pool-workers": "^0.22.0",
 		"@stryker-mutator/core": "^10.0.0",
 		"@stryker-mutator/vitest-runner": "^10.0.0",
 		"@sveltejs/adapter-cloudflare": "^7.2.8",
@@ -45,7 +47,7 @@
 	},
 	"allowScripts": {
 		"fsevents@2.3.3": true,
-		"workerd@1.20260911.1": true,
-		"esbuild": true
+		"esbuild": true,
+		"workerd": true
 	}
 }
