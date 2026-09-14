@@ -49,5 +49,8 @@
 		"fsevents@2.3.3": true,
 		"esbuild": true,
 		"workerd": true
+	},
+	"dependencies": {
+		"aws4fetch": "^1.0.20"
 	}
 }

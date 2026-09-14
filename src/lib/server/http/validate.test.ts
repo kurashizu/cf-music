@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { pickStrings, isStringArray, pickStringArray } from './validate';
+import { pickStrings, isStringArray, pickStringArray, pickPositiveNumber } from './validate';
 
 describe('pickStrings', () => {
 	it('extracts all requested string fields', () => {
@@ -94,5 +94,51 @@ describe('pickStringArray', () => {
 
 	it('returns null when the named field is not an array of strings', () => {
 		expect(pickStringArray({ ids: [1, 2] }, 'ids')).toBeNull();
+	});
+});
+
+describe('pickPositiveNumber', () => {
+	it('extracts a positive number field', () => {
+		expect(pickPositiveNumber({ n: 42 }, 'n')).toBe(42);
+	});
+
+	it('returns null for zero (not strictly positive)', () => {
+		expect(pickPositiveNumber({ n: 0 }, 'n')).toBeNull();
+	});
+
+	it('returns null for a negative number', () => {
+		expect(pickPositiveNumber({ n: -5 }, 'n')).toBeNull();
+	});
+
+	it('returns null for NaN', () => {
+		expect(pickPositiveNumber({ n: NaN }, 'n')).toBeNull();
+	});
+
+	it('returns null for Infinity', () => {
+		expect(pickPositiveNumber({ n: Infinity }, 'n')).toBeNull();
+	});
+
+	it('returns null when the field is a numeric string, not a number', () => {
+		expect(pickPositiveNumber({ n: '42' }, 'n')).toBeNull();
+	});
+
+	it('returns null when body is not an object', () => {
+		expect(pickPositiveNumber('not-an-object', 'n')).toBeNull();
+	});
+
+	it('rejects a non-object body even when it happens to carry a matching positive-number property', () => {
+		// Isolates the outer `typeof body !== 'object'` guard, same as the
+		// pickStringArray case: functions are typeof 'function', not
+		// 'object', yet can carry arbitrary own properties.
+		const bodyLikeAFunction = Object.assign(() => {}, { n: 42 });
+		expect(pickPositiveNumber(bodyLikeAFunction, 'n')).toBeNull();
+	});
+
+	it('returns null when body is null', () => {
+		expect(pickPositiveNumber(null, 'n')).toBeNull();
+	});
+
+	it('returns null when the field is missing', () => {
+		expect(pickPositiveNumber({}, 'n')).toBeNull();
 	});
 });

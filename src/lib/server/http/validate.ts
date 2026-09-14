@@ -29,3 +29,14 @@ export function pickStringArray<K extends string>(body: unknown, key: K): string
 	const value = (body as Record<string, unknown>)[key];
 	return isStringArray(value) ? value : null;
 }
+
+/** Extracts a named field from an unknown JSON body if it's a finite number > 0. */
+export function pickPositiveNumber<K extends string>(body: unknown, key: K): number | null {
+	if (typeof body !== 'object' || body === null) return null;
+
+	// Number.isFinite (unlike the global isFinite) never coerces: it's false
+	// for any non-`number`-typed value, so an explicit `typeof value ===
+	// 'number'` check ahead of it would be redundant.
+	const value = (body as Record<string, unknown>)[key];
+	return Number.isFinite(value) && (value as number) > 0 ? (value as number) : null;
+}

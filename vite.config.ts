@@ -33,7 +33,10 @@ export default defineConfig({
 				// vitest.config.workers.ts instead of the unit/CRAP pipeline here.
 				'src/lib/server/db/**',
 				'src/lib/server/library/**',
-				'src/lib/server/auth/service.ts'
+				'src/lib/server/auth/service.ts',
+				'src/lib/server/eviction/usage.ts',
+				'src/lib/server/eviction/execute.ts',
+				'src/lib/server/storage/s3.ts' // makes real network calls to MinIO; not covered by any automated test tier
 			]
 		},
 		projects: [

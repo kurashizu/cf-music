@@ -36,6 +36,23 @@ export async function listPlaylists(db: Db, userId: string) {
 	});
 }
 
+/**
+ * Whether `videoId` is reachable through any playlist `userId` owns. Used to
+ * gate access to a song's presigned URLs — even though songs are globally
+ * deduplicated by video_id and may be shared with other users, a user should
+ * only ever get a playable link for something in *their own* library.
+ */
+export async function isSongInUserLibrary(db: Db, userId: string, videoId: string): Promise<boolean> {
+	const [row] = await db
+		.select({ videoId: playlistSongs.videoId })
+		.from(playlistSongs)
+		.innerJoin(playlists, eq(playlistSongs.playlistId, playlists.id))
+		.where(and(eq(playlists.userId, userId), eq(playlistSongs.videoId, videoId)))
+		.limit(1);
+
+	return row !== undefined;
+}
+
 /** Fetches a playlist owned by the given user, or throws if missing/not owned. */
 async function getOwnedPlaylist(db: Db, playlistId: string, userId: string) {
 	const playlist = await db.query.playlists.findFirst({

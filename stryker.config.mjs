@@ -17,10 +17,11 @@ export default {
 		'src/lib/server/auth/password.ts',
 		'src/lib/server/auth/tokens.ts',
 		'src/lib/server/auth/cookie.ts',
-		'src/lib/server/eviction/**/*.ts',
-		'!src/lib/server/eviction/**/*.test.ts',
+		'src/lib/server/eviction/score.ts',
+		'src/lib/server/eviction/quota.ts',
 		'src/lib/server/http/**/*.ts',
 		'!src/lib/server/http/**/*.test.ts',
+		'src/lib/server/storage/object-key.ts',
 		'src/lib/shared/**/*.ts',
 		'!src/lib/shared/**/*.test.ts'
 	],

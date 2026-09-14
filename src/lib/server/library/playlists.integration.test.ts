@@ -11,6 +11,7 @@ import {
 	addSongToPlaylist,
 	removeSongFromPlaylist,
 	reorderPlaylist,
+	isSongInUserLibrary,
 	LibraryError
 } from './playlists';
 
@@ -257,5 +258,31 @@ describe('reorderPlaylist', () => {
 		await addSongToPlaylist(db, id, 'u1', 'a');
 
 		await expect(reorderPlaylist(db, id, 'u1', ['a', 'intruder'])).rejects.toThrow(LibraryError);
+	});
+});
+
+describe('isSongInUserLibrary', () => {
+	it('returns true when the song is in one of the user\'s playlists', async () => {
+		await seedUser('u1');
+		await seedSong('a');
+		const { id } = await createPlaylist(db, { userId: 'u1', name: 'Mix' });
+		await addSongToPlaylist(db, id, 'u1', 'a');
+
+		await expect(isSongInUserLibrary(db, 'u1', 'a')).resolves.toBe(true);
+	});
+
+	it('returns false when the song exists but only in another user\'s playlist', async () => {
+		await seedUser('u1');
+		await seedUser('u2');
+		await seedSong('shared');
+		const { id } = await createPlaylist(db, { userId: 'u2', name: 'Their Mix' });
+		await addSongToPlaylist(db, id, 'u2', 'shared');
+
+		await expect(isSongInUserLibrary(db, 'u1', 'shared')).resolves.toBe(false);
+	});
+
+	it('returns false for a video id that does not exist anywhere', async () => {
+		await seedUser('u1');
+		await expect(isSongInUserLibrary(db, 'u1', 'does-not-exist')).resolves.toBe(false);
 	});
 });
