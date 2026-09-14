@@ -60,6 +60,41 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # A plain `docker pull` re-downloads every layer from GHCR on every
+      # run (~17s observed) since a GitHub-hosted runner is a fresh VM with
+      # nothing cached — there's no local image to diff against. Querying
+      # the remote digest (a fast manifest lookup, not a pull) makes a
+      # cache key that only changes when build-import-image.yml actually
+      # pushes a new image, so unrelated import runs hit the cache below
+      # instead of re-pulling.
+      - name: Resolve import image digest
+        id: image-digest
+        run: |
+          digest=$(docker buildx imagetools inspect \
+            ghcr.io/${{ github.repository }}/import:latest --format '{{.Manifest.Digest}}')
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache/restore@v6
+        id: image-cache
+        with:
+          path: import-image.tar
+          key: import-image-${{ steps.image-digest.outputs.digest }}
+
+      - name: Load or pull the import image
+        run: |
+          if [ -f import-image.tar ]; then
+            docker load --input import-image.tar
+          else
+            docker pull ghcr.io/${{ github.repository }}/import:latest
+            docker save ghcr.io/${{ github.repository }}/import:latest --output import-image.tar
+          fi
+
+      - uses: actions/cache/save@v6
+        if: steps.image-cache.outputs.cache-hit != 'true'
+        with:
+          path: import-image.tar
+          key: import-image-${{ steps.image-digest.outputs.digest }}
+
       # NET_ADMIN + the TUN device are what the official WARP client needs
       # to bring up its interface even in proxy mode (no TUN traffic
       # actually flows through it in this mode, but warp-svc still requires

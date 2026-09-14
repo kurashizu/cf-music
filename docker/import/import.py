@@ -64,6 +64,10 @@ SOCKS5_PROXY = "socks5://127.0.0.1:40000"
 COVER_CRF = "40"
 
 
+class QuotaExceededError(Exception):
+    """Raised when a batch's estimated total size exceeds the user's remaining storage quota."""
+
+
 def sign(message: str) -> str:
     return hmac.new(IMPORT_WEBHOOK_SECRET.encode(), message.encode(), hashlib.sha256).hexdigest()
 
@@ -109,6 +113,51 @@ def extract_playlist_entries(source_url: str) -> list[dict]:
         info = ydl.extract_info(source_url, download=False)
     entries = info.get("entries") or [info]
     return [e for e in entries if e is not None]
+
+
+def estimate_song_size_bytes(entry: dict) -> int:
+    """Resolves the same format download_song will actually fetch
+    (bestaudio/best) without downloading it, to get its real size —
+    extract_flat's entries carry no size info at all, only duration, and a
+    duration-based estimate would be too rough to enforce a quota against.
+    A song that can't be resolved here (unavailable, network hiccup, no
+    size reported by either the server or yt-dlp's own estimate) counts as
+    0 toward the quota check rather than aborting the whole batch — it'll
+    fail again (and be reported as such) when download_song actually gets
+    to it, so there's no need to treat that failure twice."""
+    try:
+        options = {"format": "bestaudio/best", "quiet": True, "proxy": SOCKS5_PROXY}
+        video_id_url = entry.get("url") or entry.get("webpage_url") or entry["id"]
+        with yt_dlp.YoutubeDL(options) as ydl:
+            info = ydl.extract_info(video_id_url, download=False)
+        # filesize is exact (from the server's Content-Length);
+        # filesize_approx is yt-dlp's own estimate from bitrate * duration
+        # when the server didn't report one.
+        return info.get("filesize") or info.get("filesize_approx") or 0
+    except Exception as exc:  # noqa: BLE001 - one unresolvable song must not abort the quota check
+        print(f"Could not estimate size for {entry.get('id')}: {exc}", file=sys.stderr)
+        return 0
+
+
+def fetch_remaining_quota_bytes() -> int:
+    body = json.dumps({"userId": USER_ID}).encode()
+    request = urllib.request.Request(
+        f"{WORKER_BASE_URL}/api/import/remaining-quota",
+        data=body,
+        method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "X-Signature-256": f"sha256={sign(body.decode())}",
+            "User-Agent": "cf-music-import-job/1.0",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            result = json.loads(response.read())
+    except urllib.error.HTTPError as exc:
+        print(f"remaining-quota lookup failed: {exc.code} {exc.read()[:500]!r}", file=sys.stderr)
+        raise
+    return result["remainingBytes"]
 
 
 def download_song(video_id_url: str, workdir: Path) -> dict:
@@ -240,11 +289,22 @@ async def run() -> None:
             entries = extract_playlist_entries(SOURCE_URL)
             video_ids = [e["id"] for e in entries]
             known_video_ids = fetch_known_video_ids(video_ids)
+            pending_entries = [e for e in entries if e["id"] not in known_video_ids]
+
+            # Resolves each not-yet-owned song's real download size (not
+            # duration-estimated — extract_flat carries no size info) and
+            # rejects the whole batch upfront if it won't fit, rather than
+            # downloading partway into a quota that runs out mid-batch.
+            estimated_total_bytes = sum(estimate_song_size_bytes(e) for e in pending_entries)
+            remaining_bytes = fetch_remaining_quota_bytes()
+            if estimated_total_bytes > remaining_bytes:
+                raise QuotaExceededError(
+                    f"This import needs ~{estimated_total_bytes / 1_000_000:.1f} MB but only "
+                    f"{remaining_bytes / 1_000_000:.1f} MB of storage quota remains"
+                )
         except Exception as exc:  # noqa: BLE001 - must reach fatal_error below, then re-raise
             await send_event({"type": "fatal_error", "reason": str(exc)[:500]})
             raise
-
-        pending_entries = [e for e in entries if e["id"] not in known_video_ids]
 
         await send_event(
             {
