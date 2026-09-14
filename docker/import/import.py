@@ -3,16 +3,16 @@
 Runs one import job: extracts a playlist/video via yt-dlp, skips songs
 already known to the Worker (checked once up front over plain HTTP), sends
 a preview of what's left to download over a WebSocket connection to the
-Worker (via the per-user Import Progress Durable Object) and waits for the
-user to confirm or cancel, then downloads/transcodes/uploads each new song,
-reporting progress and checking for a mid-run cancellation over that same
-connection the whole time.
+Worker (via the per-user Import Progress Durable Object) purely for the UI
+to show, then immediately starts downloading/transcoding/uploading each
+new song — there's no confirmation gate blocking the run, only a
+mid-run cancellation check over that same connection.
 
 GitHub Actions runners have no public inbound address, so this process
 connects OUT to the Worker's WebSocket endpoint rather than the Worker
 connecting to it — the DO tags this connection `ci:{job_id}` so a browser's
-confirm/cancel decision (sent over its own connection to the same DO) gets
-routed back here specifically.
+cancel decision (sent over its own connection to the same DO) gets routed
+back here specifically.
 
 All yt-dlp network egress goes through the official Cloudflare WARP
 client's own SOCKS5 proxy mode (`warp-cli mode proxy`), which start.sh
@@ -23,13 +23,13 @@ registers and manages its own keys internally rather than this script
 being handed raw WireGuard parameters). The WebSocket connection,
 known-video-ids lookup, and S3 upload go direct, not through the proxy.
 
-Every external dependency (yt-dlp, ffmpeg, boto3, websockets, the WARP
-client itself) is installed at job start by import.yml, not baked into a
-prebuilt image — apt/pip package caches (via actions/cache) keep that
-fast on the common case where nothing changed, and yt-dlp specifically is
-force-upgraded every run regardless of cache state (see import.yml) since
-a stale extractor version silently breaks against YouTube's frequent
-frontend changes.
+ffmpeg, boto3, websockets, and the WARP client are all baked into the
+prebuilt image (see the Dockerfile) — none of that is installed at job
+start. yt-dlp is the one deliberate exception: it's installed fresh by
+import.yml on the *host* runner (not baked into the image, not installed
+inside this container) since it breaks constantly as YouTube changes its
+frontend, and reaches this process via PYTHONPATH pointing at the
+host-mounted install directory rather than a normal `pip install` here.
 """
 
 import asyncio

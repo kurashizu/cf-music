@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 """
 Persists the WARP client's registered identity (/var/lib/cloudflare-warp/)
-across otherwise-stateless import job runners by round-tripping it through
-the same MinIO bucket import.py already uses.
+across otherwise-stateless import job containers by round-tripping it
+through the same MinIO bucket import.py already uses.
 
-Every import job runs on a freshly provisioned GitHub-hosted runner with no
-state from any prior run, so start.sh would otherwise call `warp-cli
-registration new` on every single job — registering a brand new anonymous
-WARP identity each time. That's needless churn against Cloudflare's
-registration endpoint, and GitHub Actions runners share IP ranges across
-unrelated jobs/repos, so a burst of registrations from "the same IP" isn't
-fully under this project's control. Reusing one identity across runs
-(restore before registering, save only after a fresh registration
-succeeds) cuts that down to roughly once, not once per job.
+Every import job runs in a freshly pulled container with no state from any
+prior run, so start.sh would otherwise call `warp-cli registration new`
+on every single job — registering a brand new anonymous WARP identity each
+time. That's needless churn against Cloudflare's registration endpoint,
+and GitHub Actions runners share IP ranges across unrelated jobs/repos, so
+a burst of registrations from "the same IP" isn't fully under this
+project's control. Reusing one identity across runs (restore before
+registering, save only after a fresh registration succeeds) cuts that
+down to roughly once, not once per job.
 
 Usage: warp_identity.py restore|save
 """

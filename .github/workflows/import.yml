@@ -15,87 +15,67 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 jobs:
   import:
     runs-on: ubuntu-latest
     steps:
-      # Must come first: hashFiles() below reads from the runner's working
-      # directory, which is empty until checkout populates it. This file
-      # itself has to be in the sparse-checkout list too — hashFiles() can
-      # only see files actually on disk, and a sparse-checkout scoped to
-      # just ci/import silently excluded it, so every run hashed nothing
-      # and every cache key collapsed to the same "import-apt-"/
-      # "import-pip-" literal (no cache invalidation, and initially no hits
-      # at all since the apt cache's save step was separately broken —
-      # see below).
-      - uses: actions/checkout@v7
-        with:
-          sparse-checkout: |
-            ci/import
-            .github/workflows/import.yml
-
-      # actions/cache's restore/save steps both run as the unprivileged
-      # runner user, but /var/cache/apt/archives starts out root-owned on a
-      # fresh runner (nothing has run apt yet to create it as anything
-      # else). A prior fix chown'd it back to the runner user only *after*
-      # installs finished, which fixed saving the cache but not restoring
-      # it — restore runs before that point, so every run's tar extraction
-      # into this directory failed with "Permission denied" and silently
-      # fell through to a full reinstall regardless of the "cache hit"
-      # reported above it. Owning the directory upfront fixes both
-      # directions, since nothing else needs it to be root-owned.
-      - name: Prepare apt cache directory
-        run: sudo mkdir -p /var/cache/apt/archives && sudo chown -R "$(id -u):$(id -g)" /var/cache/apt/archives
-
-      - name: Cache apt packages
-        uses: actions/cache@v6
-        with:
-          path: /var/cache/apt/archives
-          key: import-apt-${{ hashFiles('.github/workflows/import.yml') }}
-
-      - name: Cache pip packages
-        uses: actions/cache@v6
+      # A job-level `container:` puts every step inside the container,
+      # with no way to mix in a bare-host step — and a container step
+      # can't use actions/cache (it's a JS action needing a Node runtime
+      # the image doesn't have). Running on the bare host and invoking
+      # docker manually below, instead of via job-level `container:`,
+      # keeps everything in one job: this step can use actions/cache
+      # freely, and the docker run step after it mounts the result in.
+      - uses: actions/cache@v6
         with:
           path: ~/.cache/pip
-          key: import-pip-${{ hashFiles('.github/workflows/import.yml') }}
+          key: import-ytdlp-pip
+          save-always: true
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            curl gnupg lsb-release dbus python3 python3-venv ffmpeg ca-certificates
-          curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg \
-            | sudo gpg --yes --dearmor --output /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
-          echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" \
-            | sudo tee /etc/apt/sources.list.d/cloudflare-client.list
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends cloudflare-warp
-          # apt-get itself runs under sudo and writes new .deb files as
-          # root regardless of who owns the directory, so ownership drifts
-          # back to root here every run — hand it back to the runner user
-          # again before the job ends so actions/cache's save step (which
-          # also runs as the runner user) can read them back out.
-          sudo chown -R "$(id -u):$(id -g)" /var/cache/apt/archives
+      # yt-dlp breaks constantly as YouTube changes its frontend, so
+      # --upgrade here is load-bearing, not optional: pip's HTTP cache
+      # above only accelerates re-downloading a wheel that's already the
+      # latest, it never skips checking PyPI for a newer one. Installed
+      # with --target into the workspace (not baked into the image — see
+      # docker/import/Dockerfile) so it can be bind-mounted into the
+      # container below without needing yt-dlp inside the image at all.
+      - name: Install/upgrade yt-dlp on the host
+        run: pip install --upgrade --target "$GITHUB_WORKSPACE/.ytdlp-pkg" yt-dlp
 
-      - name: Install Python dependencies
-        working-directory: ci/import
-        run: |
-          python3 -m venv /opt/venv
-          /opt/venv/bin/pip install boto3 websockets
-          # yt-dlp breaks constantly as YouTube changes its frontend, so
-          # --upgrade here is load-bearing, not optional: pinning it to
-          # whatever pip's cache happened to have would let a stale
-          # extractor silently start failing every import job. pip's HTTP
-          # cache (~/.cache/pip) still short-circuits re-downloading the
-          # wheel when it's already the latest, so this stays fast on the
-          # common case where nothing changed.
-          /opt/venv/bin/pip install --upgrade yt-dlp
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
+      # NET_ADMIN + the TUN device are what the official WARP client needs
+      # to bring up its interface even in proxy mode (no TUN traffic
+      # actually flows through it in this mode, but warp-svc still requires
+      # the capability to initialize). The yt-dlp package installed above
+      # is bind-mounted in and put on PYTHONPATH so import.py can import it
+      # without it ever being installed inside the image.
       - name: Run import
-        working-directory: ci/import
+        run: |
+          docker run --rm \
+            --cap-add=NET_ADMIN \
+            --device=/dev/net/tun:/dev/net/tun \
+            --sysctl net.ipv6.conf.all.disable_ipv6=0 \
+            --sysctl net.ipv4.conf.all.src_valid_mark=1 \
+            -v "$GITHUB_WORKSPACE/.ytdlp-pkg:/ytdlp-pkg:ro" \
+            -e PYTHONPATH=/ytdlp-pkg \
+            -e WORKER_BASE_URL \
+            -e IMPORT_WEBHOOK_SECRET \
+            -e JOB_ID \
+            -e USER_ID \
+            -e SOURCE_URL \
+            -e MINIO_ENDPOINT \
+            -e MINIO_BUCKET \
+            -e MINIO_ACCESS_KEY \
+            -e MINIO_SECRET_KEY \
+            ghcr.io/${{ github.repository }}/import:latest
         env:
-          PATH: /opt/venv/bin:/usr/bin:/bin:/usr/sbin:/sbin
           WORKER_BASE_URL: ${{ secrets.WORKER_BASE_URL }}
           IMPORT_WEBHOOK_SECRET: ${{ secrets.IMPORT_WEBHOOK_SECRET }}
           JOB_ID: ${{ inputs.job_id }}
@@ -105,4 +85,3 @@ jobs:
           MINIO_BUCKET: ${{ secrets.MINIO_BUCKET }}
           MINIO_ACCESS_KEY: ${{ secrets.MINIO_ACCESS_KEY }}
           MINIO_SECRET_KEY: ${{ secrets.MINIO_SECRET_KEY }}
-        run: chmod +x start.sh && ./start.sh
