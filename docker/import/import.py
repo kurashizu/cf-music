@@ -79,6 +79,10 @@ def fetch_known_video_ids(video_ids: list[str]) -> set[str]:
         headers={
             "Content-Type": "application/json",
             "X-Signature-256": f"sha256={sign(body.decode())}",
+            # Cloudflare's edge blocks the default Python-urllib/x.y User-Agent
+            # as a bot signature (error 1010) even against our own Worker —
+            # this isn't app-level auth, so a real UA string is enough.
+            "User-Agent": "cf-music-import-job/1.0",
         },
     )
     try:
@@ -213,7 +217,12 @@ def download_and_upload_song(entry: dict, s3_client) -> dict:
 
 
 async def run() -> None:
-    async with websockets.connect(websocket_url()) as ws:
+    # Same reasoning as fetch_known_video_ids' explicit User-Agent: avoid
+    # whatever default header value might read as a bot signature to
+    # Cloudflare's edge in front of our own Worker.
+    async with websockets.connect(
+        websocket_url(), additional_headers={"User-Agent": "cf-music-import-job/1.0"}
+    ) as ws:
 
         async def send_event(event: dict) -> None:
             await ws.send(json.dumps({"jobId": JOB_ID, "event": event}))
