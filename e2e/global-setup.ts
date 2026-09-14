@@ -20,6 +20,9 @@ export function seedInviteCode(code: string) {
 // invite_codes.created_by FK without a real admin account existing.
 export default function globalSetup() {
 	d1Execute(`DELETE FROM sessions;`);
+	d1Execute(`DELETE FROM playlist_songs WHERE video_id LIKE 'e2e-song-%';`);
+	d1Execute(`DELETE FROM songs WHERE video_id LIKE 'e2e-song-%';`);
+	d1Execute(`DELETE FROM playlists WHERE user_id IN (SELECT id FROM users WHERE username LIKE 'e2e-%');`);
 	d1Execute(`DELETE FROM invite_codes WHERE created_by = '${E2E_SEED_ADMIN_ID}';`);
 	d1Execute(`DELETE FROM users WHERE id = '${E2E_SEED_ADMIN_ID}' OR username LIKE 'e2e-%';`);
 	d1Execute(

@@ -4,6 +4,8 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Toaster } from '$lib/components/ui/sonner/index.js';
 	import Logo from '$lib/components/logo.svelte';
+	import PlayerBar from '$lib/components/player-bar.svelte';
+	import { player } from '$lib/client/player.svelte';
 	import LibraryIcon from '@lucide/svelte/icons/library';
 	import UploadIcon from '@lucide/svelte/icons/upload';
 	import HardDriveIcon from '@lucide/svelte/icons/hard-drive';
@@ -80,9 +82,15 @@
 			</Button>
 		</header>
 
-		<main class="min-h-0 flex-1 overflow-y-auto pb-16 md:pb-0">
+		<main
+			class="min-h-0 flex-1 overflow-y-auto {player.currentTrack
+				? 'pb-32 md:pb-20'
+				: 'pb-16 md:pb-0'}"
+		>
 			{@render children()}
 		</main>
+
+		<PlayerBar />
 
 		<!-- Mobile bottom nav -->
 		<nav
