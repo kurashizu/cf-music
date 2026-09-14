@@ -15,6 +15,49 @@ async function postToServiceWorker(message: unknown): Promise<void> {
 }
 
 /**
+ * Asks the service worker (via a MessageChannel reply port, since
+ * postMessage alone is fire-and-forget) which videoIds it currently has
+ * audio cached for.
+ */
+async function listCachedVideoIds(): Promise<string[]> {
+	const registration = await navigator.serviceWorker.ready;
+	if (!registration.active) return [];
+
+	return new Promise((resolve) => {
+		const channel = new MessageChannel();
+		channel.port1.onmessage = (event) => resolve(event.data.videoIds as string[]);
+		registration.active!.postMessage({ type: 'LIST_CACHED_AUDIO' }, [channel.port2]);
+	});
+}
+
+/**
+ * Keeps the service worker's audio cache from drifting away from account
+ * storage: evicts anything cached for a song that isn't in the user's
+ * library at all anymore — removed from every playlist, or evicted for
+ * quota. A song still in the library but not (or no longer) pinned keeps
+ * its cached bytes; that's lazy caching working as designed (play once,
+ * stay available offline until something else reclaims the space), not
+ * drift. Only "cached for a song account storage no longer has any record
+ * of" is the actual leak this closes — nothing else ever clears that
+ * case, since eviction/unlink only ever touches D1 and S3, never the
+ * browser's own cache. Called on every Settings/offline-cache page load;
+ * account storage (the DB) is always the source of truth this reconciles
+ * *toward*, never the other way around.
+ */
+export async function reconcileAudioCache(libraryVideoIds: string[]): Promise<void> {
+	if (!('serviceWorker' in navigator)) return;
+
+	const cachedVideoIds = await listCachedVideoIds();
+	if (cachedVideoIds.length === 0) return;
+
+	const libraryIds = new Set(libraryVideoIds);
+	const toEvict = cachedVideoIds.filter((videoId) => !libraryIds.has(videoId));
+	if (toEvict.length === 0) return;
+
+	await postToServiceWorker({ type: 'EVICT_AUDIO', videoIds: toEvict });
+}
+
+/**
  * Pre-fetches and caches every pinned song's audio, one at a time — not
  * in parallel, since this can run on every page load and a burst of
  * concurrent large audio downloads competing with whatever the user is

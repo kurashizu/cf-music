@@ -1,6 +1,6 @@
 import { redirect } from '@sveltejs/kit';
 import { getDb } from '$lib/server/db';
-import { getUserQuotaBytes, getUserStorageUsageBytes } from '$lib/server/eviction/usage';
+import { listCachePreferences } from '$lib/server/cache/preferences';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ platform, locals }) => {
@@ -9,10 +9,7 @@ export const load: PageServerLoad = async ({ platform, locals }) => {
 	}
 
 	const db = getDb(platform!.env.DB);
-	const [quotaBytes, usageBytes] = await Promise.all([
-		getUserQuotaBytes(db, locals.session.userId),
-		getUserStorageUsageBytes(db, locals.session.userId)
-	]);
+	const entries = await listCachePreferences(db, locals.session.userId);
 
-	return { quotaBytes, usageBytes };
+	return { entries };
 };

@@ -78,19 +78,57 @@ sw.addEventListener('fetch', (event) => {
  * (which has the user's session) can make.
  */
 sw.addEventListener('message', (event) => {
-	if (event.data?.type !== 'PRECACHE_AUDIO') return;
-	const { videoId, audioUrl } = event.data as { videoId: string; audioUrl: string };
+	const data = event.data as { type: string; [key: string]: unknown };
 
-	event.waitUntil(
-		(async () => {
-			const cache = await caches.open(AUDIO_CACHE);
-			const cacheKey = audioCacheKey(videoId);
-			if (await cache.match(cacheKey)) return;
+	if (data?.type === 'PRECACHE_AUDIO') {
+		const { videoId, audioUrl } = data as { videoId: string; audioUrl: string };
+		event.waitUntil(
+			(async () => {
+				const cache = await caches.open(AUDIO_CACHE);
+				const cacheKey = audioCacheKey(videoId);
+				if (await cache.match(cacheKey)) return;
 
-			const response = await fetch(audioUrl);
-			if (response.ok) {
-				await cache.put(cacheKey, response);
-			}
-		})()
-	);
+				const response = await fetch(audioUrl);
+				if (response.ok) {
+					await cache.put(cacheKey, response);
+				}
+			})()
+		);
+		return;
+	}
+
+	// Reconciliation with account storage (see settings/+page.svelte):
+	// the page knows the user's actual library/pin state, the service
+	// worker only knows what videoIds it happens to have cached — neither
+	// side alone can tell a stale entry (song unpinned, removed from every
+	// playlist, or evicted) from a still-valid one.
+	if (data?.type === 'LIST_CACHED_AUDIO') {
+		const port = event.ports[0];
+		event.waitUntil(
+			(async () => {
+				const cache = await caches.open(AUDIO_CACHE);
+				const keys = await cache.keys();
+				// audioCacheKey's URLs have no file extension (they're only ever
+				// used as a lookup key, never fetched - see its own comment), so
+				// the videoId is just the last path segment, not something
+				// extractVideoIdFromAudioPath (which expects a real .ext suffix)
+				// can parse.
+				const videoIds = keys.map((request) => new URL(request.url).pathname.split('/').pop() ?? '');
+				port?.postMessage({ videoIds: videoIds.filter((id) => id.length > 0) });
+			})()
+		);
+		return;
+	}
+
+	if (data?.type === 'EVICT_AUDIO') {
+		const { videoIds } = data as { videoIds: string[] };
+		event.waitUntil(
+			(async () => {
+				const cache = await caches.open(AUDIO_CACHE);
+				for (const videoId of videoIds) {
+					await cache.delete(audioCacheKey(videoId));
+				}
+			})()
+		);
+	}
 });

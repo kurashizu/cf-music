@@ -1,25 +1,15 @@
 <script lang="ts">
-	import { untrack, onMount } from 'svelte';
-	import { toast } from 'svelte-sonner';
+	import { onMount } from 'svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Card from '$lib/components/ui/card/index.js';
 	import HardDriveIcon from '@lucide/svelte/icons/hard-drive';
 	import GlobeIcon from '@lucide/svelte/icons/globe';
-	import PinIcon from '@lucide/svelte/icons/pin';
-	import {
-		precachePinnedSongs,
-		estimateBrowserStorage,
-		type StorageEstimate
-	} from '$lib/client/offline-cache';
+	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
+	import { estimateBrowserStorage, type StorageEstimate } from '$lib/client/offline-cache';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
 
-	// Seeded once from the server-loaded list, then updated locally via
-	// togglePin's optimistic write — see the playlist detail page for the
-	// same pattern (and why untrack, not a $derived, is the right tool here).
-	let entries = $state(untrack(() => data.entries));
-	let pendingVideoId = $state<string | null>(null);
 	let browserStorage = $state<StorageEstimate | null>(null);
 
 	const usagePercent = $derived(
@@ -35,11 +25,6 @@
 		estimateBrowserStorage().then((estimate) => {
 			browserStorage = estimate;
 		});
-
-		// Best-effort background warm-up — not awaited, since there's
-		// nothing on this page that needs to block on it finishing.
-		const pinnedVideoIds = entries.filter((e) => e.cacheType === 'pinned').map((e) => e.videoId);
-		precachePinnedSongs(pinnedVideoIds);
 	});
 
 	function formatBytes(bytes: number): string {
@@ -52,34 +37,6 @@
 			unitIndex++;
 		}
 		return `${value.toFixed(1)} ${units[unitIndex]}`;
-	}
-
-	async function togglePin(videoId: string, currentlyPinned: boolean) {
-		pendingVideoId = videoId;
-		try {
-			const response = await fetch(`/api/cache/${videoId}`, {
-				method: 'PUT',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ cacheType: currentlyPinned ? 'lazy' : 'pinned' })
-			});
-			if (!response.ok) {
-				toast.error('Failed to update cache preference');
-				return;
-			}
-			entries = entries.map((entry) =>
-				entry.videoId === videoId
-					? { ...entry, cacheType: currentlyPinned ? 'lazy' : 'pinned' }
-					: entry
-			);
-			// Pinning triggers an immediate offline warm-up rather than waiting
-			// for the next page load; unpinning doesn't evict — the service
-			// worker's audio cache just isn't refreshed for it anymore.
-			if (!currentlyPinned) {
-				precachePinnedSongs([videoId]);
-			}
-		} finally {
-			pendingVideoId = null;
-		}
 	}
 </script>
 
@@ -110,7 +67,7 @@
 		</Card.Content>
 	</Card.Root>
 
-	<Card.Root class="mb-8">
+	<Card.Root class="mb-4">
 		<Card.Content>
 			<div class="mb-2 flex items-center justify-between text-sm">
 				<span class="flex items-center gap-1.5 text-muted-foreground">
@@ -143,31 +100,15 @@
 		</Card.Content>
 	</Card.Root>
 
-	{#if entries.length === 0}
-		<div class="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border py-16 text-center">
-			<HardDriveIcon class="size-8 text-muted-foreground" />
-			<p class="text-sm text-muted-foreground">No songs in your library yet.</p>
-		</div>
-	{:else}
-		<ul class="flex flex-col">
-			{#each entries as entry (entry.videoId)}
-				<li class="flex items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-muted">
-					<div class="min-w-0 flex-1">
-						<p class="truncate text-sm">{entry.title}</p>
-						<p class="text-xs text-muted-foreground">{formatBytes(entry.fileSizeBytes)}</p>
-					</div>
-					<Button
-						size="sm"
-						variant={entry.cacheType === 'pinned' ? 'default' : 'outline'}
-						class="gap-1.5"
-						disabled={pendingVideoId === entry.videoId}
-						onclick={() => togglePin(entry.videoId, entry.cacheType === 'pinned')}
-					>
-						<PinIcon class="size-3.5" />
-						{entry.cacheType === 'pinned' ? 'Pinned' : 'Pin'}
-					</Button>
-				</li>
-			{/each}
-		</ul>
-	{/if}
+	<a href="/settings/offline-cache" class="block">
+		<Card.Root class="transition-colors hover:border-ring/50">
+			<Card.Content class="flex items-center justify-between gap-3">
+				<div>
+					<p class="text-sm font-medium">Manage offline cache</p>
+					<p class="text-xs text-muted-foreground">Pin songs for offline playback, per song</p>
+				</div>
+				<ChevronRightIcon class="size-4 shrink-0 text-muted-foreground" />
+			</Card.Content>
+		</Card.Root>
+	</a>
 </div>
