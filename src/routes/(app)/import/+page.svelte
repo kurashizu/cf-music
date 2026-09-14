@@ -20,7 +20,7 @@
 	let submitting = $state(false);
 
 	const targetPlaylistLabel = $derived(
-		data.playlists.find((p) => p.id === targetPlaylistId)?.name ?? 'No playlist (just import)'
+		data.playlists.find((p) => p.id === targetPlaylistId)?.name ?? 'Default (Imports)'
 	);
 
 	const jobs = $derived([...importStore.jobs.values()].reverse());

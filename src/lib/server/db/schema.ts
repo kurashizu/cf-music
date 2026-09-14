@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, primaryKey, index } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, primaryKey, index, type AnySQLiteColumn } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
 
 export const users = sqliteTable('users', {
@@ -8,6 +8,20 @@ export const users = sqliteTable('users', {
 	isAdmin: integer('is_admin', { mode: 'boolean' }).notNull().default(false),
 	storageQuotaBytes: integer('storage_quota_bytes').notNull().default(1_073_741_824), // 1GB
 	autoEvictEnabled: integer('auto_evict_enabled', { mode: 'boolean' }).notNull().default(true),
+	// Lazily created (see ensureDefaultPlaylist) the first time an import
+	// doesn't specify a target playlist — null until then, not eagerly
+	// created at registration, so a user who never imports anything never
+	// gets a stray empty playlist.
+	//
+	// onDelete: 'set null' here is declarative intent, not an enforced DB
+	// constraint: this column was added via ALTER TABLE ADD COLUMN (SQLite
+	// can only attach real ON DELETE behavior in CREATE TABLE), so
+	// deletePlaylist() clears this column itself before deleting a
+	// playlist that happens to be someone's default — without that, it
+	// would fail outright on a foreign key violation instead.
+	defaultPlaylistId: text('default_playlist_id').references((): AnySQLiteColumn => playlists.id, {
+		onDelete: 'set null'
+	}),
 	createdAt: text('created_at')
 		.notNull()
 		.default(sql`(current_timestamp)`)

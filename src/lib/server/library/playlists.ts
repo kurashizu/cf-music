@@ -1,6 +1,6 @@
 import { eq, and, max } from 'drizzle-orm';
 import type { Db } from '../db';
-import { playlists, playlistSongs, songs } from '../db/schema';
+import { playlists, playlistSongs, songs, users } from '../db/schema';
 
 export class LibraryError extends Error {
 	constructor(
@@ -26,6 +26,26 @@ export async function createPlaylist(db: Db, input: CreatePlaylistInput): Promis
 		name: input.name,
 		sourceUrl: input.sourceUrl
 	});
+	return { id };
+}
+
+/**
+ * Every import needs a target playlist — songs aren't allowed to exist
+ * without being reachable through at least one of a user's playlists
+ * (isSongInUserLibrary, storage usage, and eviction all assume that). This
+ * returns the user's existing default playlist, or creates one on first
+ * use if they've never had one (either never imported without picking a
+ * target, or previously deleted their default — see the users table's
+ * defaultPlaylistId column for why that's a set-null, not a hard failure).
+ */
+export async function ensureDefaultPlaylist(db: Db, userId: string): Promise<{ id: string }> {
+	const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
+	if (user?.defaultPlaylistId) {
+		return { id: user.defaultPlaylistId };
+	}
+
+	const { id } = await createPlaylist(db, { userId, name: 'Imports' });
+	await db.update(users).set({ defaultPlaylistId: id }).where(eq(users.id, userId));
 	return { id };
 }
 
@@ -83,6 +103,18 @@ export async function renamePlaylist(db: Db, playlistId: string, userId: string,
 
 export async function deletePlaylist(db: Db, playlistId: string, userId: string): Promise<void> {
 	await getOwnedPlaylist(db, playlistId, userId);
+
+	// The schema declares defaultPlaylistId's FK as ON DELETE SET NULL, but
+	// SQLite's ALTER TABLE ADD COLUMN can't actually attach that behavior
+	// (only CREATE TABLE can) — so without clearing it explicitly here
+	// first, deleting a user's own default playlist would fail outright
+	// with a foreign key constraint error instead of the intended
+	// "next import without a target just creates a new one" behavior.
+	await db
+		.update(users)
+		.set({ defaultPlaylistId: null })
+		.where(and(eq(users.id, userId), eq(users.defaultPlaylistId, playlistId)));
+
 	// playlist_songs rows cascade-delete; the referenced songs themselves are
 	// left untouched here — eviction/cleanup of orphaned songs is a separate
 	// concern (see library/eviction.ts), not implied by removing a playlist.

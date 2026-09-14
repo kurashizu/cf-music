@@ -5,6 +5,7 @@ import { requireSession } from '$lib/server/auth/guard';
 import { pickStrings } from '$lib/server/http/validate';
 import { createImportJob, listImportJobs } from '$lib/server/import/jobs';
 import { dispatchImportWorkflow } from '$lib/server/import/github-actions';
+import { ensureDefaultPlaylist } from '$lib/server/library/playlists';
 
 /** Lists the caller's own recent import jobs, most recent first — see listImportJobs for why. */
 export const GET: RequestHandler = async (event) => {
@@ -36,11 +37,19 @@ export const POST: RequestHandler = async (event) => {
 	// import page's Select binding) — treat it the same as omitted rather
 	// than storing it, which would otherwise violate target_playlist_id's
 	// foreign key the moment it's dereferenced as a real playlist id.
-	const targetPlaylistId =
+	const explicitTargetPlaylistId =
 		typeof targetPlaylistIdRaw === 'string' && targetPlaylistIdRaw.length > 0 ? targetPlaylistIdRaw : undefined;
 
 	const env = event.platform!.env;
 	const db = getDb(env.DB);
+
+	// Every song has to end up reachable through some playlist — there's
+	// no "just import it, don't file it anywhere" option — so an import
+	// with no explicit target falls back to the user's default playlist
+	// (created on first use) rather than leaving the song's only trace in
+	// the global songs table.
+	const targetPlaylistId =
+		explicitTargetPlaylistId ?? (await ensureDefaultPlaylist(db, session.userId)).id;
 
 	const { id: jobId } = await createImportJob(db, {
 		userId: session.userId,

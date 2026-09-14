@@ -1,0 +1,1 @@
+ALTER TABLE `users` ADD `default_playlist_id` text REFERENCES playlists(id);
