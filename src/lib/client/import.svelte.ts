@@ -12,6 +12,7 @@ interface RawImportJob {
 	failedCount: number;
 	failures: string | null;
 	previewEntries: string | null;
+	fatalError: string | null;
 }
 
 function parseJobRow(row: RawImportJob): ImportJobState {
@@ -23,7 +24,8 @@ function parseJobRow(row: RawImportJob): ImportJobState {
 		completedCount: row.completedCount,
 		failedCount: row.failedCount,
 		failures: row.failures ? JSON.parse(row.failures) : [],
-		previewEntries: row.previewEntries ? JSON.parse(row.previewEntries) : null
+		previewEntries: row.previewEntries ? JSON.parse(row.previewEntries) : null,
+		fatalError: row.fatalError
 	};
 }
 
@@ -77,10 +79,12 @@ class ImportStore {
 
 			const updated = applyImportEvent(existing, message.event);
 			const next = new Map(this.jobs);
-			// The import page only shows currently-in-progress jobs — a
-			// terminal status means CI (or a cancel) is done with it, and
-			// its record now lives in the audit log instead, not here.
-			if (updated.status === 'completed' || updated.status === 'failed' || updated.status === 'cancelled') {
+			// The import page only shows currently-in-progress jobs, and a
+			// completed/cancelled job's outcome needs no further explanation
+			// — but a failure needs to stay visible with its reason (see
+			// fatalError/failures) until the user dismisses it, or the only
+			// place to learn what happened is the admin audit log.
+			if (updated.status === 'completed' || updated.status === 'cancelled') {
 				next.delete(message.jobId);
 			} else {
 				next.set(message.jobId, updated);

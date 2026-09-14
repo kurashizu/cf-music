@@ -131,6 +131,7 @@ export const importJobs = sqliteTable('import_jobs', {
 	failedCount: integer('failed_count').notNull().default(0),
 	failures: text('failures'), // JSON array of failed video_id + reason entries
 	previewEntries: text('preview_entries'), // JSON array of {videoId, title, durationSeconds} found during extraction, informational only
+	fatalError: text('fatal_error'), // set when the whole job failed before/outside the per-song loop (source extraction, WARP setup, etc.) — distinct from per-song entries in `failures`
 	createdAt: text('created_at')
 		.notNull()
 		.default(sql`(current_timestamp)`),

@@ -1,0 +1,1 @@
+ALTER TABLE `import_jobs` ADD `fatal_error` text;

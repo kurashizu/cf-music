@@ -14,6 +14,11 @@ export interface ImportJobState {
 	failedCount: number;
 	failures: SongImportFailureInput[];
 	previewEntries: PreviewEntry[] | null;
+	// Distinct from `failures` (per-song failures in an otherwise-proceeding
+	// batch): set when the whole job failed before/outside the per-song
+	// loop — source extraction, WARP setup, etc. — so there's no video to
+	// attribute a per-song failure to.
+	fatalError: string | null;
 }
 
 function applyStart(job: ImportJobState, totalCount: number): ImportJobState {
@@ -38,6 +43,11 @@ function applyComplete(job: ImportJobState): ImportJobState {
 	return { ...job, status: failed ? 'failed' : 'completed' };
 }
 
+/** Mirrors failImportJob()'s server-side transition: an error outside the per-song loop marks the whole job failed outright. */
+function applyFatalError(job: ImportJobState, reason: string): ImportJobState {
+	return { ...job, status: 'failed', fatalError: reason };
+}
+
 /**
  * Pure reducer applying one progress event to a job's client-side state.
  * Mirrors the D1 state transitions the Durable Object applies server-side
@@ -57,5 +67,7 @@ export function applyImportEvent(job: ImportJobState, event: ImportProgressEvent
 			return applySongFailed(job, event.failure);
 		case 'complete':
 			return applyComplete(job);
+		case 'fatal_error':
+			return applyFatalError(job, event.reason);
 	}
 }

@@ -6,6 +6,7 @@ import {
 	recordSongImported,
 	recordSongFailed,
 	completeImportJob,
+	failImportJob,
 	cancelImportJob,
 	ImportJobError
 } from '../import/jobs';
@@ -121,6 +122,9 @@ export class ImportProgressDurableObject implements DurableObject {
 				break;
 			case 'complete':
 				await completeImportJob(db, message.jobId, job.userId);
+				break;
+			case 'fatal_error':
+				await failImportJob(db, message.jobId, job.userId, message.event.reason);
 				break;
 		}
 

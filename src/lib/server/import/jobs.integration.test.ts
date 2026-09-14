@@ -11,6 +11,7 @@ import {
 	recordSongImported,
 	recordSongFailed,
 	completeImportJob,
+	failImportJob,
 	findKnownVideoIds,
 	submitImportPreview,
 	cancelImportJob,
@@ -192,6 +193,43 @@ describe('completeImportJob', () => {
 	});
 });
 
+describe('failImportJob', () => {
+	it('marks the job failed and records the reason', async () => {
+		await seedUser('u1');
+		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x' });
+
+		await failImportJob(db, id, 'u1', 'yt-dlp could not extract the source URL');
+
+		const job = await getImportJob(db, id, 'u1');
+		expect(job.status).toBe('failed');
+		expect(job.fatalError).toBe('yt-dlp could not extract the source URL');
+		expect(job.completedAt).not.toBeNull();
+	});
+
+	it('does not overwrite a cancelled status', async () => {
+		await seedUser('u1');
+		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x' });
+		await cancelImportJob(db, id, 'u1');
+
+		await failImportJob(db, id, 'u1', 'too late, already cancelled');
+
+		const job = await getImportJob(db, id, 'u1');
+		expect(job.status).toBe('cancelled');
+	});
+
+	it('records an audit event with the failure reason', async () => {
+		await seedUser('u1');
+		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x' });
+
+		await failImportJob(db, id, 'u1', 'network unreachable');
+
+		const [entry] = await db.query.auditLog.findMany({ where: eq(auditLog.targetId, id) });
+		expect(entry.eventType).toBe('import');
+		expect(entry.targetType).toBe('import_job');
+		expect(JSON.parse(entry.detail!)).toMatchObject({ status: 'failed', reason: 'network unreachable' });
+	});
+});
+
 describe('findKnownVideoIds', () => {
 	it('returns an empty array for an empty input', async () => {
 		expect(await findKnownVideoIds(db, [])).toEqual([]);
@@ -287,6 +325,17 @@ describe('cancelImportJob', () => {
 		expect(job.status).toBe('cancelled');
 	});
 
+	it('dismisses a failed job (same action as cancel — nothing left running to stop)', async () => {
+		await seedUser('u1');
+		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x' });
+		await failImportJob(db, id, 'u1', 'boom');
+
+		await cancelImportJob(db, id, 'u1');
+
+		const job = await getImportJob(db, id, 'u1');
+		expect(job.status).toBe('cancelled');
+	});
+
 	it('throws invalid_transition for a job that already completed', async () => {
 		await seedUser('u1');
 		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x' });
@@ -356,7 +405,7 @@ describe('listImportJobs', () => {
 		expect(jobs.map((j) => j.sourceUrl)).toEqual(['https://x/second', 'https://x/first']);
 	});
 
-	it('excludes jobs that have reached a terminal status', async () => {
+	it('excludes completed and cancelled jobs, which need no further explanation', async () => {
 		await seedUser('u1');
 		const { id: completedId } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x/done' });
 		await completeImportJob(db, completedId, 'u1');
@@ -367,5 +416,15 @@ describe('listImportJobs', () => {
 		const jobs = await listImportJobs(db, 'u1');
 
 		expect(jobs.map((j) => j.sourceUrl)).toEqual(['https://x/still-running']);
+	});
+
+	it('includes failed jobs, so the user can actually see why one failed', async () => {
+		await seedUser('u1');
+		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x/failed' });
+		await failImportJob(db, id, 'u1', 'boom');
+
+		const jobs = await listImportJobs(db, 'u1');
+
+		expect(jobs.map((j) => j.sourceUrl)).toEqual(['https://x/failed']);
 	});
 });

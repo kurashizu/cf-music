@@ -230,9 +230,20 @@ async def run() -> None:
         async def send_event(event: dict) -> None:
             await ws.send(json.dumps({"jobId": JOB_ID, "event": event}))
 
-        entries = extract_playlist_entries(SOURCE_URL)
-        video_ids = [e["id"] for e in entries]
-        known_video_ids = fetch_known_video_ids(video_ids)
+        # Anything raised here happens before the per-song loop even starts
+        # (source extraction, the known-video-ids lookup), so there's no
+        # song to attribute a song_failed event to and no way to tell the
+        # Worker what happened except this: without it, the job is stuck at
+        # whatever status it already had, forever — the process just exits
+        # non-zero and the WebSocket connection drops with no explanation.
+        try:
+            entries = extract_playlist_entries(SOURCE_URL)
+            video_ids = [e["id"] for e in entries]
+            known_video_ids = fetch_known_video_ids(video_ids)
+        except Exception as exc:  # noqa: BLE001 - must reach fatal_error below, then re-raise
+            await send_event({"type": "fatal_error", "reason": str(exc)[:500]})
+            raise
+
         pending_entries = [e for e in entries if e["id"] not in known_video_ids]
 
         await send_event(

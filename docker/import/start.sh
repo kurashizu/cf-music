@@ -86,14 +86,20 @@ timeout "$WARP_CMD_TIMEOUT" warp-cli --accept-tos proxy port 40000 \
 timeout "$WARP_CMD_TIMEOUT" warp-cli --accept-tos connect \
 	|| fail_warp "warp-cli connect failed or timed out after ${WARP_CMD_TIMEOUT}s"
 
-# Wait for the proxy port to actually accept connections before starting
-# the script that depends on it (yt-dlp/urllib both go through SOCKS5
-# 127.0.0.1:40000 — see import.py's SOCKS5_PROXY constant).
+# A plain TCP connect to the proxy port isn't a strong enough check: the
+# SOCKS5 listener can start accepting connections before the WARP tunnel
+# itself has actually finished negotiating, so a request made right after
+# "the port is open" can still get a real connection refused — this
+# happened in production (warp-cli connect reported Success, the port
+# accepted a raw TCP connect, and yt-dlp's very next request through it
+# still failed with ECONNREFUSED because the tunnel wasn't actually
+# passing traffic yet). Proving the whole path — SOCKS5 handshake, tunnel,
+# actual response — with a real HTTP request through the proxy is the only
+# check that can't pass while still broken.
 PROXY_READY=0
 for _ in $(seq 1 30); do
-	if (exec 3<>/dev/tcp/127.0.0.1/40000) 2>/dev/null; then
-		exec 3<&-
-		exec 3>&-
+	if curl --silent --fail --max-time 3 --socks5-hostname 127.0.0.1:40000 \
+		https://www.cloudflare.com/cdn-cgi/trace >/dev/null 2>&1; then
 		PROXY_READY=1
 		break
 	fi

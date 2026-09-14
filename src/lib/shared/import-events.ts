@@ -38,7 +38,15 @@ export type ImportProgressEvent =
 	| { type: 'preview'; entries: PreviewEntry[] }
 	| { type: 'song_success'; song: SongImportSuccess }
 	| { type: 'song_failed'; failure: SongImportFailureInput }
-	| { type: 'complete' };
+	| { type: 'complete' }
+	// Something before/outside the per-song loop failed unrecoverably (e.g.
+	// yt-dlp couldn't extract the source URL at all, or the WARP proxy never
+	// came up) — distinct from song_failed, which is one song out of a batch
+	// that's otherwise proceeding. Without this, a crash in that early phase
+	// left the job stuck at its initial status forever: the CI process's own
+	// stderr/exit code has no path back to the Worker, since exiting non-zero
+	// just drops the WebSocket connection without saying why.
+	| { type: 'fatal_error'; reason: string };
 
 export interface ImportProgressMessage {
 	jobId: string;

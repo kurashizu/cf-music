@@ -11,6 +11,7 @@ function makeJob(overrides: Partial<ImportJobState> = {}): ImportJobState {
 		failedCount: 0,
 		failures: [],
 		previewEntries: null,
+		fatalError: null,
 		...overrides
 	};
 }
@@ -110,6 +111,13 @@ describe('applyImportEvent', () => {
 		const job = makeJob({ completedCount: 0, failedCount: 0 });
 		const next = applyImportEvent(job, { type: 'complete' });
 		expect(next.status).toBe('completed');
+	});
+
+	it('fatal_error marks the job failed and records the reason', () => {
+		const job = makeJob({ status: 'running' });
+		const next = applyImportEvent(job, { type: 'fatal_error', reason: 'yt-dlp extraction failed' });
+		expect(next.status).toBe('failed');
+		expect(next.fatalError).toBe('yt-dlp extraction failed');
 	});
 
 	it('does not mutate the input job object', () => {

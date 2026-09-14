@@ -76,18 +76,21 @@ export async function getImportJob(db: Db, jobId: string, userId: string) {
 }
 
 /**
- * Lists a user's still-in-progress import jobs, most recent first — lets
- * the import page restore visibility into what's currently running after
- * a page refresh, since the WebSocket connection alone only carries
- * updates for jobs the client already knows about. Finished jobs
- * (completed/failed/cancelled) are deliberately excluded: once a job
- * reaches a terminal state it's recorded to the audit log instead (see
- * completeImportJob/cancelImportJob) and drops out of this list rather
- * than accumulating here indefinitely.
+ * Lists a user's still-relevant import jobs, most recent first — lets the
+ * import page restore visibility into what's currently running (or just
+ * failed) after a page refresh, since the WebSocket connection alone only
+ * carries updates for jobs the client already knows about. completed and
+ * cancelled jobs are excluded — those need no further explanation and are
+ * recorded to the audit log instead (see completeImportJob/cancelImportJob)
+ * rather than accumulating here. failed is deliberately kept: the user
+ * needs to actually see why it failed, not just have it vanish.
  */
 export async function listImportJobs(db: Db, userId: string) {
 	return db.query.importJobs.findMany({
-		where: and(eq(importJobs.userId, userId), inArray(importJobs.status, ['pending', 'running'])),
+		where: and(
+			eq(importJobs.userId, userId),
+			inArray(importJobs.status, ['pending', 'running', 'failed'])
+		),
 		orderBy: (t, { desc }) => desc(t.createdAt),
 		limit: 20
 	});
@@ -132,11 +135,15 @@ export async function submitImportPreview(db: Db, jobId: string, entries: Previe
 }
 
 /**
- * User-initiated cancellation of an in-progress import. CI checks this
- * between songs (see getImportJob polling in the CI script) and stops
- * early rather than continuing to download after the user has backed out.
+ * User-initiated cancellation of an in-progress import, or dismissal of a
+ * failed one — both just mean "stop showing me this job". CI checks for a
+ * cancel between songs (see getImportJob polling in the CI script) and
+ * stops early rather than continuing to download after the user has
+ * backed out; a failed job has nothing left running to stop, so this just
+ * clears it from listImportJobs (dismissing it doesn't erase the audit
+ * log entry completeImportJob/failImportJob already wrote).
  */
-const CANCELLABLE_STATUSES = new Set(['pending', 'running']);
+const CANCELLABLE_STATUSES = new Set(['pending', 'running', 'failed']);
 
 /**
  * `pending` is included alongside `running` because a job can get stuck
@@ -216,6 +223,34 @@ export async function recordSongFailed(db: Db, jobId: string, userId: string, fa
 			failures: JSON.stringify(existingFailures)
 		})
 		.where(eq(importJobs.id, jobId));
+}
+
+/**
+ * CI hit an unrecoverable error before/outside the per-song loop (source
+ * extraction failed entirely, the WARP proxy never came up, etc.) — marks
+ * the job failed outright rather than leaving it stuck at its prior status
+ * forever, which is what happened before this existed: the CI process just
+ * exits non-zero and drops the WebSocket with no way to say why.
+ */
+export async function failImportJob(db: Db, jobId: string, userId: string, reason: string): Promise<void> {
+	const job = await getOwnedJob(db, jobId, userId);
+	if (job.status === 'cancelled') return;
+
+	const truncatedReason = reason.slice(0, 500);
+
+	await db
+		.update(importJobs)
+		.set({ status: 'failed', fatalError: truncatedReason, completedAt: new Date().toISOString() })
+		.where(eq(importJobs.id, jobId));
+
+	await recordAuditEvent(db, {
+		userId,
+		actorId: userId,
+		eventType: 'import',
+		targetType: 'import_job',
+		targetId: jobId,
+		detail: { sourceUrl: job.sourceUrl, status: 'failed', reason: truncatedReason }
+	});
 }
 
 export async function completeImportJob(db: Db, jobId: string, userId: string): Promise<void> {
