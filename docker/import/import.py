@@ -62,6 +62,7 @@ MINIO_SECRET_KEY = os.environ["MINIO_SECRET_KEY"]
 
 SOCKS5_PROXY = "socks5://127.0.0.1:40000"
 COVER_CRF = "40"
+DOWNLOAD_CONCURRENCY = 3  # sequential downloads were the bottleneck on large playlists
 
 
 class QuotaExceededError(Exception):
@@ -304,8 +305,15 @@ async def run() -> None:
         ping_timeout=20,
     ) as ws:
 
+        # websockets' own docs call concurrent send() calls from multiple
+        # coroutines unsafe (interleaved writes can corrupt frames) — held
+        # here since download_and_upload_song now runs DOWNLOAD_CONCURRENCY
+        # at once, each reporting its own song_success/song_failed event.
+        send_lock = asyncio.Lock()
+
         async def send_event(event: dict) -> None:
-            await ws.send(json.dumps({"jobId": JOB_ID, "event": event}))
+            async with send_lock:
+                await ws.send(json.dumps({"jobId": JOB_ID, "event": event}))
 
         # Anything raised here happens before the per-song loop even starts
         # (source extraction, the known-video-ids lookup), so there's no
@@ -367,28 +375,58 @@ async def run() -> None:
             aws_secret_access_key=MINIO_SECRET_KEY,
         )
 
-        for entry in pending_entries:
-            try:
-                cancel_message = await asyncio.wait_for(ws.recv(), timeout=0.01)
+        # DOWNLOAD_CONCURRENCY songs in flight at once — sequential
+        # download/transcode/upload was the bottleneck on large playlists
+        # (each song is mostly waiting on network/ffmpeg, not CPU, so this
+        # is safe to parallelize). cancelled is a shared flag rather than a
+        # `return` from inside the loop body since multiple worker tasks
+        # are checking it concurrently; once set, in-flight downloads still
+        # finish (no point discarding a nearly-done download) but no new
+        # ones start.
+        cancelled = False
+
+        async def watch_for_cancel() -> None:
+            nonlocal cancelled
+            while not cancelled:
+                try:
+                    cancel_message = await ws.recv()
+                except websockets.exceptions.ConnectionClosed:
+                    return
                 decision = json.loads(cancel_message)
                 if decision.get("action") == "cancel":
                     print("Import was cancelled mid-run", file=sys.stderr)
+                    cancelled = True
                     return
-            except asyncio.TimeoutError:
-                pass
 
-            try:
-                # Same reasoning as resolve_batch above: download/transcode/
-                # upload is synchronous and can run long on a large file or
-                # slow network, so it goes through to_thread rather than
-                # blocking the loop (and this connection's keepalive pings)
-                # directly.
-                song = await asyncio.to_thread(download_and_upload_song, entry, s3_client)
-                await send_event({"type": "song_success", "song": song})
-            except Exception as exc:  # noqa: BLE001 - one failed song must not abort the batch
-                await send_event(
-                    {"type": "song_failed", "failure": {"videoId": entry["id"], "reason": str(exc)[:500]}}
-                )
+        download_semaphore = asyncio.Semaphore(DOWNLOAD_CONCURRENCY)
+
+        async def download_one(entry: dict) -> None:
+            if cancelled:
+                return
+            async with download_semaphore:
+                if cancelled:
+                    return
+                try:
+                    # Same reasoning as resolve_batch above: download/
+                    # transcode/upload is synchronous and can run long on a
+                    # large file or slow network, so it goes through
+                    # to_thread rather than blocking the loop (and this
+                    # connection's keepalive pings) directly.
+                    song = await asyncio.to_thread(download_and_upload_song, entry, s3_client)
+                    await send_event({"type": "song_success", "song": song})
+                except Exception as exc:  # noqa: BLE001 - one failed song must not abort the batch
+                    await send_event(
+                        {"type": "song_failed", "failure": {"videoId": entry["id"], "reason": str(exc)[:500]}}
+                    )
+
+        watcher = asyncio.create_task(watch_for_cancel())
+        await asyncio.gather(*(download_one(entry) for entry in pending_entries))
+        was_cancelled = cancelled
+        cancelled = True  # stop the watcher even if no cancel decision ever arrived
+        watcher.cancel()
+
+        if was_cancelled:
+            return
 
         await send_event({"type": "complete"})
 

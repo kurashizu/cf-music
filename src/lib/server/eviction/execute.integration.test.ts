@@ -18,6 +18,10 @@ class FakeObjectStorage implements ObjectStorage {
 	async deleteObjects(keys: string[]): Promise<void> {
 		this.deletedKeys.push(...keys);
 	}
+
+	async listAllKeys(): Promise<string[]> {
+		return [];
+	}
 }
 
 async function seedUser(id: string, quotaBytes = 1_000_000) {

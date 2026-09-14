@@ -18,6 +18,17 @@ export const PRESIGNED_URL_EXPIRY_SECONDS = 24 * 60 * 60; // 1 day, per design
 export interface ObjectStorage {
 	presignGetUrl(key: string): Promise<string>;
 	deleteObjects(keys: string[]): Promise<void>;
+	/** Every object key currently in the bucket — used only by the admin orphan scan, not by normal app operations. */
+	listAllKeys(): Promise<string[]>;
+}
+
+function decodeXmlEntities(value: string): string {
+	return value
+		.replace(/&amp;/g, '&')
+		.replace(/&lt;/g, '<')
+		.replace(/&gt;/g, '>')
+		.replace(/&quot;/g, '"')
+		.replace(/&apos;/g, "'");
 }
 
 export class S3ObjectStorage implements ObjectStorage {
@@ -42,6 +53,35 @@ export class S3ObjectStorage implements ObjectStorage {
 			headers: { 'X-Amz-Expires': String(PRESIGNED_URL_EXPIRY_SECONDS) }
 		});
 		return signed.url;
+	}
+
+	async listAllKeys(): Promise<string[]> {
+		const keys: string[] = [];
+		let continuationToken: string | undefined;
+
+		do {
+			const url = new URL(this.baseUrl);
+			url.searchParams.set('list-type', '2');
+			url.searchParams.set('max-keys', '1000');
+			if (continuationToken) url.searchParams.set('continuation-token', continuationToken);
+
+			const signed = await this.client.sign(url, { method: 'GET' });
+			const response = await this.client.fetch(signed);
+			if (!response.ok) {
+				throw new Error(`Failed to list bucket objects: ${response.status} ${response.statusText}`);
+			}
+			const xml = await response.text();
+
+			for (const match of xml.matchAll(/<Key>(.*?)<\/Key>/g)) {
+				keys.push(decodeXmlEntities(match[1]));
+			}
+
+			const isTruncated = /<IsTruncated>true<\/IsTruncated>/.test(xml);
+			const tokenMatch = xml.match(/<NextContinuationToken>(.*?)<\/NextContinuationToken>/);
+			continuationToken = isTruncated ? tokenMatch?.[1] : undefined;
+		} while (continuationToken);
+
+		return keys;
 	}
 
 	async deleteObjects(keys: string[]): Promise<void> {
