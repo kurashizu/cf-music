@@ -20,6 +20,17 @@ jobs:
   import:
     runs-on: ubuntu-latest
     steps:
+      # Must come first: hashFiles() below reads from the runner's working
+      # directory, which is empty until checkout populates it — running
+      # the cache steps before checkout silently hashed nothing and made
+      # every cache key collapse to the same "import-apt-"/"import-pip-"
+      # literal (no cache invalidation, and initially no hits at all since
+      # the apt cache's save step was separately broken — see below).
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            ci/import
+
       - name: Cache apt packages
         uses: actions/cache@v6
         with:
@@ -43,11 +54,13 @@ jobs:
             | sudo tee /etc/apt/sources.list.d/cloudflare-client.list
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends cloudflare-warp
-
-      - uses: actions/checkout@v7
-        with:
-          sparse-checkout: |
-            ci/import
+          # actions/cache's save step runs as the unprivileged runner user
+          # and can't read root-owned files under here (apt-get itself runs
+          # under sudo), so the cache save silently failed with "Permission
+          # denied" on partial/lock every time. Handing the directory back
+          # to the runner user after installs are done fixes that — nothing
+          # later in the job needs apt to still own this path.
+          sudo chown -R "$(id -u):$(id -g)" /var/cache/apt/archives
 
       - name: Install Python dependencies
         working-directory: ci/import
