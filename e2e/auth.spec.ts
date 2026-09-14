@@ -2,50 +2,50 @@ import { test, expect, type Page } from '@playwright/test';
 import { issueInviteCode, uniqueSuffix } from './fixtures';
 
 // bits-ui keeps the inactive Tabs.Content in the DOM (hidden, not removed),
-// so both the login and register forms' "用户名"/"密码" labels exist at once —
+// so both the login and register forms' "Username"/"Password" labels exist at once —
 // scope every fill to the currently visible tabpanel to avoid strict-mode
 // ambiguity between the two same-labelled inputs.
 function loginPanel(page: Page) {
-	return page.getByRole('tabpanel', { name: '登录' });
+	return page.getByRole('tabpanel', { name: 'Login' });
 }
 
 function registerPanel(page: Page) {
-	return page.getByRole('tabpanel', { name: '注册' });
+	return page.getByRole('tabpanel', { name: 'Register' });
 }
 
 async function register(page: Page, opts: { username: string; password: string; inviteCode: string }) {
-	await page.getByRole('tab', { name: '注册' }).click();
+	await page.getByRole('tab', { name: 'Register' }).click();
 	const panel = registerPanel(page);
-	await panel.getByLabel('用户名').fill(opts.username);
-	await panel.getByLabel('密码').fill(opts.password);
-	await panel.getByLabel('邀请码').fill(opts.inviteCode);
-	await panel.getByRole('button', { name: '注册' }).click();
+	await panel.getByLabel('Username').fill(opts.username);
+	await panel.getByLabel('Password').fill(opts.password);
+	await panel.getByLabel('Invite code').fill(opts.inviteCode);
+	await panel.getByRole('button', { name: 'Register' }).click();
 }
 
 async function login(page: Page, opts: { username: string; password: string }) {
 	const panel = loginPanel(page);
-	await panel.getByLabel('用户名').fill(opts.username);
-	await panel.getByLabel('密码').fill(opts.password);
-	await panel.getByRole('button', { name: '登录' }).click();
+	await panel.getByLabel('Username').fill(opts.username);
+	await panel.getByLabel('Password').fill(opts.password);
+	await panel.getByRole('button', { name: 'Login' }).click();
 }
 
 test.describe('login page', () => {
 	test('shows the login tab by default with username and password fields', async ({ page }) => {
 		await page.goto('/');
 
-		await expect(page.getByRole('tab', { name: '登录' })).toHaveAttribute('data-state', 'active');
-		await expect(loginPanel(page).getByLabel('用户名')).toBeVisible();
-		await expect(loginPanel(page).getByLabel('密码')).toBeVisible();
+		await expect(page.getByRole('tab', { name: 'Login' })).toHaveAttribute('data-state', 'active');
+		await expect(loginPanel(page).getByLabel('Username')).toBeVisible();
+		await expect(loginPanel(page).getByLabel('Password')).toBeVisible();
 		await expect(registerPanel(page)).toBeHidden();
 	});
 
 	test('switches to the register tab and reveals the invite code field', async ({ page }) => {
 		await page.goto('/');
 
-		await page.getByRole('tab', { name: '注册' }).click();
+		await page.getByRole('tab', { name: 'Register' }).click();
 
-		await expect(page.getByRole('tab', { name: '注册' })).toHaveAttribute('data-state', 'active');
-		await expect(registerPanel(page).getByLabel('邀请码')).toBeVisible();
+		await expect(page.getByRole('tab', { name: 'Register' })).toHaveAttribute('data-state', 'active');
+		await expect(registerPanel(page).getByLabel('Invite code')).toBeVisible();
 	});
 
 	test('rejects login with an unknown username', async ({ page }) => {
@@ -81,7 +81,7 @@ test.describe('login page', () => {
 		await register(page, { username, password: 'correct-horse-battery', inviteCode });
 
 		await expect(page).toHaveURL('/library');
-		await expect(page.getByText(`已登录：${username}`)).toBeVisible();
+		await expect(page.getByText(`Signed in as ${username}`)).toBeVisible();
 	});
 
 	test('an invite code cannot be reused after registration', async ({ page }) => {
@@ -92,7 +92,7 @@ test.describe('login page', () => {
 		await register(page, { username: firstUsername, password: 'correct-horse-battery', inviteCode });
 		await expect(page).toHaveURL('/library');
 
-		await page.getByRole('button', { name: '退出登录' }).click();
+		await page.getByRole('button', { name: 'Log out' }).click();
 		await expect(page).toHaveURL('/');
 
 		const secondUsername = `e2e-user-${uniqueSuffix()}`;
@@ -111,15 +111,15 @@ test.describe('login page', () => {
 		await register(page, { username, password, inviteCode });
 		await expect(page).toHaveURL('/library');
 
-		await page.getByRole('button', { name: '退出登录' }).click();
+		await page.getByRole('button', { name: 'Log out' }).click();
 		await expect(page).toHaveURL('/');
 
 		await login(page, { username, password });
 
 		await expect(page).toHaveURL('/library');
-		await expect(page.getByText(`已登录：${username}`)).toBeVisible();
+		await expect(page.getByText(`Signed in as ${username}`)).toBeVisible();
 
-		await page.getByRole('button', { name: '退出登录' }).click();
+		await page.getByRole('button', { name: 'Log out' }).click();
 		await expect(page).toHaveURL('/');
 	});
 
@@ -127,6 +127,6 @@ test.describe('login page', () => {
 		await page.goto('/library');
 
 		await expect(page).toHaveURL('/');
-		await expect(page.getByRole('tab', { name: '登录' })).toBeVisible();
+		await expect(page.getByRole('tab', { name: 'Login' })).toBeVisible();
 	});
 });

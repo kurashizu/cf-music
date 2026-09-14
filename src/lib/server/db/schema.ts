@@ -38,28 +38,28 @@ export const inviteCodes = sqliteTable('invite_codes', {
 	usedAt: text('used_at')
 });
 
-// 按 video_id 去重的曲目库，多平台通用（source_platform 存 yt-dlp 的 extractor 值）
+// Song library deduplicated by video_id, shared across platforms (source_platform stores yt-dlp's extractor value)
 export const songs = sqliteTable('songs', {
-	videoId: text('video_id').primaryKey(), // yt-dlp 的 id 字段，配合 extractor 理论上应联合唯一，但实践中跨平台 id 冲突概率极低，先用 video_id 单独做主键
-	sourcePlatform: text('source_platform').notNull(), // yt-dlp extractor，如 youtube / soundcloud
+	videoId: text('video_id').primaryKey(), // yt-dlp's id field; combined with extractor this should in theory be a composite unique key, but cross-platform id collisions are practically negligible, so video_id alone is the primary key for now
+	sourcePlatform: text('source_platform').notNull(), // yt-dlp extractor, e.g. youtube / soundcloud
 	sourceUrl: text('source_url').notNull(),
 	title: text('title').notNull(),
 	durationSeconds: integer('duration_seconds'),
 
-	// 音频规格：实际值，不假设固定码率（YouTube Opus实测46-167kbps浮动，非固定160kbps）
-	audioKey: text('audio_key').notNull(), // S3 object key，如 audio/{video_id}.webm
+	// Audio spec: actual measured values, no fixed-bitrate assumption (YouTube Opus varies ~46-167kbps in practice, not a flat 160kbps)
+	audioKey: text('audio_key').notNull(), // S3 object key, e.g. audio/{video_id}.webm
 	codec: text('codec').notNull(), // opus / aac / ...
 	container: text('container').notNull(), // webm / m4a / ...
 	bitrateKbps: integer('bitrate_kbps'),
 	sampleRate: integer('sample_rate'),
 	fileSizeBytes: integer('file_size_bytes').notNull(),
 
-	// 封面：ffmpeg转AVIF CRF40，与音频同构的生命周期
-	coverKey: text('cover_key'), // S3 object key，如 covers/{video_id}.avif
+	// Cover art: ffmpeg-transcoded to AVIF CRF40, shares the audio's lifecycle
+	coverKey: text('cover_key'), // S3 object key, e.g. covers/{video_id}.avif
 	coverWidth: integer('cover_width'),
 	coverHeight: integer('cover_height'),
 
-	// LFU+LRU融合驱逐评分依据
+	// LFU+LRU blended eviction score inputs
 	playCount: integer('play_count').notNull().default(0),
 	lastPlayedAt: text('last_played_at'),
 
@@ -68,20 +68,20 @@ export const songs = sqliteTable('songs', {
 		.default(sql`(current_timestamp)`)
 });
 
-// 播放列表：导入后与源断开关联的独立本地实体；也支持应用内自建歌单（sourceUrl为空）
+// Playlists: independent local entities disconnected from their source after import; also supports app-native playlists (sourceUrl is null)
 export const playlists = sqliteTable('playlists', {
 	id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
 	userId: text('user_id')
 		.notNull()
 		.references(() => users.id, { onDelete: 'cascade' }),
 	name: text('name').notNull(),
-	sourceUrl: text('source_url'), // 导入来源，自建歌单为空
+	sourceUrl: text('source_url'), // import source; null for app-native playlists
 	createdAt: text('created_at')
 		.notNull()
 		.default(sql`(current_timestamp)`)
 }, (t) => [index('idx_playlists_user_id').on(t.userId)]);
 
-// 播放列表<->曲目 多对多关系；同一首歌可被多个播放列表引用，共享同一个S3对象
+// Playlist<->song many-to-many; the same song can be referenced by multiple playlists, sharing one S3 object
 export const playlistSongs = sqliteTable('playlist_songs', {
 	playlistId: text('playlist_id')
 		.notNull()
@@ -89,7 +89,7 @@ export const playlistSongs = sqliteTable('playlist_songs', {
 	videoId: text('video_id')
 		.notNull()
 		.references(() => songs.videoId, { onDelete: 'cascade' }),
-	position: integer('position').notNull(), // 用户可调整的播放顺序
+	position: integer('position').notNull(), // user-adjustable playback order
 	addedAt: text('added_at')
 		.notNull()
 		.default(sql`(current_timestamp)`)
@@ -98,8 +98,8 @@ export const playlistSongs = sqliteTable('playlist_songs', {
 	index('idx_playlist_songs_video_id').on(t.videoId)
 ]);
 
-// 本地缓存标记：区分 lazy（懒缓存，可被驱逐跟随清理）与 pinned（用户手动预缓存，永不自动清除）
-// 注意：这张表记录的是"用户希望缓存的意图"，实际IndexedDB内容以浏览器为准，跨设备不同步
+// Local cache markers: distinguishes lazy (evictable) caching from pinned (user-requested, never auto-cleared)
+// Note: this table records "the user's caching intent" — actual IndexedDB contents are the browser's own source of truth and don't sync across devices
 export const cachePreferences = sqliteTable('cache_preferences', {
 	userId: text('user_id')
 		.notNull()
@@ -113,7 +113,7 @@ export const cachePreferences = sqliteTable('cache_preferences', {
 		.default(sql`(current_timestamp)`)
 }, (t) => [primaryKey({ columns: [t.userId, t.videoId] })]);
 
-// 导入任务：Worker <-> GitHub Actions <-> Durable Object 之间的进度追踪
+// Import jobs: progress tracking across Worker <-> GitHub Actions <-> Durable Object
 export const importJobs = sqliteTable('import_jobs', {
 	id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
 	userId: text('user_id')
@@ -127,23 +127,23 @@ export const importJobs = sqliteTable('import_jobs', {
 	totalCount: integer('total_count'),
 	completedCount: integer('completed_count').notNull().default(0),
 	failedCount: integer('failed_count').notNull().default(0),
-	failures: text('failures'), // JSON数组，记录失败的video_id+原因
+	failures: text('failures'), // JSON array of failed video_id + reason entries
 	createdAt: text('created_at')
 		.notNull()
 		.default(sql`(current_timestamp)`),
 	completedAt: text('completed_at')
 }, (t) => [index('idx_import_jobs_user_id').on(t.userId)]);
 
-// 审计日志：存储/认证/管理员操作，30天保留（配合Cron Trigger定期清理），仅管理员可见
+// Audit log: storage/auth/admin actions, 30-day retention (cleaned up via a Cron Trigger), admin-only visibility
 export const auditLog = sqliteTable('audit_log', {
 	id: integer('id').primaryKey({ autoIncrement: true }),
-	userId: text('user_id').references(() => users.id, { onDelete: 'set null' }), // 事件relates to的用户
-	actorId: text('actor_id').references(() => users.id, { onDelete: 'set null' }), // 谁执行的（管理员代操作时非userId本人）
+	userId: text('user_id').references(() => users.id, { onDelete: 'set null' }), // the user the event relates to
+	actorId: text('actor_id').references(() => users.id, { onDelete: 'set null' }), // who performed it (differs from userId when an admin acts on another user's behalf)
 	eventType: text('event_type').notNull(), // import / evict / manual_delete / login / login_failed /
 	// password_change / invite_used / invite_created / quota_adjusted / force_logout
 	targetType: text('target_type'), // song / user / playlist
 	targetId: text('target_id'),
-	detail: text('detail'), // JSON，事件相关的具体信息
+	detail: text('detail'), // JSON blob with event-specific details
 	ipAddress: text('ip_address'),
 	createdAt: text('created_at')
 		.notNull()

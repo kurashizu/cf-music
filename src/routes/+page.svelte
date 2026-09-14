@@ -36,12 +36,12 @@
 			});
 			if (!response.ok) {
 				const body = (await response.json().catch(() => null)) as ErrorBody | null;
-				loginError = body?.message ?? '登录失败，请检查用户名和密码';
+				loginError = body?.message ?? 'Login failed, please check your username and password';
 				return;
 			}
 			await goto('/library');
 		} catch {
-			loginError = '网络错误，请稍后重试';
+			loginError = 'Network error, please try again';
 		} finally {
 			loginSubmitting = false;
 		}
@@ -63,12 +63,12 @@
 			});
 			if (!response.ok) {
 				const body = (await response.json().catch(() => null)) as ErrorBody | null;
-				registerError = body?.message ?? '注册失败，请检查填写内容';
+				registerError = body?.message ?? 'Registration failed, please check your details';
 				return;
 			}
 			await goto('/library');
 		} catch {
-			registerError = '网络错误，请稍后重试';
+			registerError = 'Network error, please try again';
 		} finally {
 			registerSubmitting = false;
 		}
@@ -76,20 +76,20 @@
 </script>
 
 <svelte:head>
-	<title>登录 · cf-music</title>
+	<title>Login · KRSZ Music</title>
 </svelte:head>
 
 <div class="flex min-h-svh items-center justify-center bg-background p-4">
 	<Card.Root class="w-full max-w-sm">
 		<Card.Header>
-			<Card.Title class="text-xl">cf-music</Card.Title>
-			<Card.Description>私人音乐库，仅限受邀用户访问</Card.Description>
+			<Card.Title class="text-xl">KRSZ Music</Card.Title>
+			<Card.Description>Private music library, invite-only access</Card.Description>
 		</Card.Header>
 		<Card.Content>
 			<Tabs.Root bind:value={activeTab} class="w-full">
 				<Tabs.List class="grid w-full grid-cols-2">
-					<Tabs.Trigger value="login">登录</Tabs.Trigger>
-					<Tabs.Trigger value="register">注册</Tabs.Trigger>
+					<Tabs.Trigger value="login">Login</Tabs.Trigger>
+					<Tabs.Trigger value="register">Register</Tabs.Trigger>
 				</Tabs.List>
 
 				<Tabs.Content value="login">
@@ -100,7 +100,7 @@
 							</Alert.Root>
 						{/if}
 						<div class="flex flex-col gap-2">
-							<Label for="login-username">用户名</Label>
+							<Label for="login-username">Username</Label>
 							<Input
 								id="login-username"
 								name="username"
@@ -110,7 +110,7 @@
 							/>
 						</div>
 						<div class="flex flex-col gap-2">
-							<Label for="login-password">密码</Label>
+							<Label for="login-password">Password</Label>
 							<Input
 								id="login-password"
 								name="password"
@@ -121,7 +121,7 @@
 							/>
 						</div>
 						<Button type="submit" class="w-full" disabled={loginSubmitting}>
-							{loginSubmitting ? '登录中…' : '登录'}
+							{loginSubmitting ? 'Logging in…' : 'Login'}
 						</Button>
 					</form>
 				</Tabs.Content>
@@ -134,7 +134,7 @@
 							</Alert.Root>
 						{/if}
 						<div class="flex flex-col gap-2">
-							<Label for="register-username">用户名</Label>
+							<Label for="register-username">Username</Label>
 							<Input
 								id="register-username"
 								name="username"
@@ -146,7 +146,7 @@
 							/>
 						</div>
 						<div class="flex flex-col gap-2">
-							<Label for="register-password">密码</Label>
+							<Label for="register-password">Password</Label>
 							<Input
 								id="register-password"
 								name="password"
@@ -158,7 +158,7 @@
 							/>
 						</div>
 						<div class="flex flex-col gap-2">
-							<Label for="register-invite-code">邀请码</Label>
+							<Label for="register-invite-code">Invite code</Label>
 							<Input
 								id="register-invite-code"
 								name="inviteCode"
@@ -168,7 +168,7 @@
 							/>
 						</div>
 						<Button type="submit" class="w-full" disabled={registerSubmitting}>
-							{registerSubmitting ? '注册中…' : '注册'}
+							{registerSubmitting ? 'Registering…' : 'Register'}
 						</Button>
 					</form>
 				</Tabs.Content>
