@@ -3,7 +3,7 @@ import type { RequestHandler } from './$types';
 import { getDb } from '$lib/server/db';
 import { requireSession } from '$lib/server/auth/guard';
 import { pickStrings } from '$lib/server/http/validate';
-import { createImportJob, listImportJobs } from '$lib/server/import/jobs';
+import { createImportJob, listImportJobs, failImportJob } from '$lib/server/import/jobs';
 import { dispatchImportWorkflow } from '$lib/server/import/github-actions';
 import { ensureDefaultPlaylist } from '$lib/server/library/playlists';
 
@@ -57,15 +57,26 @@ export const POST: RequestHandler = async (event) => {
 		targetPlaylistId
 	});
 
-	await dispatchImportWorkflow(
-		{
-			owner: env.GITHUB_REPO_OWNER,
-			repo: env.GITHUB_REPO_NAME,
-			workflowFileName: env.GITHUB_IMPORT_WORKFLOW_FILE,
-			token: env.GITHUB_ACTIONS_TOKEN
-		},
-		{ jobId, userId: session.userId, sourceUrl: fields.sourceUrl }
-	);
+	try {
+		await dispatchImportWorkflow(
+			{
+				owner: env.GITHUB_REPO_OWNER,
+				repo: env.GITHUB_REPO_NAME,
+				workflowFileName: env.GITHUB_IMPORT_WORKFLOW_FILE,
+				token: env.GITHUB_ACTIONS_TOKEN
+			},
+			{ jobId, userId: session.userId, sourceUrl: fields.sourceUrl }
+		);
+	} catch (err) {
+		// The D1 row above already committed — if GitHub never actually
+		// receives the dispatch (rate limited, bad token, network error),
+		// no CI process is ever going to connect and move this job past
+		// `pending`. Marking it failed immediately here means the user
+		// sees a normal failure instead of a job that just sits there
+		// until they notice and cancel it themselves.
+		await failImportJob(db, jobId, session.userId, 'Failed to start the import workflow');
+		throw err;
+	}
 
 	return json({ jobId }, { status: 201 });
 };
