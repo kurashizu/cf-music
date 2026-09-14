@@ -32,3 +32,6 @@ worker-configuration.d.ts
 coverage
 reports
 .stryker-tmp
+/test-results
+/playwright-report
+/blob-report
