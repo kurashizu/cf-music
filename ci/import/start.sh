@@ -23,6 +23,18 @@ sudo dbus-daemon --config-file=/usr/share/dbus-1/system.conf || {
 	exit 1
 }
 
+# The cloudflare-warp apt package's postinst script enables and starts a
+# systemd-managed warp-svc.service unconditionally — this is real on a
+# plain runner (systemd is actually PID 1 here, unlike inside a container
+# job where postinst's systemctl calls are typically no-ops). Left running,
+# it holds the same Unix socket (/run/cloudflare-warp/warp_service) the
+# warp-svc instance started below needs, so the second one fails outright
+# ("Unix socket already bound by root"). Stop and disable it before doing
+# anything else with WARP state, so nothing races the identity restore
+# below over the same on-disk state.
+sudo systemctl stop warp-svc.service 2>/dev/null || true
+sudo systemctl disable warp-svc.service 2>/dev/null || true
+
 # Every job starts on a freshly provisioned runner with no prior state, so
 # without this, `registration new` below would run on every single job —
 # a fresh anonymous WARP identity per run. Restoring a previously saved one
