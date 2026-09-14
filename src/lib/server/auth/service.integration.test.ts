@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { env } from 'cloudflare:test';
+import { eq } from 'drizzle-orm';
 import { getDb } from '../db';
 import { users, inviteCodes, sessions } from '../db/schema';
-import { register, login, resolveSession, logout, logoutAllSessions, AuthError } from './service';
+import { register, login, resolveSession, logout, logoutAllSessions, listUsers, AuthError } from './service';
 
 const db = getDb(env.DB);
 
@@ -166,5 +167,49 @@ describe('logoutAllSessions', () => {
 		await expect(resolveSession(db, sessionA.sessionId)).rejects.toThrow(AuthError);
 		await expect(resolveSession(db, sessionB.sessionId)).rejects.toThrow(AuthError);
 		await expect(resolveSession(db, otherUserSession.sessionId)).resolves.not.toThrow();
+	});
+});
+
+describe('listUsers', () => {
+	it('returns an empty array when there are no users', async () => {
+		expect(await listUsers(db)).toEqual([]);
+	});
+
+	it('lists every registered user with the expected summary fields', async () => {
+		// seedInviteCode's own bootstrap admin (to satisfy invite_codes'
+		// created_by FK) is itself a real row in `users`, so it shows up
+		// here too — assert kate's own fields rather than the list length.
+		await seedInviteCode('LISTUSERS1');
+		const { id } = await register(db, { username: 'kate', password: 'pw12345678', inviteCode: 'LISTUSERS1' });
+
+		const result = await listUsers(db);
+
+		const kate = result.find((u) => u.username === 'kate');
+		expect(kate).toMatchObject({
+			id,
+			username: 'kate',
+			isAdmin: false,
+			storageQuotaBytes: 1_073_741_824,
+			autoEvictEnabled: true
+		});
+	});
+
+	it('lists most-recently-created first', async () => {
+		await seedInviteCode('LISTUSERS2');
+		await seedInviteCode('LISTUSERS3');
+		const { id: liamId } = await register(db, { username: 'liam', password: 'pw12345678', inviteCode: 'LISTUSERS2' });
+		const { id: miaId } = await register(db, { username: 'mia', password: 'pw12345678', inviteCode: 'LISTUSERS3' });
+		// D1's created_at default has second-level precision, and
+		// seedInviteCode's own bootstrap admin is a third row in this table
+		// whose timestamp this test doesn't control — pin both rows under
+		// test to unambiguous, known-ordered timestamps rather than relying
+		// on insert order against uncontrolled real-time ticks.
+		await db.update(users).set({ createdAt: '2020-01-01T00:00:00.000Z' }).where(eq(users.id, liamId));
+		await db.update(users).set({ createdAt: '2020-01-02T00:00:00.000Z' }).where(eq(users.id, miaId));
+
+		const result = await listUsers(db);
+		const usernamesInOrder = result.map((u) => u.username).filter((name) => name === 'liam' || name === 'mia');
+
+		expect(usernamesInOrder).toEqual(['mia', 'liam']);
 	});
 });

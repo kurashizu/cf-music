@@ -1,8 +1,9 @@
-import { eq, and, isNull } from 'drizzle-orm';
+import { eq, and, isNull, desc } from 'drizzle-orm';
 import type { Db } from '../db';
 import { users, sessions, inviteCodes } from '../db/schema';
 import { hashPassword, verifyPassword } from './password';
 import { generateSessionId, generateInviteCode, computeSessionExpiry, isSessionExpired } from './tokens';
+import { recordAuditEvent } from '../audit/log';
 
 export class AuthError extends Error {
 	constructor(
@@ -23,6 +24,7 @@ export interface RegisterInput {
 	username: string;
 	password: string;
 	inviteCode: string;
+	ipAddress?: string;
 }
 
 export interface RegisteredUser {
@@ -60,6 +62,16 @@ export async function register(db: Db, input: RegisterInput): Promise<Registered
 		.set({ usedBy: userId, usedAt: new Date().toISOString() })
 		.where(eq(inviteCodes.code, input.inviteCode));
 
+	await recordAuditEvent(db, {
+		userId,
+		actorId: userId,
+		eventType: 'invite_used',
+		targetType: 'user',
+		targetId: userId,
+		detail: { inviteCode: input.inviteCode },
+		ipAddress: input.ipAddress
+	});
+
 	return { id: userId, username: input.username };
 }
 
@@ -86,6 +98,18 @@ export async function login(db: Db, input: LoginInput): Promise<LoginResult> {
 	const passwordValid = await verifyPassword(input.password, passwordHash);
 
 	if (!user || !passwordValid) {
+		// Only log against a real user id (userId left null for an unknown
+		// username) — logging a failed attempt against a username that
+		// doesn't exist would let the audit log itself leak which usernames
+		// are registered, the same enumeration risk verifyPassword's timing
+		// parity above is already defending against.
+		await recordAuditEvent(db, {
+			userId: user?.id ?? null,
+			eventType: 'login_failed',
+			targetType: 'user',
+			targetId: user?.id ?? null,
+			ipAddress: input.ipAddress
+		});
 		throw new AuthError('Invalid username or password', 'invalid_credentials');
 	}
 
@@ -98,6 +122,15 @@ export async function login(db: Db, input: LoginInput): Promise<LoginResult> {
 		createdAt: createdAt.toISOString(),
 		expiresAt: expiresAt.toISOString(),
 		userAgent: input.userAgent,
+		ipAddress: input.ipAddress
+	});
+
+	await recordAuditEvent(db, {
+		userId: user.id,
+		actorId: user.id,
+		eventType: 'login',
+		targetType: 'user',
+		targetId: user.id,
 		ipAddress: input.ipAddress
 	});
 
@@ -157,8 +190,37 @@ export async function createInviteCode(db: Db, createdBy: string): Promise<strin
 		const existing = await db.query.inviteCodes.findFirst({ where: eq(inviteCodes.code, code) });
 		if (!existing) {
 			await db.insert(inviteCodes).values({ code, createdBy });
+			await recordAuditEvent(db, {
+				actorId: createdBy,
+				eventType: 'invite_created',
+				detail: { code }
+			});
 			return code;
 		}
 	}
 	throw new Error('Failed to generate a unique invite code after multiple attempts');
+}
+
+export interface AdminUserSummary {
+	id: string;
+	username: string;
+	isAdmin: boolean;
+	storageQuotaBytes: number;
+	autoEvictEnabled: boolean;
+	createdAt: string;
+}
+
+/** Admin-only: every registered user, most recently created first. */
+export async function listUsers(db: Db): Promise<AdminUserSummary[]> {
+	return db.query.users.findMany({
+		columns: {
+			id: true,
+			username: true,
+			isAdmin: true,
+			storageQuotaBytes: true,
+			autoEvictEnabled: true,
+			createdAt: true
+		},
+		orderBy: desc(users.createdAt)
+	});
 }

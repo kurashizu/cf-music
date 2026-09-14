@@ -28,7 +28,7 @@ export const POST: RequestHandler = async ({ request, platform, cookies, getClie
 	const db = getDb(platform!.env.DB);
 
 	try {
-		await register(db, { username, password, inviteCode });
+		await register(db, { username, password, inviteCode, ipAddress: getClientAddress() });
 	} catch (err) {
 		if (err instanceof AuthError) {
 			error(err.code === 'invalid_invite_code' ? 403 : 409, err.message);
