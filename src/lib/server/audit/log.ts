@@ -18,7 +18,7 @@ export interface AuditEntry {
 	userId?: string | null;
 	actorId?: string | null;
 	eventType: AuditEventType;
-	targetType?: 'song' | 'playlist' | 'user' | null;
+	targetType?: 'song' | 'playlist' | 'user' | 'import_job' | null;
 	targetId?: string | null;
 	detail?: unknown;
 	ipAddress?: string | null;

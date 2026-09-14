@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { env } from 'cloudflare:test';
 import { getDb } from '../db';
-import { users, songs, playlists, importJobs } from '../db/schema';
+import { users, songs, playlists, importJobs, auditLog } from '../db/schema';
 import { eq } from 'drizzle-orm';
 import {
 	createImportJob,
@@ -177,6 +177,19 @@ describe('completeImportJob', () => {
 		const job = await getImportJob(db, id, 'u1');
 		expect(job.status).toBe('completed');
 	});
+
+	it('records an audit event once the job reaches a terminal status', async () => {
+		await seedUser('u1');
+		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x' });
+		await recordSongImported(db, id, 'u1', makeSong('a'));
+
+		await completeImportJob(db, id, 'u1');
+
+		const [entry] = await db.query.auditLog.findMany({ where: eq(auditLog.targetId, id) });
+		expect(entry.eventType).toBe('import');
+		expect(entry.targetType).toBe('import_job');
+		expect(JSON.parse(entry.detail!)).toMatchObject({ status: 'completed' });
+	});
 });
 
 describe('findKnownVideoIds', () => {
@@ -281,6 +294,18 @@ describe('cancelImportJob', () => {
 
 		await expect(cancelImportJob(db, id, 'u1')).rejects.toThrow(ImportJobError);
 	});
+
+	it('records an audit event', async () => {
+		await seedUser('u1');
+		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x' });
+
+		await cancelImportJob(db, id, 'u1');
+
+		const [entry] = await db.query.auditLog.findMany({ where: eq(auditLog.targetId, id) });
+		expect(entry.eventType).toBe('import');
+		expect(entry.targetType).toBe('import_job');
+		expect(JSON.parse(entry.detail!)).toMatchObject({ status: 'cancelled' });
+	});
 });
 
 describe('completeImportJob after cancellation', () => {
@@ -329,5 +354,18 @@ describe('listImportJobs', () => {
 		const jobs = await listImportJobs(db, 'u1');
 
 		expect(jobs.map((j) => j.sourceUrl)).toEqual(['https://x/second', 'https://x/first']);
+	});
+
+	it('excludes jobs that have reached a terminal status', async () => {
+		await seedUser('u1');
+		const { id: completedId } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x/done' });
+		await completeImportJob(db, completedId, 'u1');
+		const { id: cancelledId } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x/cancelled' });
+		await cancelImportJob(db, cancelledId, 'u1');
+		await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x/still-running' });
+
+		const jobs = await listImportJobs(db, 'u1');
+
+		expect(jobs.map((j) => j.sourceUrl)).toEqual(['https://x/still-running']);
 	});
 });

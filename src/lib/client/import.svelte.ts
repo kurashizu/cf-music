@@ -75,8 +75,16 @@ class ImportStore {
 			const existing = this.jobs.get(message.jobId);
 			if (!existing) return;
 
+			const updated = applyImportEvent(existing, message.event);
 			const next = new Map(this.jobs);
-			next.set(message.jobId, applyImportEvent(existing, message.event));
+			// The import page only shows currently-in-progress jobs — a
+			// terminal status means CI (or a cancel) is done with it, and
+			// its record now lives in the audit log instead, not here.
+			if (updated.status === 'completed' || updated.status === 'failed' || updated.status === 'cancelled') {
+				next.delete(message.jobId);
+			} else {
+				next.set(message.jobId, updated);
+			}
 			this.jobs = next;
 		});
 

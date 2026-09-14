@@ -1,8 +1,9 @@
-import { eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { Db } from '../db';
 import { importJobs, songs } from '../db/schema';
 import { addSongToPlaylist } from '../library/playlists';
 import { chunk } from '../../shared/chunk';
+import { recordAuditEvent } from '../audit/log';
 import type {
 	PreviewEntry,
 	SongImportSuccess,
@@ -75,14 +76,18 @@ export async function getImportJob(db: Db, jobId: string, userId: string) {
 }
 
 /**
- * Lists a user's import jobs, most recent first — lets the import page
- * restore visibility into in-progress (and recently finished) imports
- * after a page refresh, since the WebSocket connection alone only carries
- * updates for jobs the client already knows about.
+ * Lists a user's still-in-progress import jobs, most recent first — lets
+ * the import page restore visibility into what's currently running after
+ * a page refresh, since the WebSocket connection alone only carries
+ * updates for jobs the client already knows about. Finished jobs
+ * (completed/failed/cancelled) are deliberately excluded: once a job
+ * reaches a terminal state it's recorded to the audit log instead (see
+ * completeImportJob/cancelImportJob) and drops out of this list rather
+ * than accumulating here indefinitely.
  */
 export async function listImportJobs(db: Db, userId: string) {
 	return db.query.importJobs.findMany({
-		where: eq(importJobs.userId, userId),
+		where: and(eq(importJobs.userId, userId), inArray(importJobs.status, ['pending', 'running'])),
 		orderBy: (t, { desc }) => desc(t.createdAt),
 		limit: 20
 	});
@@ -147,6 +152,15 @@ export async function cancelImportJob(db: Db, jobId: string, userId: string): Pr
 	}
 
 	await db.update(importJobs).set({ status: 'cancelled' }).where(eq(importJobs.id, jobId));
+
+	await recordAuditEvent(db, {
+		userId,
+		actorId: userId,
+		eventType: 'import',
+		targetType: 'import_job',
+		targetId: jobId,
+		detail: { sourceUrl: job.sourceUrl, status: 'cancelled' }
+	});
 }
 
 /**
@@ -218,4 +232,18 @@ export async function completeImportJob(db: Db, jobId: string, userId: string): 
 		.update(importJobs)
 		.set({ status, completedAt: new Date().toISOString() })
 		.where(eq(importJobs.id, jobId));
+
+	await recordAuditEvent(db, {
+		userId,
+		actorId: userId,
+		eventType: 'import',
+		targetType: 'import_job',
+		targetId: jobId,
+		detail: {
+			sourceUrl: job.sourceUrl,
+			status,
+			completedCount: job.completedCount,
+			failedCount: job.failedCount
+		}
+	});
 }

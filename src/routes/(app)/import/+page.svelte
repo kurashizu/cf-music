@@ -10,8 +10,6 @@
 	import LinkIcon from '@lucide/svelte/icons/link';
 	import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle';
 	import ListChecksIcon from '@lucide/svelte/icons/list-checks';
-	import CircleCheckIcon from '@lucide/svelte/icons/circle-check';
-	import CircleXIcon from '@lucide/svelte/icons/circle-x';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -130,56 +128,38 @@
 
 	{#if jobs.length > 0}
 		<div class="flex flex-col gap-3">
-			<h2 class="text-sm font-medium text-muted-foreground">Recent imports</h2>
+			<h2 class="text-sm font-medium text-muted-foreground">Importing</h2>
 			{#each jobs as job (job.jobId)}
 				<Card.Root>
 					<Card.Content class="flex flex-col gap-3">
 						<div class="flex items-center justify-between gap-3">
 							<p class="min-w-0 truncate text-sm text-muted-foreground">{job.sourceUrl}</p>
-							<span
-								class="shrink-0 rounded-full px-2 py-0.5 text-xs {job.status === 'completed'
-									? 'bg-muted text-foreground'
-									: job.status === 'failed' || job.status === 'cancelled'
-										? 'text-destructive'
-										: 'text-muted-foreground'}"
-							>
-								{job.status.replace('_', ' ')}
+							<span class="shrink-0 rounded-full px-2 py-0.5 text-xs text-muted-foreground">
+								{job.status}
 							</span>
 						</div>
 
-						{#if job.status === 'running' || job.status === 'pending'}
-							<div class="flex items-center gap-3">
-								<LoaderCircleIcon class="size-4 shrink-0 animate-spin text-muted-foreground" />
-								<div class="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
-									<div
-										class="h-full bg-foreground transition-all duration-300"
-										style="width: {job.totalCount
-											? Math.min(100, ((job.completedCount + job.failedCount) / job.totalCount) * 100)
-											: 0}%"
-									></div>
-								</div>
-								<span class="shrink-0 text-xs text-muted-foreground">
-									{job.completedCount + job.failedCount} / {job.totalCount ?? '?'}
-								</span>
-								<Button size="sm" variant="ghost" onclick={() => importStore.cancel(job.jobId)}>
-									Cancel
-								</Button>
+						<div class="flex items-center gap-3">
+							<LoaderCircleIcon class="size-4 shrink-0 animate-spin text-muted-foreground" />
+							<div class="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+								<div
+									class="h-full bg-foreground transition-all duration-300"
+									style="width: {job.totalCount
+										? Math.min(100, ((job.completedCount + job.failedCount) / job.totalCount) * 100)
+										: 0}%"
+								></div>
 							</div>
-							{#if job.previewEntries}
-								<div class="flex items-center gap-1.5 text-xs text-muted-foreground">
-									<ListChecksIcon class="size-4" />
-									{job.previewEntries.length} {job.previewEntries.length === 1 ? 'song' : 'songs'} found
-								</div>
-							{/if}
-						{:else if job.status === 'completed'}
-							<div class="flex items-center gap-1.5 text-sm text-muted-foreground">
-								<CircleCheckIcon class="size-4" />
-								{job.completedCount} imported{job.failedCount > 0 ? `, ${job.failedCount} failed` : ''}
-							</div>
-						{:else if job.status === 'failed' || job.status === 'cancelled'}
-							<div class="flex items-center gap-1.5 text-sm text-destructive">
-								<CircleXIcon class="size-4" />
-								{job.status === 'cancelled' ? 'Cancelled' : 'Import failed'}
+							<span class="shrink-0 text-xs text-muted-foreground">
+								{job.completedCount + job.failedCount} / {job.totalCount ?? '?'}
+							</span>
+							<Button size="sm" variant="ghost" onclick={() => importStore.cancel(job.jobId)}>
+								Cancel
+							</Button>
+						</div>
+						{#if job.previewEntries}
+							<div class="flex items-center gap-1.5 text-xs text-muted-foreground">
+								<ListChecksIcon class="size-4" />
+								{job.previewEntries.length} {job.previewEntries.length === 1 ? 'song' : 'songs'} found
 							</div>
 						{/if}
 					</Card.Content>
