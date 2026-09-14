@@ -46,7 +46,13 @@
 			const response = await fetch('/api/import', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ sourceUrl: sourceUrl.trim(), targetPlaylistId })
+				body: JSON.stringify({
+					sourceUrl: sourceUrl.trim(),
+					// bits-ui's Select normalizes "nothing selected" to '' rather
+					// than leaving the bound value undefined, so an empty string
+					// has to be treated the same as "no playlist" here too.
+					targetPlaylistId: targetPlaylistId || undefined
+				})
 			});
 			if (!response.ok) {
 				toast.error('Failed to start import');

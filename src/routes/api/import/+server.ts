@@ -32,7 +32,12 @@ export const POST: RequestHandler = async (event) => {
 
 	const targetPlaylistIdRaw =
 		typeof body === 'object' && body !== null ? (body as Record<string, unknown>).targetPlaylistId : undefined;
-	const targetPlaylistId = typeof targetPlaylistIdRaw === 'string' ? targetPlaylistIdRaw : undefined;
+	// An empty string means "no playlist selected" client-side (see the
+	// import page's Select binding) — treat it the same as omitted rather
+	// than storing it, which would otherwise violate target_playlist_id's
+	// foreign key the moment it's dereferenced as a real playlist id.
+	const targetPlaylistId =
+		typeof targetPlaylistIdRaw === 'string' && targetPlaylistIdRaw.length > 0 ? targetPlaylistIdRaw : undefined;
 
 	const env = event.platform!.env;
 	const db = getDb(env.DB);
