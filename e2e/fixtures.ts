@@ -15,6 +15,16 @@ export function issueInviteCode(): string {
 	return code;
 }
 
+/**
+ * Promotes an already-registered user to admin directly in D1 — there's no
+ * user-facing "grant admin" API (deliberately: it's an operator concern,
+ * not something the app exposes), so this is the correct way to set up an
+ * admin-only test rather than reaching around auth entirely.
+ */
+export function promoteToAdmin(userId: string): void {
+	d1Execute(`UPDATE users SET is_admin = 1 WHERE id = '${userId}';`);
+}
+
 export interface SeededTrack {
 	videoId: string;
 	title: string;

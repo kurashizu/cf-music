@@ -23,7 +23,12 @@ export default function globalSetup() {
 	d1Execute(`DELETE FROM playlist_songs WHERE video_id LIKE 'e2e-song-%';`);
 	d1Execute(`DELETE FROM songs WHERE video_id LIKE 'e2e-song-%';`);
 	d1Execute(`DELETE FROM playlists WHERE user_id IN (SELECT id FROM users WHERE username LIKE 'e2e-%');`);
-	d1Execute(`DELETE FROM invite_codes WHERE created_by = '${E2E_SEED_ADMIN_ID}';`);
+	// invite_codes.created_by/used_by have no ON DELETE behavior, so any code
+	// created or claimed by a leftover e2e-* user (from a prior interrupted
+	// run) would block deleting that user below.
+	d1Execute(
+		`DELETE FROM invite_codes WHERE created_by = '${E2E_SEED_ADMIN_ID}' OR created_by IN (SELECT id FROM users WHERE username LIKE 'e2e-%') OR used_by IN (SELECT id FROM users WHERE username LIKE 'e2e-%');`
+	);
 	d1Execute(`DELETE FROM users WHERE id = '${E2E_SEED_ADMIN_ID}' OR username LIKE 'e2e-%';`);
 	d1Execute(
 		`INSERT INTO users (id, username, password_hash, is_admin, storage_quota_bytes, auto_evict_enabled, created_at)
