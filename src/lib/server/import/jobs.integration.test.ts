@@ -107,7 +107,8 @@ describe('recordSongImported', () => {
 	it('does not fail when the video_id was already imported by someone else (dedup reuse)', async () => {
 		await seedUser('u1');
 		await seedUser('u2');
-		await db.insert(songs).values(makeSong('shared'));
+		const { tags: _tags, ...seedRow } = makeSong('shared');
+		await db.insert(songs).values(seedRow);
 		const { id } = await createImportJob(db, { userId: 'u2', sourceUrl: 'https://x' });
 
 		await expect(recordSongImported(db, id, 'u2', makeSong('shared', { title: 'Different title' }))).resolves.not.toThrow();

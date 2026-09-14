@@ -60,6 +60,19 @@ export const songs = sqliteTable('songs', {
 	title: text('title').notNull(),
 	durationSeconds: integer('duration_seconds'),
 
+	// Classification metadata: yt-dlp's own extracted fields (info['artist'],
+	// info['album'], etc, falling back to info['uploader']/['channel'] for
+	// artist on sources - most YouTube music uploads - that never set the
+	// dedicated music fields), kept as-is rather than normalized/validated.
+	// None of this is guaranteed present or accurate (a YouTube "uploader" is
+	// a channel name, not necessarily a performer) - it's raw signal for
+	// future auto-classification (by artist/genre/etc), not a verified taxonomy.
+	artist: text('artist'),
+	album: text('album'),
+	genre: text('genre'),
+	releaseYear: integer('release_year'),
+	tags: text('tags'), // JSON array of strings, yt-dlp's info['tags']/['categories'] combined
+
 	// Audio spec: actual measured values, no fixed-bitrate assumption (YouTube Opus varies ~46-167kbps in practice, not a flat 160kbps)
 	audioKey: text('audio_key').notNull(), // S3 object key, e.g. audio/{video_id}.webm
 	codec: text('codec').notNull(), // opus / aac / ...
