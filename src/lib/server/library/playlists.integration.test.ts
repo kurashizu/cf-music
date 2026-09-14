@@ -12,6 +12,7 @@ import {
 	removeSongFromPlaylist,
 	reorderPlaylist,
 	isSongInUserLibrary,
+	ensureDefaultPlaylist,
 	LibraryError
 } from './playlists';
 
@@ -39,6 +40,11 @@ async function seedSong(videoId: string, overrides: Partial<typeof songs.$inferI
 }
 
 beforeEach(async () => {
+	// defaultPlaylistId references playlists.id (see schema.ts) — clearing
+	// it first avoids the same foreign key violation deletePlaylist itself
+	// guards against when a user's default playlist is the one being
+	// deleted.
+	await db.update(users).set({ defaultPlaylistId: null });
 	await db.delete(playlistSongs);
 	await db.delete(playlists);
 	await db.delete(songs);
@@ -152,6 +158,78 @@ describe('deletePlaylist', () => {
 		const { id } = await createPlaylist(db, { userId: 'u1', name: 'Mine' });
 
 		await expect(deletePlaylist(db, id, 'u2')).rejects.toThrow(LibraryError);
+	});
+
+	it('clears defaultPlaylistId when deleting the playlist that was the default', async () => {
+		await seedUser('u1');
+		const { id } = await ensureDefaultPlaylist(db, 'u1');
+
+		await deletePlaylist(db, id, 'u1');
+
+		const user = await db.query.users.findFirst({ where: (t, { eq }) => eq(t.id, 'u1') });
+		expect(user?.defaultPlaylistId).toBeNull();
+	});
+
+	it('does not clear defaultPlaylistId when deleting an unrelated playlist', async () => {
+		await seedUser('u1');
+		const { id: defaultId } = await ensureDefaultPlaylist(db, 'u1');
+		const { id: otherId } = await createPlaylist(db, { userId: 'u1', name: 'Other' });
+
+		await deletePlaylist(db, otherId, 'u1');
+
+		const user = await db.query.users.findFirst({ where: (t, { eq }) => eq(t.id, 'u1') });
+		expect(user?.defaultPlaylistId).toBe(defaultId);
+	});
+});
+
+describe('ensureDefaultPlaylist', () => {
+	it('creates an "Imports" playlist and records it as the default on first use', async () => {
+		await seedUser('u1');
+
+		const { id } = await ensureDefaultPlaylist(db, 'u1');
+
+		const playlist = await getPlaylistWithSongs(db, id, 'u1');
+		expect(playlist.name).toBe('Imports');
+		const user = await db.query.users.findFirst({ where: (t, { eq }) => eq(t.id, 'u1') });
+		expect(user?.defaultPlaylistId).toBe(id);
+	});
+
+	it('returns the existing default on subsequent calls instead of creating another one', async () => {
+		await seedUser('u1');
+		const { id: first } = await ensureDefaultPlaylist(db, 'u1');
+
+		const { id: second } = await ensureDefaultPlaylist(db, 'u1');
+
+		expect(second).toBe(first);
+		const playlists = await listPlaylists(db, 'u1');
+		expect(playlists).toHaveLength(1);
+	});
+
+	it('creates a new default after the previous one was deleted', async () => {
+		await seedUser('u1');
+		const { id: first } = await ensureDefaultPlaylist(db, 'u1');
+		await deletePlaylist(db, first, 'u1');
+
+		const { id: second } = await ensureDefaultPlaylist(db, 'u1');
+
+		expect(second).not.toBe(first);
+		const user = await db.query.users.findFirst({ where: (t, { eq }) => eq(t.id, 'u1') });
+		expect(user?.defaultPlaylistId).toBe(second);
+	});
+
+	it('converges on the same playlist id when called concurrently for a user with no default yet', async () => {
+		await seedUser('u1');
+
+		const [a, b, c] = await Promise.all([
+			ensureDefaultPlaylist(db, 'u1'),
+			ensureDefaultPlaylist(db, 'u1'),
+			ensureDefaultPlaylist(db, 'u1')
+		]);
+
+		expect(a.id).toBe(b.id);
+		expect(b.id).toBe(c.id);
+		const user = await db.query.users.findFirst({ where: (t, { eq }) => eq(t.id, 'u1') });
+		expect(user?.defaultPlaylistId).toBe(a.id);
 	});
 });
 

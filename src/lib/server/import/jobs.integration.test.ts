@@ -41,6 +41,10 @@ function makeSong(videoId: string, overrides: Partial<SongImportSuccess> = {}): 
 }
 
 beforeEach(async () => {
+	// defaultPlaylistId references playlists.id (see schema.ts) — clear it
+	// before deleting playlists/users, or a user left with a default from
+	// a previous test violates that foreign key.
+	await db.update(users).set({ defaultPlaylistId: null });
 	await db.delete(importJobs);
 	await db.delete(playlists);
 	await db.delete(songs);

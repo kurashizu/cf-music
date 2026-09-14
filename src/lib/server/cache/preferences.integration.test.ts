@@ -29,6 +29,10 @@ async function seedSong(videoId: string, overrides: Partial<typeof songs.$inferI
 }
 
 beforeEach(async () => {
+	// defaultPlaylistId references playlists.id (see schema.ts) — clear it
+	// before deleting playlists/users, or a user left with a default from
+	// a previous test violates that foreign key.
+	await db.update(users).set({ defaultPlaylistId: null });
 	await db.delete(cachePreferences);
 	await db.delete(playlistSongs);
 	await db.delete(playlists);

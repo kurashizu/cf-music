@@ -1,4 +1,4 @@
-import { eq, and, max } from 'drizzle-orm';
+import { eq, and, isNull, max } from 'drizzle-orm';
 import type { Db } from '../db';
 import { playlists, playlistSongs, songs, users } from '../db/schema';
 
@@ -45,8 +45,24 @@ export async function ensureDefaultPlaylist(db: Db, userId: string): Promise<{ i
 	}
 
 	const { id } = await createPlaylist(db, { userId, name: 'Imports' });
-	await db.update(users).set({ defaultPlaylistId: id }).where(eq(users.id, userId));
-	return { id };
+
+	// Two concurrent calls (double-clicking Import, two tabs) can both
+	// reach here having both read defaultPlaylistId as null — the WHERE
+	// clause below is what actually resolves that: it only writes if the
+	// column is *still* null by the time this specific call's UPDATE runs,
+	// so whichever call's playlist gets there first wins, and the other's
+	// createPlaylist above becomes an unreferenced-but-harmless playlist
+	// (empty, never linked as anyone's default) rather than silently
+	// overwriting the first winner's id. Re-reading afterward is what lets
+	// every caller converge on that same winning id instead of each
+	// trusting its own just-created one.
+	await db
+		.update(users)
+		.set({ defaultPlaylistId: id })
+		.where(and(eq(users.id, userId), isNull(users.defaultPlaylistId)));
+
+	const resolved = await db.query.users.findFirst({ where: eq(users.id, userId) });
+	return { id: resolved!.defaultPlaylistId! };
 }
 
 export async function listPlaylists(db: Db, userId: string) {
