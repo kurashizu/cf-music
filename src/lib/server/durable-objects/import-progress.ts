@@ -1,25 +1,61 @@
-export interface ImportProgressMessage {
+import { getDb } from '../db';
+import {
+	getImportJobUnchecked,
+	startImportJob,
+	submitImportPreview,
+	recordSongImported,
+	recordSongFailed,
+	completeImportJob,
+	confirmImportJob,
+	cancelImportJob,
+	ImportJobError,
+	type SongImportSuccess,
+	type SongImportFailureInput,
+	type PreviewEntry
+} from '../import/jobs';
+
+export type ImportProgressEvent =
+	| { type: 'start'; totalCount: number }
+	| { type: 'preview'; entries: PreviewEntry[] }
+	| { type: 'song_success'; song: SongImportSuccess }
+	| { type: 'song_failed'; failure: SongImportFailureInput }
+	| { type: 'complete' };
+
+interface CiProgressMessage {
 	jobId: string;
-	status: 'pending' | 'running' | 'completed' | 'failed';
-	totalCount: number | null;
-	completedCount: number;
-	failedCount: number;
+	event: ImportProgressEvent;
+}
+
+interface BrowserControlMessage {
+	jobId: string;
+	action: 'confirm' | 'cancel';
+	approved?: boolean;
+}
+
+function ciTag(jobId: string): string {
+	return `ci:${jobId}`;
+}
+
+function isCiSocket(tags: string[]): boolean {
+	return tags.some((t) => t.startsWith('ci:'));
 }
 
 /**
- * Per-user Durable Object tracking the real-time progress of that user's
- * concurrent import jobs. D1 (import_jobs table) remains the source of
- * truth; this is purely a broadcast layer — if the DO's state is ever lost,
- * the frontend can always fall back to polling GET /api/import-jobs/[id].
+ * Per-user Durable Object bridging a browser's WebSocket connection with a
+ * GitHub Actions import job's own WebSocket connection — both sides connect
+ * directly to this DO (GitHub Actions runners have no public inbound
+ * address, so they connect out to here rather than the other way around).
+ * D1 (import_jobs table) is updated directly from here as CI's progress
+ * events arrive, then the same event is broadcast to every browser tab; a
+ * browser's confirm/cancel decision is routed back to that job's specific
+ * CI connection by its `ci:{jobId}` tag, so concurrent imports for the same
+ * user don't cross-talk.
  *
  * Uses the WebSocket Hibernation API (ctx.acceptWebSocket) rather than
  * server.accept(): an idle DO can be evicted from memory between updates
- * without dropping the connection or incurring duration charges, and
- * ctx.getWebSockets() restores the accepted sockets after hibernation.
- *
- * Per-job state is persisted to ctx.storage (not a plain in-memory field)
- * specifically because hibernation wipes regular instance properties — only
- * ctx.storage and the accepted WebSockets themselves survive eviction.
+ * without dropping either connection or incurring duration charges;
+ * ctx.getWebSockets(tag) finds the right connections again after
+ * hibernation without needing a separate lookup table.
  */
 export class ImportProgressDurableObject implements DurableObject {
 	constructor(
@@ -28,50 +64,119 @@ export class ImportProgressDurableObject implements DurableObject {
 	) {}
 
 	async fetch(request: Request): Promise<Response> {
+		if (request.headers.get('Upgrade') !== 'websocket') {
+			return new Response('Expected a WebSocket upgrade', { status: 426 });
+		}
+
 		const url = new URL(request.url);
+		const role = url.searchParams.get('role');
 
-		if (url.pathname === '/report' && request.method === 'POST') {
-			return this.handleReport(request);
+		if (role === 'ci') {
+			const jobId = url.searchParams.get('jobId');
+			if (!jobId) return new Response('jobId is required', { status: 400 });
+			return this.acceptConnection([ciTag(jobId)]);
 		}
 
-		if (request.headers.get('Upgrade') === 'websocket') {
-			return this.handleWebSocketUpgrade();
-		}
-
-		return new Response('Not found', { status: 404 });
+		return this.acceptConnection([]);
 	}
 
-	private async handleWebSocketUpgrade(): Promise<Response> {
+	private acceptConnection(tags: string[]): Response {
 		const pair = new WebSocketPair();
 		const [client, server] = Object.values(pair);
 
-		this.ctx.acceptWebSocket(server);
-
-		// Replay every job's last-known state so a reconnecting client isn't
-		// stuck showing stale progress from before it (re)connected.
-		const stored = await this.ctx.storage.list<ImportProgressMessage>();
-		for (const message of stored.values()) {
-			server.send(JSON.stringify(message));
-		}
+		this.ctx.acceptWebSocket(server, tags);
 
 		return new Response(null, { status: 101, webSocket: client });
 	}
 
-	private async handleReport(request: Request): Promise<Response> {
-		const message = (await request.json()) as ImportProgressMessage;
+	async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
+		if (typeof message !== 'string') return;
 
-		await this.ctx.storage.put(message.jobId, message);
-
-		const payload = JSON.stringify(message);
-		for (const ws of this.ctx.getWebSockets()) {
-			ws.send(payload);
+		const tags = this.ctx.getTags(ws);
+		if (isCiSocket(tags)) {
+			await this.handleCiProgress(message);
+		} else {
+			await this.handleBrowserControl(message);
 		}
-
-		return new Response(null, { status: 204 });
 	}
 
-	async webSocketMessage(): Promise<void> {
-		// Clients don't send anything meaningful in this app; ignore.
+	private async handleCiProgress(raw: string): Promise<void> {
+		let message: CiProgressMessage;
+		try {
+			message = JSON.parse(raw);
+		} catch {
+			return;
+		}
+
+		const db = getDb(this.env.DB);
+		let job;
+		try {
+			job = await getImportJobUnchecked(db, message.jobId);
+		} catch (err) {
+			if (err instanceof ImportJobError) return;
+			throw err;
+		}
+
+		switch (message.event.type) {
+			case 'start':
+				await startImportJob(db, message.jobId, message.event.totalCount);
+				break;
+			case 'preview':
+				await submitImportPreview(db, message.jobId, message.event.entries);
+				break;
+			case 'song_success':
+				await recordSongImported(db, message.jobId, job.userId, message.event.song);
+				break;
+			case 'song_failed':
+				await recordSongFailed(db, message.jobId, job.userId, message.event.failure);
+				break;
+			case 'complete':
+				await completeImportJob(db, message.jobId, job.userId);
+				break;
+		}
+
+		// Broadcast the raw event straight through to every browser tab —
+		// the frontend re-fetches full job state via GET /api/import/[jobId]
+		// on (re)connect, so this only needs to carry "something changed".
+		for (const browserWs of this.ctx.getWebSockets()) {
+			if (!isCiSocket(this.ctx.getTags(browserWs))) {
+				browserWs.send(raw);
+			}
+		}
+	}
+
+	private async handleBrowserControl(raw: string): Promise<void> {
+		let control: BrowserControlMessage;
+		try {
+			control = JSON.parse(raw);
+		} catch {
+			return;
+		}
+
+		const db = getDb(this.env.DB);
+		const ciSockets = this.ctx.getWebSockets(ciTag(control.jobId));
+
+		try {
+			// This DO instance is keyed by idFromName(userId) — see
+			// /api/import/ws, which only lets a browser reach this instance
+			// after checking its own session cookie — so any browser socket
+			// connected here already belongs to this job's owner. The
+			// ownership check inside confirmImportJob/cancelImportJob is
+			// therefore redundant defense-in-depth, not the primary guard.
+			const job = await getImportJobUnchecked(db, control.jobId);
+			if (control.action === 'confirm') {
+				await confirmImportJob(db, control.jobId, job.userId, control.approved ?? false);
+			} else {
+				await cancelImportJob(db, control.jobId, job.userId);
+			}
+		} catch (err) {
+			if (!(err instanceof ImportJobError)) throw err;
+			return;
+		}
+
+		for (const ciWs of ciSockets) {
+			ciWs.send(raw);
+		}
 	}
 
 	async webSocketClose(ws: WebSocket, code: number, reason: string): Promise<void> {

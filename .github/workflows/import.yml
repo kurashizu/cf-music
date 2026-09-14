@@ -1,0 +1,50 @@
+name: Import
+
+on:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        required: true
+        type: string
+      user_id:
+        required: true
+        type: string
+      source_url:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/${{ github.repository }}/import:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      # The image's own ENTRYPOINT runs import.py directly, which is what we
+      # want for every other use of this image — override it here so the
+      # container just stays alive and `docker exec`-style steps below can
+      # each fail independently and surface in the Actions log individually,
+      # instead of one opaque non-zero exit from a single entrypoint run.
+      options: --entrypoint=""
+    steps:
+      - name: Run import
+        working-directory: /import
+        env:
+          WORKER_BASE_URL: ${{ secrets.WORKER_BASE_URL }}
+          IMPORT_WEBHOOK_SECRET: ${{ secrets.IMPORT_WEBHOOK_SECRET }}
+          JOB_ID: ${{ inputs.job_id }}
+          USER_ID: ${{ inputs.user_id }}
+          SOURCE_URL: ${{ inputs.source_url }}
+          MINIO_ENDPOINT: ${{ secrets.MINIO_ENDPOINT }}
+          MINIO_BUCKET: ${{ secrets.MINIO_BUCKET }}
+          MINIO_ACCESS_KEY: ${{ secrets.MINIO_ACCESS_KEY }}
+          MINIO_SECRET_KEY: ${{ secrets.MINIO_SECRET_KEY }}
+          WARP_PRIVATE_KEY: ${{ secrets.WARP_PRIVATE_KEY }}
+          WARP_ADDRESS: ${{ secrets.WARP_ADDRESS }}
+          WARP_PUBLIC_KEY: ${{ secrets.WARP_PUBLIC_KEY }}
+        run: python /import/import.py

@@ -1,7 +1,34 @@
-import { eq, sql } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import type { Db } from '../db';
 import { importJobs, songs } from '../db/schema';
 import { addSongToPlaylist } from '../library/playlists';
+import { chunk } from '../../shared/chunk';
+
+// D1 caps bound parameters per statement at 100 (well below plain SQLite's
+// own 999 limit) — confirmed by an integration test that failed with
+// "too many SQL variables" at a batch size of 500. A playlist import can
+// easily exceed 100 video ids, so the IN (...) lookup is split into
+// batches safely under the limit.
+const KNOWN_VIDEO_IDS_BATCH_SIZE = 90;
+
+/**
+ * Given a batch of video ids (e.g. from a playlist about to be imported),
+ * returns the subset that already exist in `songs` — so the CI import job
+ * can skip re-downloading/re-uploading audio for songs already in the
+ * library, and avoid the unique-constraint failure recordSongImported()
+ * would otherwise hit on a duplicate videoId.
+ */
+export async function findKnownVideoIds(db: Db, videoIds: string[]): Promise<string[]> {
+	const known: string[] = [];
+	for (const batch of chunk(videoIds, KNOWN_VIDEO_IDS_BATCH_SIZE)) {
+		const rows = await db
+			.select({ videoId: songs.videoId })
+			.from(songs)
+			.where(inArray(songs.videoId, batch));
+		known.push(...rows.map((r) => r.videoId));
+	}
+	return known;
+}
 
 export class ImportJobError extends Error {
 	constructor(
@@ -59,6 +86,66 @@ export async function startImportJob(db: Db, jobId: string, totalCount: number):
 		.update(importJobs)
 		.set({ status: 'running', totalCount })
 		.where(eq(importJobs.id, jobId));
+}
+
+export interface PreviewEntry {
+	videoId: string;
+	title: string;
+	durationSeconds?: number;
+}
+
+/**
+ * Called once CI has resolved the source URL into a concrete list of
+ * videos. Parks the job in pending_confirmation — CI then polls
+ * getImportJob() and only starts downloading once a user confirms via
+ * confirmImportJob() (or gives up and treats a lingering
+ * pending_confirmation as a timeout on its own side).
+ */
+export async function submitImportPreview(db: Db, jobId: string, entries: PreviewEntry[]): Promise<void> {
+	await db
+		.update(importJobs)
+		.set({
+			status: 'pending_confirmation',
+			totalCount: entries.length,
+			previewEntries: JSON.stringify(entries)
+		})
+		.where(eq(importJobs.id, jobId));
+}
+
+/**
+ * User-facing decision on a previewed import: `approved` moves the job to
+ * running (CI's poll loop picks this up and starts downloading), rejecting
+ * moves it straight to cancelled without ever downloading anything.
+ */
+export async function confirmImportJob(
+	db: Db,
+	jobId: string,
+	userId: string,
+	approved: boolean
+): Promise<void> {
+	const job = await getOwnedJob(db, jobId, userId);
+	if (job.status !== 'pending_confirmation') {
+		throw new ImportJobError('Job is not awaiting confirmation', 'invalid_transition');
+	}
+
+	await db
+		.update(importJobs)
+		.set({ status: approved ? 'running' : 'cancelled' })
+		.where(eq(importJobs.id, jobId));
+}
+
+/**
+ * User-initiated cancellation of an in-progress import. CI checks this
+ * between songs (see getImportJob polling in the CI script) and stops
+ * early rather than continuing to download after the user has backed out.
+ */
+export async function cancelImportJob(db: Db, jobId: string, userId: string): Promise<void> {
+	const job = await getOwnedJob(db, jobId, userId);
+	if (job.status !== 'running' && job.status !== 'pending_confirmation') {
+		throw new ImportJobError('Job cannot be cancelled from its current status', 'invalid_transition');
+	}
+
+	await db.update(importJobs).set({ status: 'cancelled' }).where(eq(importJobs.id, jobId));
 }
 
 export interface SongImportSuccess {
@@ -140,6 +227,12 @@ export async function recordSongFailed(db: Db, jobId: string, userId: string, fa
 
 export async function completeImportJob(db: Db, jobId: string, userId: string): Promise<void> {
 	const job = await getOwnedJob(db, jobId, userId);
+	// A user-initiated cancellation mid-run races with CI's own "I'm done"
+	// call — CI only checks for cancellation between songs, so it can still
+	// reach completion after the fact. Cancelled is a terminal status a late
+	// completion should never overwrite.
+	if (job.status === 'cancelled') return;
+
 	const status = job.failedCount > 0 && job.completedCount === 0 ? 'failed' : 'completed';
 
 	await db

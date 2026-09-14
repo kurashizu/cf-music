@@ -10,6 +10,10 @@ import {
 	recordSongImported,
 	recordSongFailed,
 	completeImportJob,
+	findKnownVideoIds,
+	submitImportPreview,
+	confirmImportJob,
+	cancelImportJob,
 	ImportJobError,
 	type SongImportSuccess
 } from './jobs';
@@ -172,5 +176,154 @@ describe('completeImportJob', () => {
 
 		const job = await getImportJob(db, id, 'u1');
 		expect(job.status).toBe('completed');
+	});
+});
+
+describe('findKnownVideoIds', () => {
+	it('returns an empty array for an empty input', async () => {
+		expect(await findKnownVideoIds(db, [])).toEqual([]);
+	});
+
+	it('returns an empty array when none of the given ids exist', async () => {
+		await seedUser('u1');
+		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x' });
+		await recordSongImported(db, id, 'u1', makeSong('known-1'));
+
+		expect(await findKnownVideoIds(db, ['unrelated-1', 'unrelated-2'])).toEqual([]);
+	});
+
+	it('returns only the subset of given ids that already exist', async () => {
+		await seedUser('u1');
+		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x' });
+		await recordSongImported(db, id, 'u1', makeSong('known-1'));
+		await recordSongImported(db, id, 'u1', makeSong('known-2'));
+
+		const result = await findKnownVideoIds(db, ['known-1', 'new-1', 'known-2', 'new-2']);
+
+		expect(result.sort()).toEqual(['known-1', 'known-2']);
+	});
+
+	it('batches lookups so a list larger than the per-query chunk size is still handled correctly', async () => {
+		await seedUser('u1');
+		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x' });
+
+		// Larger than KNOWN_VIDEO_IDS_BATCH_SIZE (90) to exercise the chunking path.
+		const knownIds = Array.from({ length: 110 }, (_, i) => `batch-known-${i}`);
+		for (const videoId of knownIds) {
+			await recordSongImported(db, id, 'u1', makeSong(videoId));
+		}
+
+		const requested = [...knownIds, 'batch-new-1', 'batch-new-2'];
+		const result = await findKnownVideoIds(db, requested);
+
+		expect(result.length).toBe(knownIds.length);
+		expect(new Set(result)).toEqual(new Set(knownIds));
+	});
+});
+
+describe('submitImportPreview', () => {
+	it('moves the job to pending_confirmation and stores the preview entries', async () => {
+		await seedUser('u1');
+		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x' });
+
+		await submitImportPreview(db, id, [
+			{ videoId: 'a', title: 'Song A', durationSeconds: 120 },
+			{ videoId: 'b', title: 'Song B' }
+		]);
+
+		const job = await getImportJob(db, id, 'u1');
+		expect(job.status).toBe('pending_confirmation');
+		expect(job.totalCount).toBe(2);
+		expect(JSON.parse(job.previewEntries!)).toEqual([
+			{ videoId: 'a', title: 'Song A', durationSeconds: 120 },
+			{ videoId: 'b', title: 'Song B' }
+		]);
+	});
+});
+
+describe('confirmImportJob', () => {
+	it('moves an approved job from pending_confirmation to running', async () => {
+		await seedUser('u1');
+		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x' });
+		await submitImportPreview(db, id, [{ videoId: 'a', title: 'Song A' }]);
+
+		await confirmImportJob(db, id, 'u1', true);
+
+		const job = await getImportJob(db, id, 'u1');
+		expect(job.status).toBe('running');
+	});
+
+	it('moves a rejected job from pending_confirmation to cancelled', async () => {
+		await seedUser('u1');
+		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x' });
+		await submitImportPreview(db, id, [{ videoId: 'a', title: 'Song A' }]);
+
+		await confirmImportJob(db, id, 'u1', false);
+
+		const job = await getImportJob(db, id, 'u1');
+		expect(job.status).toBe('cancelled');
+	});
+
+	it('throws invalid_transition when the job is not awaiting confirmation', async () => {
+		await seedUser('u1');
+		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x' });
+
+		await expect(confirmImportJob(db, id, 'u1', true)).rejects.toThrow(ImportJobError);
+	});
+
+	it('throws not_found for a job belonging to a different user', async () => {
+		await seedUser('u1');
+		await seedUser('u2');
+		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x' });
+		await submitImportPreview(db, id, [{ videoId: 'a', title: 'Song A' }]);
+
+		await expect(confirmImportJob(db, id, 'u2', true)).rejects.toThrow(ImportJobError);
+	});
+});
+
+describe('cancelImportJob', () => {
+	it('cancels a running job', async () => {
+		await seedUser('u1');
+		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x' });
+		await startImportJob(db, id, 3);
+
+		await cancelImportJob(db, id, 'u1');
+
+		const job = await getImportJob(db, id, 'u1');
+		expect(job.status).toBe('cancelled');
+	});
+
+	it('cancels a job still awaiting confirmation', async () => {
+		await seedUser('u1');
+		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x' });
+		await submitImportPreview(db, id, [{ videoId: 'a', title: 'Song A' }]);
+
+		await cancelImportJob(db, id, 'u1');
+
+		const job = await getImportJob(db, id, 'u1');
+		expect(job.status).toBe('cancelled');
+	});
+
+	it('throws invalid_transition for a job that already completed', async () => {
+		await seedUser('u1');
+		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x' });
+		await completeImportJob(db, id, 'u1');
+
+		await expect(cancelImportJob(db, id, 'u1')).rejects.toThrow(ImportJobError);
+	});
+});
+
+describe('completeImportJob after cancellation', () => {
+	it('does not overwrite a cancelled status with completed/failed', async () => {
+		await seedUser('u1');
+		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x' });
+		await startImportJob(db, id, 1);
+		await recordSongImported(db, id, 'u1', makeSong('a'));
+		await cancelImportJob(db, id, 'u1');
+
+		await completeImportJob(db, id, 'u1');
+
+		const job = await getImportJob(db, id, 'u1');
+		expect(job.status).toBe('cancelled');
 	});
 });

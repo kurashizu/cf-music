@@ -121,13 +121,16 @@ export const importJobs = sqliteTable('import_jobs', {
 		.references(() => users.id, { onDelete: 'cascade' }),
 	sourceUrl: text('source_url').notNull(),
 	targetPlaylistId: text('target_playlist_id').references(() => playlists.id),
-	status: text('status', { enum: ['pending', 'running', 'completed', 'failed'] })
+	status: text('status', {
+		enum: ['pending', 'pending_confirmation', 'running', 'completed', 'failed', 'cancelled']
+	})
 		.notNull()
 		.default('pending'),
 	totalCount: integer('total_count'),
 	completedCount: integer('completed_count').notNull().default(0),
 	failedCount: integer('failed_count').notNull().default(0),
 	failures: text('failures'), // JSON array of failed video_id + reason entries
+	previewEntries: text('preview_entries'), // JSON array of {videoId, title, durationSeconds} awaiting user confirmation
 	createdAt: text('created_at')
 		.notNull()
 		.default(sql`(current_timestamp)`),
