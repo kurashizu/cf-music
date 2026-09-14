@@ -21,15 +21,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # Must come first: hashFiles() below reads from the runner's working
-      # directory, which is empty until checkout populates it — running
-      # the cache steps before checkout silently hashed nothing and made
-      # every cache key collapse to the same "import-apt-"/"import-pip-"
-      # literal (no cache invalidation, and initially no hits at all since
-      # the apt cache's save step was separately broken — see below).
+      # directory, which is empty until checkout populates it. This file
+      # itself has to be in the sparse-checkout list too — hashFiles() can
+      # only see files actually on disk, and a sparse-checkout scoped to
+      # just ci/import silently excluded it, so every run hashed nothing
+      # and every cache key collapsed to the same "import-apt-"/
+      # "import-pip-" literal (no cache invalidation, and initially no hits
+      # at all since the apt cache's save step was separately broken —
+      # see below).
       - uses: actions/checkout@v7
         with:
           sparse-checkout: |
             ci/import
+            .github/workflows/import.yml
 
       - name: Cache apt packages
         uses: actions/cache@v6
