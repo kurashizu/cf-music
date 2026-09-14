@@ -195,7 +195,12 @@ export async function recordSongImported(db: Db, jobId: string, userId: string, 
 			fileSizeBytes: song.fileSizeBytes,
 			coverKey: song.coverKey,
 			coverWidth: song.coverWidth,
-			coverHeight: song.coverHeight
+			coverHeight: song.coverHeight,
+			artist: song.artist,
+			album: song.album,
+			genre: song.genre,
+			releaseYear: song.releaseYear,
+			tags: song.tags ? JSON.stringify(song.tags) : undefined
 		})
 		.onConflictDoNothing(); // video_id already imported (by this or another user) — reuse the existing row
 
@@ -234,7 +239,11 @@ export async function recordSongFailed(db: Db, jobId: string, userId: string, fa
  */
 export async function failImportJob(db: Db, jobId: string, userId: string, reason: string): Promise<void> {
 	const job = await getOwnedJob(db, jobId, userId);
-	if (job.status === 'cancelled') return;
+	// A late fatal_error/close can race with CI's own successful completion
+	// or a user's cancellation reaching D1 first — once a job has already
+	// reached any terminal status, that status wins; this should never
+	// resurrect a completed/cancelled job as failed.
+	if (job.status === 'cancelled' || job.status === 'completed' || job.status === 'failed') return;
 
 	const truncatedReason = reason.slice(0, 500);
 

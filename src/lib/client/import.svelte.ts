@@ -25,7 +25,11 @@ function parseJobRow(row: RawImportJob): ImportJobState {
 		failedCount: row.failedCount,
 		failures: row.failures ? JSON.parse(row.failures) : [],
 		previewEntries: row.previewEntries ? JSON.parse(row.previewEntries) : null,
-		fatalError: row.fatalError
+		fatalError: row.fatalError,
+		// A server-fetched row is always past the probing phase (it's either
+		// not started, or already has totalCount/previewEntries) — probing
+		// progress only ever exists transiently client-side from a live event.
+		probing: null
 	};
 }
 

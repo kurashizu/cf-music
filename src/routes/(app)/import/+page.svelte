@@ -151,6 +151,22 @@
 									Dismiss
 								</Button>
 							</div>
+						{:else if job.probing}
+							<div class="flex items-center gap-3">
+								<LoaderCircleIcon class="size-4 shrink-0 animate-spin text-muted-foreground" />
+								<div class="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+									<div
+										class="h-full bg-foreground transition-all duration-300"
+										style="width: {Math.min(100, (job.probing.checked / job.probing.total) * 100)}%"
+									></div>
+								</div>
+								<span class="shrink-0 text-xs text-muted-foreground">
+									Checking sizes {job.probing.checked} / {job.probing.total}
+								</span>
+								<Button size="sm" variant="ghost" onclick={() => importStore.cancel(job.jobId)}>
+									Cancel
+								</Button>
+							</div>
 						{:else}
 							<div class="flex items-center gap-3">
 								<LoaderCircleIcon class="size-4 shrink-0 animate-spin text-muted-foreground" />

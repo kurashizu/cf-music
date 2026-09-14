@@ -26,6 +26,11 @@ export interface SongImportSuccess {
 	coverKey?: string;
 	coverWidth?: number;
 	coverHeight?: number;
+	artist?: string;
+	album?: string;
+	genre?: string;
+	releaseYear?: number;
+	tags?: string[];
 }
 
 export interface SongImportFailureInput {
@@ -35,6 +40,13 @@ export interface SongImportFailureInput {
 
 export type ImportProgressEvent =
 	| { type: 'start'; totalCount: number }
+	// Sent once per song while the CI job probes each pending song's real
+	// download size (before any downloading starts) — purely a keepalive +
+	// UX signal for what would otherwise be a multi-minute silent gap on a
+	// large playlist; the Worker doesn't need to persist this anywhere, it
+	// just broadcasts it through to the browser like any other event (see
+	// import-progress.ts).
+	| { type: 'probing_progress'; checked: number; total: number }
 	| { type: 'preview'; entries: PreviewEntry[] }
 	| { type: 'song_success'; song: SongImportSuccess }
 	| { type: 'song_failed'; failure: SongImportFailureInput }

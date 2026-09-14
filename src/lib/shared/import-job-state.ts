@@ -19,14 +19,22 @@ export interface ImportJobState {
 	// loop — source extraction, WARP setup, etc. — so there's no video to
 	// attribute a per-song failure to.
 	fatalError: string | null;
+	// Progress through the pre-download size-probing phase (before `preview`
+	// fires) — null once probing hasn't started or has already finished
+	// (superseded by totalCount/completedCount+failedCount at that point).
+	probing: { checked: number; total: number } | null;
 }
 
 function applyStart(job: ImportJobState, totalCount: number): ImportJobState {
 	return { ...job, status: 'running', totalCount };
 }
 
+function applyProbingProgress(job: ImportJobState, checked: number, total: number): ImportJobState {
+	return { ...job, probing: { checked, total } };
+}
+
 function applyPreview(job: ImportJobState, entries: PreviewEntry[]): ImportJobState {
-	return { ...job, previewEntries: entries };
+	return { ...job, previewEntries: entries, probing: null };
 }
 
 function applySongSuccess(job: ImportJobState): ImportJobState {
@@ -59,6 +67,8 @@ export function applyImportEvent(job: ImportJobState, event: ImportProgressEvent
 	switch (event.type) {
 		case 'start':
 			return applyStart(job, event.totalCount);
+		case 'probing_progress':
+			return applyProbingProgress(job, event.checked, event.total);
 		case 'preview':
 			return applyPreview(job, event.entries);
 		case 'song_success':

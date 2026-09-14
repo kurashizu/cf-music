@@ -140,20 +140,26 @@ def estimate_song_size_bytes(entry: dict) -> int:
         return 0
 
 
-def resolve_batch(source_url: str) -> tuple[list[dict], list[dict], int]:
-    """Extracts the playlist, drops songs already owned by someone, and
-    sums the real download size of what's left — everything this touches
-    (yt-dlp, urllib) is synchronous/blocking, so this whole function is
-    meant to be run via asyncio.to_thread from run(), not awaited directly;
-    see the comment at that call site for why that matters here
-    specifically (a long-running sync call on the event loop starves
-    websockets' own keepalive pings)."""
+def extract_and_filter(source_url: str) -> tuple[list[dict], list[dict]]:
+    """Extracts the playlist and drops songs already owned by someone —
+    everything this touches (yt-dlp, urllib) is synchronous/blocking, so
+    this is meant to be run via asyncio.to_thread from run(), not awaited
+    directly. Deliberately does NOT also do the per-song size probing that
+    resolve_batch used to do in one shot: that loop can take many minutes
+    on a large playlist, and a single to_thread call that long sends zero
+    real WebSocket traffic for its whole duration — ping/pong keepalive
+    frames alone don't prevent Cloudflare's edge from silently dropping an
+    idle connection (this was the actual cause of a real incident: the
+    process's own ping_interval/ping_timeout were already set correctly,
+    but the connection still died mid-batch because nothing but pings
+    crossed the wire for 17 minutes). The size probing loop now lives in
+    run() itself, one to_thread call per song, so a real progress event
+    can go out after each one."""
     entries = extract_playlist_entries(source_url)
     video_ids = [e["id"] for e in entries]
     known_video_ids = fetch_known_video_ids(video_ids)
     pending_entries = [e for e in entries if e["id"] not in known_video_ids]
-    estimated_total_bytes = sum(estimate_song_size_bytes(e) for e in pending_entries)
-    return entries, pending_entries, estimated_total_bytes
+    return entries, pending_entries
 
 
 def fetch_remaining_quota_bytes() -> int:
@@ -267,6 +273,14 @@ def download_and_upload_song(entry: dict, s3_client) -> dict:
                 cover_key = f"covers/{video_id}.avif"
                 upload_to_minio(s3_client, cover_path, cover_key)
 
+        # Classification metadata is opportunistic, not guaranteed: yt-dlp
+        # only sets artist/album/track/genre for extractors that expose
+        # dedicated music metadata (e.g. SoundCloud, Bandcamp) - plain
+        # YouTube uploads almost never do, so uploader/channel is the
+        # fallback for "artist" there (a channel name, not necessarily a
+        # performer, but better signal than nothing for auto-classification).
+        tags = list(info.get("tags") or []) + list(info.get("categories") or [])
+
         return {
             "videoId": video_id,
             "sourcePlatform": info.get("extractor", "unknown"),
@@ -282,6 +296,11 @@ def download_and_upload_song(entry: dict, s3_client) -> dict:
             "coverKey": cover_key,
             "coverWidth": cover_width,
             "coverHeight": cover_height,
+            "artist": info.get("artist") or info.get("uploader") or info.get("channel"),
+            "album": info.get("album"),
+            "genre": info.get("genre"),
+            "releaseYear": info.get("release_year"),
+            "tags": tags or None,
         }
 
 
@@ -291,13 +310,11 @@ async def run() -> None:
     # Cloudflare's edge in front of our own Worker.
     #
     # ping_interval/ping_timeout are set explicitly (not left at whatever
-    # this library version defaults to) since they're load-bearing here:
-    # this connection needs to survive several minutes of a large
-    # playlist's per-song size lookups with no application-level messages
-    # at all, and the only thing keeping it alive through that is these
-    # protocol-level ping/pong frames — see resolve_batch's to_thread usage
-    # for the other half of why that alone wasn't enough (the event loop
-    # has to actually be free to send them).
+    # this library version defaults to), though see extract_and_filter's
+    # docstring for why they alone don't keep a long-idle connection alive
+    # against Cloudflare's edge — the real fix there is sending genuine
+    # application data regularly (probing_progress events), not just
+    # relying on these.
     async with websockets.connect(
         websocket_url(),
         additional_headers={"User-Agent": "cf-music-import-job/1.0"},
@@ -307,13 +324,38 @@ async def run() -> None:
 
         # websockets' own docs call concurrent send() calls from multiple
         # coroutines unsafe (interleaved writes can corrupt frames) — held
-        # here since download_and_upload_song now runs DOWNLOAD_CONCURRENCY
-        # at once, each reporting its own song_success/song_failed event.
+        # here since both the size-probing and download phases run
+        # DOWNLOAD_CONCURRENCY tasks at once, each reporting its own event.
         send_lock = asyncio.Lock()
 
         async def send_event(event: dict) -> None:
             async with send_lock:
                 await ws.send(json.dumps({"jobId": JOB_ID, "event": event}))
+
+        # Cancellation is checked for the entire job lifetime (probing and
+        # downloading both watch `cancelled`), not just once downloading
+        # starts — a cancel decision arriving during the (now potentially
+        # multi-minute, on a huge playlist) probing phase should stop the
+        # job just as promptly as one arriving mid-download. In-flight
+        # work (a probe or a download already running) still finishes —
+        # there's no point discarding a nearly-done call — but nothing new
+        # starts once cancelled is set.
+        cancelled = False
+
+        async def watch_for_cancel() -> None:
+            nonlocal cancelled
+            while not cancelled:
+                try:
+                    cancel_message = await ws.recv()
+                except websockets.exceptions.ConnectionClosed:
+                    return
+                decision = json.loads(cancel_message)
+                if decision.get("action") == "cancel":
+                    print("Import was cancelled mid-run", file=sys.stderr)
+                    cancelled = True
+                    return
+
+        watcher = asyncio.create_task(watch_for_cancel())
 
         # Anything raised here happens before the per-song loop even starts
         # (source extraction, the known-video-ids lookup), so there's no
@@ -323,21 +365,55 @@ async def run() -> None:
         # non-zero and the WebSocket connection drops with no explanation.
         try:
             # Every yt-dlp/urllib call here is a *synchronous*, blocking
-            # call — run entirely in a worker thread via asyncio.to_thread.
-            # A large playlist's extraction + per-song size lookups can take
-            # several minutes; running them directly on the event loop
-            # blocks it completely, including the websockets library's own
-            # background ping/pong keepalive, which needs the loop to
-            # actually get scheduled to run. That's exactly what caused a
-            # real incident: the WARP/Worker WebSocket got silently killed
-            # (connection reset, no close frame) partway through resolving a
-            # 183-song playlist, and the except block below couldn't even
-            # report it — send_event() itself needs that same dead
-            # connection. to_thread keeps the loop free to actually send
-            # those keepalive frames while this runs.
-            entries, pending_entries, estimated_total_bytes = await asyncio.to_thread(
-                resolve_batch, SOURCE_URL
-            )
+            # call — run entirely in a worker thread via asyncio.to_thread,
+            # so this doesn't block the event loop while it runs (a fast
+            # call anyway: extraction + the known-video-ids lookup, not the
+            # per-song size probing below).
+            entries, pending_entries = await asyncio.to_thread(extract_and_filter, SOURCE_URL)
+
+            # Probes each pending song's real download size concurrently
+            # (DOWNLOAD_CONCURRENCY at once, same as the download loop
+            # below), sending a probing_progress event after each one
+            # completes — deliberately real WebSocket traffic, not just
+            # ping/pong, on every song rather than one big to_thread call
+            # for the whole batch. That single-call version is what
+            # actually caused a real incident on a 183-song playlist: with
+            # ping_interval/ping_timeout already set correctly, the
+            # connection still died because Cloudflare's edge silently
+            # drops a connection that's carried nothing but protocol-level
+            # ping/pong frames for several minutes — pings alone don't
+            # count as "the connection is in use" there. A per-song event
+            # is frequent enough that no gap should ever get remotely
+            # close to that.
+            probe_semaphore = asyncio.Semaphore(DOWNLOAD_CONCURRENCY)
+            sizes = [0] * len(pending_entries)
+            probed_count = 0
+            probe_lock = asyncio.Lock()
+
+            async def probe_one(index: int, entry: dict) -> None:
+                nonlocal probed_count
+                if cancelled:
+                    return
+                async with probe_semaphore:
+                    if cancelled:
+                        return
+                    sizes[index] = await asyncio.to_thread(estimate_song_size_bytes, entry)
+                    async with probe_lock:
+                        probed_count += 1
+                        await send_event(
+                            {
+                                "type": "probing_progress",
+                                "checked": probed_count,
+                                "total": len(pending_entries),
+                            }
+                        )
+
+            await asyncio.gather(*(probe_one(i, e) for i, e in enumerate(pending_entries)))
+            if cancelled:
+                watcher.cancel()
+                return
+            estimated_total_bytes = sum(sizes)
+
             remaining_bytes = await asyncio.to_thread(fetch_remaining_quota_bytes)
             if estimated_total_bytes > remaining_bytes:
                 raise QuotaExceededError(
@@ -378,26 +454,12 @@ async def run() -> None:
         # DOWNLOAD_CONCURRENCY songs in flight at once — sequential
         # download/transcode/upload was the bottleneck on large playlists
         # (each song is mostly waiting on network/ffmpeg, not CPU, so this
-        # is safe to parallelize). cancelled is a shared flag rather than a
-        # `return` from inside the loop body since multiple worker tasks
-        # are checking it concurrently; once set, in-flight downloads still
-        # finish (no point discarding a nearly-done download) but no new
-        # ones start.
-        cancelled = False
-
-        async def watch_for_cancel() -> None:
-            nonlocal cancelled
-            while not cancelled:
-                try:
-                    cancel_message = await ws.recv()
-                except websockets.exceptions.ConnectionClosed:
-                    return
-                decision = json.loads(cancel_message)
-                if decision.get("action") == "cancel":
-                    print("Import was cancelled mid-run", file=sys.stderr)
-                    cancelled = True
-                    return
-
+        # is safe to parallelize). Shares the same `cancelled` flag and
+        # `watcher` task started at the top of run() (covering the probing
+        # phase above too), rather than a `return` from inside the loop
+        # body, since multiple worker tasks check it concurrently; once
+        # set, in-flight downloads still finish (no point discarding a
+        # nearly-done download) but no new ones start.
         download_semaphore = asyncio.Semaphore(DOWNLOAD_CONCURRENCY)
 
         async def download_one(entry: dict) -> None:
@@ -407,11 +469,10 @@ async def run() -> None:
                 if cancelled:
                     return
                 try:
-                    # Same reasoning as resolve_batch above: download/
-                    # transcode/upload is synchronous and can run long on a
-                    # large file or slow network, so it goes through
-                    # to_thread rather than blocking the loop (and this
-                    # connection's keepalive pings) directly.
+                    # Same reasoning as probe_one above: download/transcode/
+                    # upload is synchronous and can run long on a large file
+                    # or slow network, so it goes through to_thread rather
+                    # than blocking the loop directly.
                     song = await asyncio.to_thread(download_and_upload_song, entry, s3_client)
                     await send_event({"type": "song_success", "song": song})
                 except Exception as exc:  # noqa: BLE001 - one failed song must not abort the batch
@@ -419,7 +480,6 @@ async def run() -> None:
                         {"type": "song_failed", "failure": {"videoId": entry["id"], "reason": str(exc)[:500]}}
                     )
 
-        watcher = asyncio.create_task(watch_for_cancel())
         await asyncio.gather(*(download_one(entry) for entry in pending_entries))
         was_cancelled = cancelled
         cancelled = True  # stop the watcher even if no cancel decision ever arrived

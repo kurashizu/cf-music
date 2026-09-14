@@ -12,6 +12,7 @@ function makeJob(overrides: Partial<ImportJobState> = {}): ImportJobState {
 		failures: [],
 		previewEntries: null,
 		fatalError: null,
+		probing: null,
 		...overrides
 	};
 }
@@ -30,6 +31,24 @@ describe('applyImportEvent', () => {
 		const next = applyImportEvent(job, { type: 'preview', entries });
 		expect(next.status).toBe('pending');
 		expect(next.previewEntries).toEqual(entries);
+	});
+
+	it('probing_progress records checked/total', () => {
+		const job = makeJob();
+		const next = applyImportEvent(job, { type: 'probing_progress', checked: 3, total: 10 });
+		expect(next.probing).toEqual({ checked: 3, total: 10 });
+	});
+
+	it('probing_progress overwrites an earlier probing value rather than accumulating', () => {
+		const job = makeJob({ probing: { checked: 2, total: 10 } });
+		const next = applyImportEvent(job, { type: 'probing_progress', checked: 3, total: 10 });
+		expect(next.probing).toEqual({ checked: 3, total: 10 });
+	});
+
+	it('preview clears probing back to null', () => {
+		const job = makeJob({ probing: { checked: 10, total: 10 } });
+		const next = applyImportEvent(job, { type: 'preview', entries: [] });
+		expect(next.probing).toBeNull();
 	});
 
 	it('song_success increments completedCount by exactly one', () => {

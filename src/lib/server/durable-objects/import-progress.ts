@@ -10,6 +10,8 @@ import {
 	cancelImportJob,
 	ImportJobError
 } from '../import/jobs';
+
+const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled']);
 import type {
 	ImportProgressMessage as CiProgressMessage,
 	ImportControlMessage as BrowserControlMessage
@@ -169,6 +171,52 @@ export class ImportProgressDurableObject implements DurableObject {
 	}
 
 	async webSocketClose(ws: WebSocket, code: number, reason: string): Promise<void> {
+		await this.handlePossibleZombieJob(ws);
 		ws.close(code, reason);
+	}
+
+	async webSocketError(ws: WebSocket): Promise<void> {
+		await this.handlePossibleZombieJob(ws);
+	}
+
+	/**
+	 * The CI process's own WebSocket is the *only* way a job ever reaches a
+	 * terminal status — `complete`/`fatal_error` are both just messages on
+	 * this same connection (see handleCiProgress). If that connection ends
+	 * for any other reason (network drop, the runner getting killed, an
+	 * uncaught exception before the process's own top-level handler can
+	 * send fatal_error) the job is left stuck at `running`/`pending`
+	 * forever, with no automatic way to notice — this was a real incident
+	 * (a WebSocket disconnect during a long-running batch left the job
+	 * spinning in the UI with nothing to cancel it automatically). A CI
+	 * socket closing while its job is still non-terminal is exactly that
+	 * situation, so it's treated as an implicit fatal_error.
+	 */
+	private async handlePossibleZombieJob(ws: WebSocket): Promise<void> {
+		const tags = this.ctx.getTags(ws);
+		const ciTagValue = tags.find((t) => t.startsWith('ci:'));
+		if (!ciTagValue) return;
+
+		const jobId = ciTagValue.slice('ci:'.length);
+		const db = getDb(this.env.DB);
+
+		let job;
+		try {
+			job = await getImportJobUnchecked(db, jobId);
+		} catch (err) {
+			if (err instanceof ImportJobError) return;
+			throw err;
+		}
+		if (TERMINAL_STATUSES.has(job.status)) return;
+
+		await failImportJob(db, jobId, job.userId, 'Import process disconnected unexpectedly');
+
+		const event = { type: 'fatal_error', reason: 'Import process disconnected unexpectedly' };
+		const raw = JSON.stringify({ jobId, event });
+		for (const browserWs of this.ctx.getWebSockets()) {
+			if (!isCiSocket(this.ctx.getTags(browserWs))) {
+				browserWs.send(raw);
+			}
+		}
 	}
 }
