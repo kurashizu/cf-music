@@ -9,7 +9,7 @@
 	import { player } from '$lib/client/player.svelte';
 	import LibraryIcon from '@lucide/svelte/icons/library';
 	import UploadIcon from '@lucide/svelte/icons/upload';
-	import HardDriveIcon from '@lucide/svelte/icons/hard-drive';
+	import SettingsIcon from '@lucide/svelte/icons/settings';
 	import ShieldIcon from '@lucide/svelte/icons/shield';
 	import LogOutIcon from '@lucide/svelte/icons/log-out';
 	import type { LayoutProps } from './$types';
@@ -20,7 +20,7 @@
 		[
 			{ href: '/library', label: 'Library', icon: LibraryIcon },
 			{ href: '/import', label: 'Import', icon: UploadIcon },
-			{ href: '/cache', label: 'Cache', icon: HardDriveIcon },
+			{ href: '/settings', label: 'Settings', icon: SettingsIcon },
 			data.session.isAdmin ? { href: '/admin', label: 'Admin', icon: ShieldIcon } : null
 		].filter((item) => item !== null)
 	);
