@@ -12,6 +12,8 @@
 	import MoreVerticalIcon from '@lucide/svelte/icons/more-vertical';
 	import PencilIcon from '@lucide/svelte/icons/pencil';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
+	import UserIcon from '@lucide/svelte/icons/user';
+	import TagIcon from '@lucide/svelte/icons/tag';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -180,6 +182,33 @@
 							</DropdownMenu.Item>
 						</DropdownMenu.Content>
 					</DropdownMenu.Root>
+				</Card.Root>
+			{/each}
+		</div>
+	{/if}
+
+	{#if data.smartPlaylists.length > 0}
+		<h2 class="mt-10 mb-4 text-sm font-medium text-muted-foreground">Auto-categorized</h2>
+		<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+			{#each data.smartPlaylists as group (group.id)}
+				<Card.Root class="group relative overflow-hidden py-0 transition-colors hover:border-ring/50">
+					<a href="/library/smart/{encodeURIComponent(group.id)}" class="flex flex-col gap-3 p-4">
+						<div
+							class="flex aspect-square items-center justify-center rounded-lg bg-muted transition-transform duration-200 group-hover:scale-[1.02]"
+						>
+							{#if group.field === 'artist'}
+								<UserIcon class="size-8 text-muted-foreground" />
+							{:else}
+								<TagIcon class="size-8 text-muted-foreground" />
+							{/if}
+						</div>
+						<div class="min-w-0">
+							<p class="truncate text-sm font-medium">{group.value}</p>
+							<p class="truncate text-xs text-muted-foreground">
+								{group.songCount} {group.songCount === 1 ? 'song' : 'songs'}
+							</p>
+						</div>
+					</a>
 				</Card.Root>
 			{/each}
 		</div>

@@ -1,6 +1,7 @@
 import { redirect } from '@sveltejs/kit';
 import { getDb } from '$lib/server/db';
 import { listPlaylists } from '$lib/server/library/playlists';
+import { listSmartPlaylists } from '$lib/server/library/smart-playlists';
 import type { PageServerLoad } from './$types';
 
 // Sibling `load` functions in a route's layout chain run in parallel, not
@@ -15,7 +16,10 @@ export const load: PageServerLoad = async ({ platform, locals }) => {
 	}
 
 	const db = getDb(platform!.env.DB);
-	const playlists = await listPlaylists(db, locals.session.userId);
+	const [playlists, smartPlaylists] = await Promise.all([
+		listPlaylists(db, locals.session.userId),
+		listSmartPlaylists(db, locals.session.userId)
+	]);
 
-	return { playlists };
+	return { playlists, smartPlaylists };
 };
