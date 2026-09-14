@@ -5,6 +5,7 @@
 	import { Toaster } from '$lib/components/ui/sonner/index.js';
 	import Logo from '$lib/components/logo.svelte';
 	import PlayerBar from '$lib/components/player-bar.svelte';
+	import BuildInfo from '$lib/components/build-info.svelte';
 	import { player } from '$lib/client/player.svelte';
 	import LibraryIcon from '@lucide/svelte/icons/library';
 	import UploadIcon from '@lucide/svelte/icons/upload';
@@ -67,6 +68,7 @@
 				<LogOutIcon class="size-4" />
 				Log out
 			</Button>
+			<BuildInfo />
 		</div>
 	</aside>
 

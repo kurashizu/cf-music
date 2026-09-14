@@ -1,9 +1,27 @@
+import { execSync } from 'node:child_process';
 import { defineConfig } from 'vitest/config';
 import tailwindcss from '@tailwindcss/vite';
 import adapter from '@sveltejs/adapter-cloudflare';
 import { sveltekit } from '@sveltejs/kit/vite';
 
+// Baked into the client bundle at build time so a deployed page's footer
+// can be checked against `git log` to answer "did my latest push actually
+// go out" without guessing from cache-busting or waiting on propagation —
+// see BuildInfo.svelte. Falls back to "unknown" rather than failing the
+// build if run somewhere without a git history (e.g. a shallow CI checkout).
+function readCommitHash(): string {
+	try {
+		return execSync('git rev-parse --short HEAD').toString().trim();
+	} catch {
+		return 'unknown';
+	}
+}
+
 export default defineConfig({
+	define: {
+		__BUILD_COMMIT__: JSON.stringify(readCommitHash()),
+		__BUILD_TIME__: JSON.stringify(new Date().toISOString())
+	},
 	plugins: [
 		tailwindcss(),
 		sveltekit({
