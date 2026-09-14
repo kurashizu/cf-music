@@ -1,0 +1,22 @@
+{
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	"name": "cf-music",
+	"compatibility_date": "2026-09-14",
+	"compatibility_flags": [
+		"nodejs_als"
+	],
+	"main": ".svelte-kit/cloudflare/_worker.js",
+	"assets": {
+		"binding": "ASSETS",
+		"directory": ".svelte-kit/cloudflare"
+	},
+	"workers_dev": true,
+	"preview_urls": true,
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "cf-music",
+			"database_id": "3d2a7a20-7325-4d34-9594-92d506b26535"
+		}
+	]
+}
