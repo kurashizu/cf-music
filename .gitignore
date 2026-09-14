@@ -24,3 +24,8 @@ vite.config.ts.timestamp-*
 
 # Cloudflare (generated)
 worker-configuration.d.ts
+
+# Test tooling (generated)
+coverage
+reports
+.stryker-tmp

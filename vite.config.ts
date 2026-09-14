@@ -1,7 +1,7 @@
+import { defineConfig } from 'vitest/config';
 import tailwindcss from '@tailwindcss/vite';
 import adapter from '@sveltejs/adapter-cloudflare';
 import { sveltekit } from '@sveltejs/kit/vite';
-import { defineConfig } from 'vite';
 
 export default defineConfig({
 	plugins: [
@@ -18,5 +18,30 @@ export default defineConfig({
 				}
 			}
 		})
-	]
+	],
+	test: {
+		expect: { requireAssertions: true },
+		coverage: {
+			provider: 'v8',
+			reporter: ['text', 'json', 'html', 'json-summary'],
+			include: ['src/lib/**/*.ts'],
+			exclude: [
+				'src/lib/**/*.test.ts',
+				'src/lib/**/*.spec.ts',
+				'src/lib/index.ts', // barrel re-export file, no logic of its own
+				'src/lib/server/db/**' // Drizzle schema/binding wiring, exercised via integration tests, not unit CRAP scoring
+			]
+		},
+		projects: [
+			{
+				extends: './vite.config.ts',
+				test: {
+					name: 'server',
+					environment: 'node',
+					include: ['src/**/*.{test,spec}.{js,ts}'],
+					exclude: ['src/**/*.svelte.{test,spec}.{js,ts}']
+				}
+			}
+		]
+	}
 });
