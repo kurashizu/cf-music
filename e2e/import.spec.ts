@@ -27,15 +27,18 @@ test.describe('import page', () => {
 		await expect(page.getByText('Recent imports')).toBeHidden();
 	});
 
-	test('a submitted job still shows up in recent imports after a refresh, even if the GitHub dispatch itself failed', async ({
+	test('a job whose GitHub dispatch failed shows up as failed (not stuck) after a refresh', async ({
 		page
 	}) => {
 		// The local/CI test environment has no real GitHub Actions token, so
 		// dispatchImportWorkflow always fails here — this exercises the same
 		// "job exists in D1 but the browser never got the success response"
-		// gap that a real dispatch failure would also hit, and confirms
-		// listImportJobs' refresh-recovery path (not a happy-path dispatch,
-		// which would need a real GitHub token to test for real).
+		// gap that a real dispatch failure would also hit. The POST handler
+		// marks the job failed itself when dispatch throws (see
+		// src/routes/api/import/+server.ts), so this also confirms that
+		// failure is visible after a refresh instead of the job sitting at
+		// pending forever with nothing to explain why (a happy-path
+		// dispatch would need a real GitHub token to test for real).
 		await registerAndLand(page);
 		await page.goto('/import');
 
@@ -46,5 +49,7 @@ test.describe('import page', () => {
 		await page.reload();
 
 		await expect(page.getByText('https://example.com/a-video')).toBeVisible();
+		await expect(page.getByText('Failed to start the import workflow')).toBeVisible();
+		await expect(page.getByRole('button', { name: 'Dismiss' })).toBeVisible();
 	});
 });

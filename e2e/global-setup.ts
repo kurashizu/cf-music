@@ -20,6 +20,18 @@ export function seedInviteCode(code: string) {
 // invite_codes.created_by FK without a real admin account existing.
 export default function globalSetup() {
 	d1Execute(`DELETE FROM sessions;`);
+	// users.default_playlist_id references playlists.id (see schema.ts) —
+	// cleared before deleting playlists below, or a leftover e2e user (from
+	// a prior run's import test, which calls ensureDefaultPlaylist) whose
+	// default is one of the playlists about to be deleted violates that
+	// foreign key.
+	d1Execute(`UPDATE users SET default_playlist_id = NULL WHERE username LIKE 'e2e-%';`);
+	// import_jobs.target_playlist_id references playlists.id with no ON
+	// DELETE behavior (see schema.ts) — a leftover e2e import job (from a
+	// prior run's import test, which always fails locally since there's no
+	// real GitHub token, but still gets created with a real target
+	// playlist) blocks deleting that playlist below just the same way.
+	d1Execute(`DELETE FROM import_jobs WHERE user_id IN (SELECT id FROM users WHERE username LIKE 'e2e-%');`);
 	d1Execute(`DELETE FROM playlist_songs WHERE video_id LIKE 'e2e-song-%';`);
 	d1Execute(`DELETE FROM songs WHERE video_id LIKE 'e2e-song-%';`);
 	d1Execute(`DELETE FROM playlists WHERE user_id IN (SELECT id FROM users WHERE username LIKE 'e2e-%');`);

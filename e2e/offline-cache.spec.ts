@@ -11,11 +11,11 @@ async function registerViaApi(page: Page): Promise<{ userId: string; username: s
 	return { userId: body.userId, username };
 }
 
-test.describe('cache page', () => {
+test.describe('offline cache page', () => {
 	test('shows an empty state with no songs', async ({ page }) => {
 		await registerViaApi(page);
 
-		await page.goto('/cache');
+		await page.goto('/settings/offline-cache');
 
 		await expect(page.getByText('No songs in your library yet.')).toBeVisible();
 	});
@@ -27,7 +27,7 @@ test.describe('cache page', () => {
 		const playlistId = `e2e-playlist-${uniqueSuffix()}`;
 		const tracks = seedPlaylistWithSongs(userId, playlistId, 'Cache Test Playlist', 2);
 
-		await page.goto('/cache');
+		await page.goto('/settings/offline-cache');
 
 		await expect(page.getByText(tracks[0].title)).toBeVisible();
 		await expect(page.getByRole('button', { name: 'Pin', exact: true }).first()).toBeVisible();
@@ -38,7 +38,7 @@ test.describe('cache page', () => {
 		const playlistId = `e2e-playlist-${uniqueSuffix()}`;
 		const tracks = seedPlaylistWithSongs(userId, playlistId, 'Cache Pin Test Playlist', 1);
 
-		await page.goto('/cache');
+		await page.goto('/settings/offline-cache');
 		await page.getByRole('button', { name: 'Pin', exact: true }).click();
 
 		await expect(page.getByRole('button', { name: 'Pinned' })).toBeVisible();
@@ -54,7 +54,7 @@ test.describe('cache page', () => {
 		const playlistId = `e2e-playlist-${uniqueSuffix()}`;
 		seedPlaylistWithSongs(userId, playlistId, 'Cache Unpin Test Playlist', 1);
 
-		await page.goto('/cache');
+		await page.goto('/settings/offline-cache');
 		await page.getByRole('button', { name: 'Pin', exact: true }).click();
 		await expect(page.getByRole('button', { name: 'Pinned' })).toBeVisible();
 
