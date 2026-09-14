@@ -16,6 +16,10 @@ export default defineConfig({
 		{
 			name: 'chromium',
 			use: { ...devices['Desktop Chrome'], channel: 'chrome' }
+		},
+		{
+			name: 'mobile-chromium',
+			use: { ...devices['Pixel 7'], channel: 'chrome' }
 		}
 	],
 	globalSetup: './e2e/global-setup.ts',

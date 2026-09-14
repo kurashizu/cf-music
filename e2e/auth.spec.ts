@@ -29,6 +29,17 @@ async function login(page: Page, opts: { username: string; password: string }) {
 	await panel.getByRole('button', { name: 'Login' }).click();
 }
 
+// The desktop sidebar and mobile header each render their own "Log out"
+// button; only one is visually shown per breakpoint via CSS (display:none
+// on the other), so scope by container instead of relying on visibility
+// filtering, which strict mode would otherwise reject as ambiguous.
+async function logout(page: Page) {
+	const sidebarButton = page.locator('aside').getByRole('button', { name: 'Log out' });
+	const headerButton = page.locator('header').getByRole('button', { name: 'Log out' });
+	const visible = (await sidebarButton.isVisible()) ? sidebarButton : headerButton;
+	await visible.click();
+}
+
 test.describe('login page', () => {
 	test('shows the login tab by default with username and password fields', async ({ page }) => {
 		await page.goto('/');
@@ -81,7 +92,7 @@ test.describe('login page', () => {
 		await register(page, { username, password: 'correct-horse-battery', inviteCode });
 
 		await expect(page).toHaveURL('/library');
-		await expect(page.getByText(`Signed in as ${username}`)).toBeVisible();
+		await expect(page.getByText('Your playlists')).toBeVisible();
 	});
 
 	test('an invite code cannot be reused after registration', async ({ page }) => {
@@ -92,7 +103,7 @@ test.describe('login page', () => {
 		await register(page, { username: firstUsername, password: 'correct-horse-battery', inviteCode });
 		await expect(page).toHaveURL('/library');
 
-		await page.getByRole('button', { name: 'Log out' }).click();
+		await logout(page);
 		await expect(page).toHaveURL('/');
 
 		const secondUsername = `e2e-user-${uniqueSuffix()}`;
@@ -111,15 +122,15 @@ test.describe('login page', () => {
 		await register(page, { username, password, inviteCode });
 		await expect(page).toHaveURL('/library');
 
-		await page.getByRole('button', { name: 'Log out' }).click();
+		await logout(page);
 		await expect(page).toHaveURL('/');
 
 		await login(page, { username, password });
 
 		await expect(page).toHaveURL('/library');
-		await expect(page.getByText(`Signed in as ${username}`)).toBeVisible();
+		await expect(page.getByText('Your playlists')).toBeVisible();
 
-		await page.getByRole('button', { name: 'Log out' }).click();
+		await logout(page);
 		await expect(page).toHaveURL('/');
 	});
 
