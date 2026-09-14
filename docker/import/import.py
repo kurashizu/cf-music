@@ -36,6 +36,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -80,8 +81,12 @@ def fetch_known_video_ids(video_ids: list[str]) -> set[str]:
             "X-Signature-256": f"sha256={sign(body.decode())}",
         },
     )
-    with urllib.request.urlopen(request, timeout=30) as response:
-        result = json.loads(response.read())
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            result = json.loads(response.read())
+    except urllib.error.HTTPError as exc:
+        print(f"known-video-ids lookup failed: {exc.code} {exc.read()[:500]!r}", file=sys.stderr)
+        raise
     return set(result["knownVideoIds"])
 
 
