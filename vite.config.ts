@@ -36,6 +36,7 @@ export default defineConfig({
 				'src/lib/server/auth/service.ts',
 				'src/lib/server/eviction/usage.ts',
 				'src/lib/server/eviction/execute.ts',
+				'src/lib/server/import/**',
 				'src/lib/server/storage/s3.ts' // makes real network calls to MinIO; not covered by any automated test tier
 			]
 		},
