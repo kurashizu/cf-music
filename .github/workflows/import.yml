@@ -25,12 +25,23 @@ jobs:
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
-      # The image's own ENTRYPOINT runs import.py directly, which is what we
-      # want for every other use of this image — override it here so the
-      # container just stays alive and `docker exec`-style steps below can
-      # each fail independently and surface in the Actions log individually,
-      # instead of one opaque non-zero exit from a single entrypoint run.
-      options: --entrypoint=""
+      # GitHub Actions replaces the image's own ENTRYPOINT with its own
+      # keep-alive process for container jobs regardless of what the image
+      # sets (the `--entrypoint` container.options override is explicitly
+      # unsupported), so the workflow's own step below runs start.sh
+      # explicitly rather than relying on any image entrypoint.
+      #
+      # NET_ADMIN + the TUN device are what the official WARP client needs
+      # to bring up its interface even in proxy mode (no TUN traffic
+      # actually flows through it in this mode, but warp-svc still requires
+      # the capability to initialize). --network/--entrypoint are the only
+      # container.options GitHub explicitly disallows; cap_add and devices
+      # are not on that list.
+      options: >-
+        --cap-add=NET_ADMIN
+        --device=/dev/net/tun:/dev/net/tun
+        --sysctl net.ipv6.conf.all.disable_ipv6=0
+        --sysctl net.ipv4.conf.all.src_valid_mark=1
     steps:
       - name: Run import
         working-directory: /import
@@ -44,7 +55,4 @@ jobs:
           MINIO_BUCKET: ${{ secrets.MINIO_BUCKET }}
           MINIO_ACCESS_KEY: ${{ secrets.MINIO_ACCESS_KEY }}
           MINIO_SECRET_KEY: ${{ secrets.MINIO_SECRET_KEY }}
-          WARP_PRIVATE_KEY: ${{ secrets.WARP_PRIVATE_KEY }}
-          WARP_ADDRESS: ${{ secrets.WARP_ADDRESS }}
-          WARP_PUBLIC_KEY: ${{ secrets.WARP_PUBLIC_KEY }}
-        run: python /import/import.py
+        run: /import/start.sh

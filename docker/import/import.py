@@ -14,12 +14,18 @@ connecting to it — the DO tags this connection `ci:{job_id}` so a browser's
 confirm/cancel decision (sent over its own connection to the same DO) gets
 routed back here specifically.
 
-All network egress except the WebSocket connection, the known-video-ids
-lookup, and the S3 upload goes through wireproxy's SOCKS5 proxy (WARP),
-started as a subprocess before any yt-dlp/download work begins. Every
-external dependency (yt-dlp, ffmpeg, boto3, websockets, wireproxy) is baked
-into the container image at build time — this script does not
-`pip install` or `apk add` anything at runtime.
+All yt-dlp network egress goes through the official Cloudflare WARP
+client's own SOCKS5 proxy mode (`warp-cli mode proxy`), which start.sh
+brings up before this script runs — see that file for why (WARP has no
+musl/Alpine build, and every third-party WireGuard-credential tool
+available at the time this was built was rate-limited or otherwise
+unreachable, which is why the client registers and manages its own keys
+internally rather than this script being handed raw WireGuard
+parameters). The WebSocket connection, known-video-ids lookup, and S3
+upload go direct, not through the proxy. Every external dependency
+(yt-dlp, ffmpeg, boto3, websockets) is baked into the container image at
+build time — this script does not `pip install` or `apt install` anything
+at runtime.
 """
 
 import asyncio
@@ -30,7 +36,6 @@ import os
 import subprocess
 import sys
 import tempfile
-import time
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -84,24 +89,6 @@ def websocket_url() -> str:
     base = WORKER_BASE_URL.replace("https://", "wss://").replace("http://", "ws://")
     query = urllib.parse.urlencode({"role": "ci", "jobId": JOB_ID, "signature": sign(JOB_ID)})
     return f"{base}/api/import/ws?{query}"
-
-
-def start_wireproxy() -> subprocess.Popen:
-    template = Path("/import/wireproxy.conf.template").read_text()
-    config = (
-        template.replace("{{WARP_PRIVATE_KEY}}", os.environ["WARP_PRIVATE_KEY"])
-        .replace("{{WARP_ADDRESS}}", os.environ["WARP_ADDRESS"])
-        .replace("{{WARP_PUBLIC_KEY}}", os.environ["WARP_PUBLIC_KEY"])
-    )
-    config_path = Path(tempfile.mkstemp(suffix=".conf")[1])
-    config_path.write_text(config)
-
-    process = subprocess.Popen(["wireproxy", "-c", str(config_path)])
-    # wireproxy needs a moment to bring the tunnel + local SOCKS5 listener up
-    # before yt-dlp's first request; there's no readiness signal to poll for,
-    # so this is a fixed startup delay rather than a health check.
-    time.sleep(3)
-    return process
 
 
 def extract_playlist_entries(source_url: str) -> list[dict]:
@@ -286,17 +273,9 @@ async def run() -> None:
         await send_event({"type": "complete"})
 
 
-def main() -> None:
-    wireproxy_process = start_wireproxy()
-    try:
-        asyncio.run(run())
-    finally:
-        wireproxy_process.terminate()
-
-
 if __name__ == "__main__":
     try:
-        main()
+        asyncio.run(run())
     except Exception:  # noqa: BLE001 - surface a non-zero exit for the workflow's own logs
         print("Import job failed", file=sys.stderr)
         raise
