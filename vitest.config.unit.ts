@@ -18,6 +18,8 @@ export default defineConfig({
 			'src/lib/server/auth/**/*.test.ts',
 			'src/lib/server/eviction/**/*.test.ts',
 			'src/lib/server/http/**/*.test.ts',
+			'src/lib/server/import/webhook-auth.test.ts',
+			'src/lib/server/import/event-body.test.ts',
 			'src/lib/server/storage/**/*.test.ts',
 			'src/lib/shared/**/*.test.ts'
 		],

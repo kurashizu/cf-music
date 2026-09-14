@@ -3,7 +3,14 @@
 	"compilerOptions": {
 		"rewriteRelativeImportExtensions": true,
 		"allowJs": true,
-		"checkJs": true,
+		// Disabled: worker-entry.ts imports the built SvelteKit worker output
+		// (.svelte-kit/cloudflare/_worker.js) to re-export it alongside our
+		// Durable Object classes (see that file's comment for why). With
+		// checkJs on, TS tried to fully type-check that generated bundle —
+		// and its transitive chunk imports — as if it were hand-authored
+		// source. The project has no .js source files of its own, so this
+		// has no effect on catching bugs in code we actually write.
+		"checkJs": false,
 		"esModuleInterop": true,
 		"forceConsistentCasingInFileNames": true,
 		"resolveJsonModule": true,

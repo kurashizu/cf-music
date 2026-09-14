@@ -22,6 +22,8 @@ export default {
 		'src/lib/server/http/**/*.ts',
 		'!src/lib/server/http/**/*.test.ts',
 		'src/lib/server/storage/object-key.ts',
+		'src/lib/server/import/webhook-auth.ts',
+		'src/lib/server/import/event-body.ts',
 		'src/lib/shared/**/*.ts',
 		'!src/lib/shared/**/*.test.ts'
 	],

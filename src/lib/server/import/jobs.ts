@@ -40,6 +40,19 @@ export async function getImportJob(db: Db, jobId: string, userId: string) {
 	return getOwnedJob(db, jobId, userId);
 }
 
+/**
+ * Fetches a job without an ownership check — for the GitHub Actions webhook
+ * callback only, which authenticates via HMAC signature (see
+ * webhook-auth.ts) rather than a user session, and needs to first discover
+ * which user a job belongs to before it can call the ownership-checked
+ * functions below.
+ */
+export async function getImportJobUnchecked(db: Db, jobId: string) {
+	const job = await db.query.importJobs.findFirst({ where: eq(importJobs.id, jobId) });
+	if (!job) throw new ImportJobError('Import job not found', 'not_found');
+	return job;
+}
+
 /** Called once CI has resolved the source URL and knows how many items to expect. */
 export async function startImportJob(db: Db, jobId: string, totalCount: number): Promise<void> {
 	await db

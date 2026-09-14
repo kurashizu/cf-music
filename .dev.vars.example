@@ -2,3 +2,14 @@ MINIO_ENDPOINT=https://s3api.022025.xyz
 MINIO_BUCKET=cf-music
 MINIO_ACCESS_KEY=
 MINIO_SECRET_KEY=
+
+# Shared HMAC secret with the GitHub Actions import workflow (see
+# src/lib/server/import/webhook-auth.ts). Must match the same value the
+# workflow uses to sign its callback requests.
+IMPORT_WEBHOOK_SECRET=
+
+# GitHub Actions workflow_dispatch config for triggering imports.
+GITHUB_REPO_OWNER=
+GITHUB_REPO_NAME=
+GITHUB_IMPORT_WORKFLOW_FILE=import.yml
+GITHUB_ACTIONS_TOKEN=

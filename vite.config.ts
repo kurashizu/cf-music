@@ -36,7 +36,9 @@ export default defineConfig({
 				'src/lib/server/auth/service.ts',
 				'src/lib/server/eviction/usage.ts',
 				'src/lib/server/eviction/execute.ts',
-				'src/lib/server/import/**',
+				'src/lib/server/import/jobs.ts',
+				'src/lib/server/import/github-actions.ts', // makes real network calls to the GitHub API; not covered by any automated test tier
+				'src/lib/server/durable-objects/**', // Workers-runtime bound (WebSocketPair, DurableObjectState); no automated test tier covers these yet
 				'src/lib/server/storage/s3.ts' // makes real network calls to MinIO; not covered by any automated test tier
 			]
 		},

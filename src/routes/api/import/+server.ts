@@ -1,0 +1,47 @@
+import { json, error } from '@sveltejs/kit';
+import type { RequestHandler } from './$types';
+import { getDb } from '$lib/server/db';
+import { requireSession } from '$lib/server/auth/guard';
+import { pickStrings } from '$lib/server/http/validate';
+import { createImportJob } from '$lib/server/import/jobs';
+import { dispatchImportWorkflow } from '$lib/server/import/github-actions';
+
+/**
+ * Starts an import: creates the D1 job record, then dispatches the GitHub
+ * Actions workflow that actually runs yt-dlp. Per-song progress and
+ * completion are reported back asynchronously via
+ * POST /api/import/[jobId]/events, not this endpoint's response.
+ */
+export const POST: RequestHandler = async (event) => {
+	const session = requireSession(event);
+	const body = await event.request.json().catch(() => null);
+	const fields = pickStrings(body, ['sourceUrl'] as const);
+	if (!fields || fields.sourceUrl.trim().length === 0) {
+		error(400, 'sourceUrl is required');
+	}
+
+	const targetPlaylistIdRaw =
+		typeof body === 'object' && body !== null ? (body as Record<string, unknown>).targetPlaylistId : undefined;
+	const targetPlaylistId = typeof targetPlaylistIdRaw === 'string' ? targetPlaylistIdRaw : undefined;
+
+	const env = event.platform!.env;
+	const db = getDb(env.DB);
+
+	const { id: jobId } = await createImportJob(db, {
+		userId: session.userId,
+		sourceUrl: fields.sourceUrl,
+		targetPlaylistId
+	});
+
+	await dispatchImportWorkflow(
+		{
+			owner: env.GITHUB_REPO_OWNER,
+			repo: env.GITHUB_REPO_NAME,
+			workflowFileName: env.GITHUB_IMPORT_WORKFLOW_FILE,
+			token: env.GITHUB_ACTIONS_TOKEN
+		},
+		{ jobId, userId: session.userId, sourceUrl: fields.sourceUrl }
+	);
+
+	return json({ jobId }, { status: 201 });
+};

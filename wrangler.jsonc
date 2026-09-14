@@ -18,5 +18,19 @@
 			"database_name": "cf-music",
 			"database_id": "3d2a7a20-7325-4d34-9594-92d506b26535"
 		}
+	],
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "IMPORT_PROGRESS",
+				"class_name": "ImportProgressDurableObject"
+			}
+		]
+	},
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": ["ImportProgressDurableObject"]
+		}
 	]
 }
