@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { pickStrings } from './validate';
+import { pickStrings, isStringArray, pickStringArray } from './validate';
 
 describe('pickStrings', () => {
 	it('extracts all requested string fields', () => {
@@ -41,5 +41,58 @@ describe('pickStrings', () => {
 
 	it('treats an array body as a non-matching object (missing named keys)', () => {
 		expect(pickStrings(['x', 'y'], ['a'])).toBeNull();
+	});
+});
+
+describe('isStringArray', () => {
+	it('returns true for an array of strings', () => {
+		expect(isStringArray(['a', 'b', 'c'])).toBe(true);
+	});
+
+	it('returns true for an empty array', () => {
+		expect(isStringArray([])).toBe(true);
+	});
+
+	it('returns false for an array containing a non-string element', () => {
+		expect(isStringArray(['a', 1, 'c'])).toBe(false);
+	});
+
+	it('returns false for a non-array value', () => {
+		expect(isStringArray('not-an-array')).toBe(false);
+	});
+
+	it('returns false for null', () => {
+		expect(isStringArray(null)).toBe(false);
+	});
+});
+
+describe('pickStringArray', () => {
+	it('extracts a named array-of-strings field', () => {
+		expect(pickStringArray({ ids: ['a', 'b'] }, 'ids')).toEqual(['a', 'b']);
+	});
+
+	it('returns null when body is not an object', () => {
+		expect(pickStringArray('not-an-object', 'ids')).toBeNull();
+	});
+
+	it('rejects a non-object body even when it happens to carry a matching array-valued property', () => {
+		// Isolates the outer `typeof body !== 'object'` guard: functions are
+		// `typeof 'function'` (not 'object') yet can carry arbitrary own
+		// properties. If the guard were skipped, indexing into this function
+		// by `key` would find a genuine string array and incorrectly succeed.
+		const bodyLikeAFunction = Object.assign(() => {}, { ids: ['a', 'b'] });
+		expect(pickStringArray(bodyLikeAFunction, 'ids')).toBeNull();
+	});
+
+	it('returns null when body is null', () => {
+		expect(pickStringArray(null, 'ids')).toBeNull();
+	});
+
+	it('returns null when the named field is missing', () => {
+		expect(pickStringArray({}, 'ids')).toBeNull();
+	});
+
+	it('returns null when the named field is not an array of strings', () => {
+		expect(pickStringArray({ ids: [1, 2] }, 'ids')).toBeNull();
 	});
 });

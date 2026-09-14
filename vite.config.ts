@@ -29,8 +29,11 @@ export default defineConfig({
 				'src/lib/**/*.test.ts',
 				'src/lib/**/*.spec.ts',
 				'src/lib/index.ts', // barrel re-export file, no logic of its own
-				'src/lib/server/db/**', // Drizzle schema/binding wiring, exercised via integration tests, not unit CRAP scoring
-				'src/lib/server/auth/service.ts' // D1-bound; covered by *.integration.test.ts under vitest.config.workers.ts instead
+				// D1-bound modules: covered by *.integration.test.ts under
+				// vitest.config.workers.ts instead of the unit/CRAP pipeline here.
+				'src/lib/server/db/**',
+				'src/lib/server/library/**',
+				'src/lib/server/auth/service.ts'
 			]
 		},
 		projects: [
