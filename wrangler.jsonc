@@ -12,6 +12,13 @@
 	},
 	"workers_dev": true,
 	"preview_urls": true,
+	"vars": {
+		"MINIO_ENDPOINT": "https://s3api.022025.xyz",
+		"MINIO_BUCKET": "cf-music",
+		"GITHUB_REPO_OWNER": "kurashizu",
+		"GITHUB_REPO_NAME": "cf-music",
+		"GITHUB_IMPORT_WORKFLOW_FILE": "import.yml"
+	},
 	"d1_databases": [
 		{
 			"binding": "DB",
