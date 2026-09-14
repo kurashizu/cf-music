@@ -71,6 +71,8 @@
 			});
 			sourceUrl = '';
 			toast.success('Import started');
+		} catch {
+			toast.error('Failed to start import');
 		} finally {
 			submitting = false;
 		}

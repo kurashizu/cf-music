@@ -40,14 +40,20 @@
 				...inviteCodes
 			];
 			toast.success('Invite code created');
+		} catch {
+			toast.error('Failed to generate invite code');
 		} finally {
 			generating = false;
 		}
 	}
 
 	async function copyCode(code: string) {
-		await navigator.clipboard.writeText(code);
-		toast.success('Copied to clipboard');
+		try {
+			await navigator.clipboard.writeText(code);
+			toast.success('Copied to clipboard');
+		} catch {
+			toast.error('Failed to copy to clipboard');
+		}
 	}
 
 	function openQuotaDialog(user: { id: string; username: string; storageQuotaBytes: number }) {
@@ -78,6 +84,8 @@
 			users = users.map((u) => (u.id === quotaTarget!.id ? { ...u, storageQuotaBytes: quotaBytes } : u));
 			toast.success('Quota updated');
 			quotaTarget = null;
+		} catch {
+			toast.error('Failed to update quota');
 		} finally {
 			quotaSubmitting = false;
 		}

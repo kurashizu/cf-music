@@ -47,6 +47,8 @@
 			createOpen = false;
 			createName = '';
 			await invalidateAll();
+		} catch {
+			toast.error('Failed to create playlist');
 		} finally {
 			createSubmitting = false;
 		}
@@ -74,6 +76,8 @@
 			toast.success('Playlist renamed');
 			renameTarget = null;
 			await invalidateAll();
+		} catch {
+			toast.error('Failed to rename playlist');
 		} finally {
 			renameSubmitting = false;
 		}
@@ -91,6 +95,8 @@
 			toast.success('Playlist deleted');
 			deleteTarget = null;
 			await invalidateAll();
+		} catch {
+			toast.error('Failed to delete playlist');
 		} finally {
 			deleteSubmitting = false;
 		}

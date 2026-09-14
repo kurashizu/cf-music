@@ -81,6 +81,8 @@
 			toast.success('Removed from playlist');
 			removeTarget = null;
 			await invalidateAll();
+		} catch {
+			toast.error('Failed to remove song');
 		} finally {
 			removeSubmitting = false;
 		}
@@ -102,12 +104,17 @@
 
 	async function handleDragEnd() {
 		draggingIndex = null;
-		const response = await fetch(`/api/playlists/${data.playlist.id}/reorder`, {
-			method: 'PUT',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ orderedVideoIds: songs.map((s) => s.videoId) })
-		});
-		if (!response.ok) {
+		try {
+			const response = await fetch(`/api/playlists/${data.playlist.id}/reorder`, {
+				method: 'PUT',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ orderedVideoIds: songs.map((s) => s.videoId) })
+			});
+			if (!response.ok) {
+				toast.error('Failed to save the new order');
+				await invalidateAll();
+			}
+		} catch {
 			toast.error('Failed to save the new order');
 			await invalidateAll();
 		}

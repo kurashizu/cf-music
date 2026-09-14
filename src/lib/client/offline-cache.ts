@@ -14,20 +14,31 @@ async function postToServiceWorker(message: unknown): Promise<void> {
 	registration.active?.postMessage(message);
 }
 
+const LIST_CACHED_AUDIO_TIMEOUT_MS = 5000;
+
 /**
  * Asks the service worker (via a MessageChannel reply port, since
  * postMessage alone is fire-and-forget) which videoIds it currently has
- * audio cached for.
+ * audio cached for. Races the reply against a timeout — a crashed or
+ * mid-update service worker that never responds would otherwise leave this
+ * promise (and reconcileAudioCache's whole call) hanging forever with no
+ * error and no signal that the "keep cache synced" pass silently stopped
+ * running.
  */
 async function listCachedVideoIds(): Promise<string[]> {
 	const registration = await navigator.serviceWorker.ready;
 	if (!registration.active) return [];
 
-	return new Promise((resolve) => {
+	const reply = new Promise<string[]>((resolve) => {
 		const channel = new MessageChannel();
 		channel.port1.onmessage = (event) => resolve(event.data.videoIds as string[]);
 		registration.active!.postMessage({ type: 'LIST_CACHED_AUDIO' }, [channel.port2]);
 	});
+	const timeout = new Promise<string[]>((resolve) =>
+		setTimeout(() => resolve([]), LIST_CACHED_AUDIO_TIMEOUT_MS)
+	);
+
+	return Promise.race([reply, timeout]);
 }
 
 /**

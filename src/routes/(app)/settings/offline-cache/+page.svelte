@@ -64,6 +64,8 @@
 				// the space (see reconcileAudioCache).
 				precachePinnedSongs([videoId]);
 			}
+		} catch {
+			toast.error('Failed to update cache preference');
 		} finally {
 			pendingVideoId = null;
 		}

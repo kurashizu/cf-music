@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { goto, invalidateAll } from '$app/navigation';
+	import { toast } from 'svelte-sonner';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Toaster } from '$lib/components/ui/sonner/index.js';
 	import Logo from '$lib/components/logo.svelte';
@@ -30,9 +31,17 @@
 	}
 
 	async function handleLogout() {
-		await fetch('/api/auth/logout', { method: 'POST' });
-		await invalidateAll();
-		await goto('/');
+		try {
+			const response = await fetch('/api/auth/logout', { method: 'POST' });
+			if (!response.ok) {
+				toast.error('Failed to log out');
+				return;
+			}
+			await invalidateAll();
+			await goto('/');
+		} catch {
+			toast.error('Failed to log out');
+		}
 	}
 </script>
 
