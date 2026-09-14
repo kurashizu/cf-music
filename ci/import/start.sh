@@ -1,9 +1,12 @@
 #!/bin/bash
 # Brings up the official WARP client in SOCKS5 proxy mode (no TUN device,
 # no NAT — proxy mode routes only this process's traffic, which is all the
-# import job needs) and then runs the import script. GitHub Actions
-# container jobs run as root, so no sudo/user-switching dance is needed
-# here, unlike community reference images built for arbitrary hosts.
+# import job needs) and then runs the import script.
+#
+# Runs on a plain ubuntu-latest GitHub-hosted runner (not a container job),
+# whose default user is the unprivileged `runner` account — warp-svc needs
+# root to manage its network interface/firewall state, so every WARP-related
+# command below goes through sudo.
 #
 # -e is intentionally not set: a non-zero import.py exit must still reach
 # the warp-svc cleanup at the bottom, not abort the script mid-way and
@@ -11,14 +14,16 @@
 # checked explicitly instead.
 set -uo pipefail
 
-mkdir -p /run/dbus
-rm -f /run/dbus/pid
-dbus-daemon --config-file=/usr/share/dbus-1/system.conf || {
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+sudo mkdir -p /run/dbus
+sudo rm -f /run/dbus/pid
+sudo dbus-daemon --config-file=/usr/share/dbus-1/system.conf || {
 	echo "Failed to start dbus-daemon" >&2
 	exit 1
 }
 
-# Every job starts in a freshly pulled container with no prior state, so
+# Every job starts on a freshly provisioned runner with no prior state, so
 # without this, `registration new` below would run on every single job —
 # a fresh anonymous WARP identity per run. Restoring a previously saved one
 # from MinIO (see warp_identity.py) means registration only actually
@@ -34,22 +39,27 @@ dbus-daemon --config-file=/usr/share/dbus-1/system.conf || {
 # best-effort internally (a missing/corrupt cache just means a fresh
 # registration happens next), so a timeout here is treated the same way —
 # log it and move on rather than failing the job.
-timeout 30 python3 /import/warp_identity.py restore \
+# /var/lib/cloudflare-warp is root-owned, and this process runs as the
+# runner's unprivileged user — sudo is needed for the script to read/write
+# into it, same as every other WARP-related command below.
+timeout 30 sudo -E python3 "$SCRIPT_DIR/warp_identity.py" restore \
 	|| echo "WARP identity restore failed or timed out; will register fresh" >&2
 
 # warp-svc is a Rust binary using the standard RUST_LOG convention; left at
 # its default it emits its own internal connection/tunnel-negotiation debug
 # log lines straight into the job log with no way to tell them apart from
 # our own output. Redirected to a file instead — only dumped out on failure.
-RUST_LOG=warn warp-svc --accept-tos >/var/log/warp-svc.log 2>&1 &
-WARP_SVC_PID=$!
+# Started via `sudo ... &`, so $! is the sudo wrapper's PID, not warp-svc's
+# own — killing that wrapper doesn't reliably reach the real process. Clean
+# up by name instead (pkill -x warp-svc) everywhere this needs to stop it.
+sudo env RUST_LOG=warn warp-svc --accept-tos >/tmp/warp-svc.log 2>&1 &
 
 # warp-svc needs a moment to open its D-Bus service before warp-cli can
 # reach it; there's no readiness probe to poll, so this is a fixed delay.
 sleep 3
 
-mkdir -p ~/.local/share/warp
-echo -n 'yes' > ~/.local/share/warp/accepted-tos.txt
+sudo mkdir -p /root/.local/share/warp
+echo -n 'yes' | sudo tee /root/.local/share/warp/accepted-tos.txt >/dev/null
 
 # registration/connect talk to Cloudflare's backend with no built-in
 # timeout — left unguarded, a slow/stuck network call hangs the whole job
@@ -59,25 +69,25 @@ WARP_CMD_TIMEOUT=60
 fail_warp() {
 	echo "$1" >&2
 	echo "---- warp-svc log ----" >&2
-	cat /var/log/warp-svc.log >&2 2>/dev/null || true
-	kill "$WARP_SVC_PID" 2>/dev/null || true
+	sudo cat /tmp/warp-svc.log >&2 2>/dev/null || true
+	sudo pkill -x warp-svc 2>/dev/null || true
 	exit 1
 }
 
-if [ ! -f /var/lib/cloudflare-warp/reg.json ]; then
-	timeout "$WARP_CMD_TIMEOUT" warp-cli --accept-tos registration new \
+if ! sudo test -f /var/lib/cloudflare-warp/reg.json; then
+	timeout "$WARP_CMD_TIMEOUT" sudo warp-cli --accept-tos registration new \
 		|| fail_warp "WARP registration failed or timed out after ${WARP_CMD_TIMEOUT}s"
 	# Best-effort: failing to cache the identity just means the next job
 	# registers fresh again too, not a reason to fail this one.
-	timeout 30 python3 /import/warp_identity.py save \
+	timeout 30 sudo -E python3 "$SCRIPT_DIR/warp_identity.py" save \
 		|| echo "WARP identity save failed or timed out; next job will register fresh" >&2
 fi
 
-timeout "$WARP_CMD_TIMEOUT" warp-cli --accept-tos mode proxy \
+timeout "$WARP_CMD_TIMEOUT" sudo warp-cli --accept-tos mode proxy \
 	|| fail_warp "warp-cli mode proxy failed or timed out after ${WARP_CMD_TIMEOUT}s"
-timeout "$WARP_CMD_TIMEOUT" warp-cli --accept-tos proxy port 40000 \
+timeout "$WARP_CMD_TIMEOUT" sudo warp-cli --accept-tos proxy port 40000 \
 	|| fail_warp "warp-cli proxy port failed or timed out after ${WARP_CMD_TIMEOUT}s"
-timeout "$WARP_CMD_TIMEOUT" warp-cli --accept-tos connect \
+timeout "$WARP_CMD_TIMEOUT" sudo warp-cli --accept-tos connect \
 	|| fail_warp "warp-cli connect failed or timed out after ${WARP_CMD_TIMEOUT}s"
 
 # Wait for the proxy port to actually accept connections before starting
@@ -98,8 +108,8 @@ if [ "$PROXY_READY" -ne 1 ]; then
 	fail_warp "WARP proxy did not become ready on 127.0.0.1:40000"
 fi
 
-python3 /import/import.py
+python3 "$SCRIPT_DIR/import.py"
 EXIT_CODE=$?
 
-kill "$WARP_SVC_PID" 2>/dev/null || true
+sudo pkill -x warp-svc 2>/dev/null || true
 exit $EXIT_CODE

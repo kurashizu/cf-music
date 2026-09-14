@@ -15,37 +15,58 @@ on:
 
 permissions:
   contents: read
-  packages: read
 
 jobs:
   import:
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/${{ github.repository }}/import:latest
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-      # GitHub Actions replaces the image's own ENTRYPOINT with its own
-      # keep-alive process for container jobs regardless of what the image
-      # sets (the `--entrypoint` container.options override is explicitly
-      # unsupported), so the workflow's own step below runs start.sh
-      # explicitly rather than relying on any image entrypoint.
-      #
-      # NET_ADMIN + the TUN device are what the official WARP client needs
-      # to bring up its interface even in proxy mode (no TUN traffic
-      # actually flows through it in this mode, but warp-svc still requires
-      # the capability to initialize). --network/--entrypoint are the only
-      # container.options GitHub explicitly disallows; cap_add and devices
-      # are not on that list.
-      options: >-
-        --cap-add=NET_ADMIN
-        --device=/dev/net/tun:/dev/net/tun
-        --sysctl net.ipv6.conf.all.disable_ipv6=0
-        --sysctl net.ipv4.conf.all.src_valid_mark=1
     steps:
+      - name: Cache apt packages
+        uses: actions/cache@v6
+        with:
+          path: /var/cache/apt/archives
+          key: import-apt-${{ hashFiles('.github/workflows/import.yml') }}
+
+      - name: Cache pip packages
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/pip
+          key: import-pip-${{ hashFiles('.github/workflows/import.yml') }}
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            curl gnupg lsb-release dbus python3 python3-venv ffmpeg ca-certificates
+          curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg \
+            | sudo gpg --yes --dearmor --output /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" \
+            | sudo tee /etc/apt/sources.list.d/cloudflare-client.list
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cloudflare-warp
+
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            ci/import
+
+      - name: Install Python dependencies
+        working-directory: ci/import
+        run: |
+          python3 -m venv /opt/venv
+          /opt/venv/bin/pip install boto3 websockets
+          # yt-dlp breaks constantly as YouTube changes its frontend, so
+          # --upgrade here is load-bearing, not optional: pinning it to
+          # whatever pip's cache happened to have would let a stale
+          # extractor silently start failing every import job. pip's HTTP
+          # cache (~/.cache/pip) still short-circuits re-downloading the
+          # wheel when it's already the latest, so this stays fast on the
+          # common case where nothing changed.
+          /opt/venv/bin/pip install --upgrade yt-dlp
+
       - name: Run import
-        working-directory: /import
+        working-directory: ci/import
         env:
+          PATH: /opt/venv/bin:/usr/bin:/bin:/usr/sbin:/sbin
           WORKER_BASE_URL: ${{ secrets.WORKER_BASE_URL }}
           IMPORT_WEBHOOK_SECRET: ${{ secrets.IMPORT_WEBHOOK_SECRET }}
           JOB_ID: ${{ inputs.job_id }}
@@ -55,4 +76,4 @@ jobs:
           MINIO_BUCKET: ${{ secrets.MINIO_BUCKET }}
           MINIO_ACCESS_KEY: ${{ secrets.MINIO_ACCESS_KEY }}
           MINIO_SECRET_KEY: ${{ secrets.MINIO_SECRET_KEY }}
-        run: /import/start.sh
+        run: chmod +x start.sh && ./start.sh

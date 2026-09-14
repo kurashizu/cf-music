@@ -16,16 +16,20 @@ routed back here specifically.
 
 All yt-dlp network egress goes through the official Cloudflare WARP
 client's own SOCKS5 proxy mode (`warp-cli mode proxy`), which start.sh
-brings up before this script runs — see that file for why (WARP has no
-musl/Alpine build, and every third-party WireGuard-credential tool
-available at the time this was built was rate-limited or otherwise
-unreachable, which is why the client registers and manages its own keys
-internally rather than this script being handed raw WireGuard
-parameters). The WebSocket connection, known-video-ids lookup, and S3
-upload go direct, not through the proxy. Every external dependency
-(yt-dlp, ffmpeg, boto3, websockets) is baked into the container image at
-build time — this script does not `pip install` or `apt install` anything
-at runtime.
+brings up before this script runs — see that file for why (every
+third-party WireGuard-credential tool available at the time this was
+built was rate-limited or otherwise unreachable, which is why the client
+registers and manages its own keys internally rather than this script
+being handed raw WireGuard parameters). The WebSocket connection,
+known-video-ids lookup, and S3 upload go direct, not through the proxy.
+
+Every external dependency (yt-dlp, ffmpeg, boto3, websockets, the WARP
+client itself) is installed at job start by import.yml, not baked into a
+prebuilt image — apt/pip package caches (via actions/cache) keep that
+fast on the common case where nothing changed, and yt-dlp specifically is
+force-upgraded every run regardless of cache state (see import.yml) since
+a stale extractor version silently breaks against YouTube's frequent
+frontend changes.
 """
 
 import asyncio
