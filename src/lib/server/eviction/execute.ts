@@ -70,8 +70,18 @@ export async function evictSongForUser(
 		.where(eq(playlistSongs.videoId, videoId));
 
 	if (remainingReferences === 0) {
-		await storage.deleteObjects([song.audioKey, ...(song.coverKey ? [song.coverKey] : [])]);
+		// D1 row deleted before the S3 objects, not after: if this request
+		// gets cut off (crash, timeout) between the two, the failure mode
+		// that leaves is a stray S3 object with no songs row — exactly
+		// what findOrphanedObjects (src/lib/server/eviction/orphan-scan.ts)
+		// already detects and is safe to clean up automatically. The
+		// opposite ordering would instead risk a songs row surviving with
+		// a dead audioKey/coverKey — undetectable by anything except a
+		// second, judgment-requiring scan (findDeadSongReferences), and
+		// any later playback attempt for it would just 404 with no
+		// indication why.
 		await db.delete(songs).where(eq(songs.videoId, videoId));
+		await storage.deleteObjects([song.audioKey, ...(song.coverKey ? [song.coverKey] : [])]);
 	}
 
 	await recordAuditEvent(db, {
