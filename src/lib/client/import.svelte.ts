@@ -56,10 +56,6 @@ class ImportStore {
 		this.jobs = next;
 	}
 
-	confirm(jobId: string, approved: boolean): void {
-		this.send({ jobId, action: 'confirm', approved });
-	}
-
 	cancel(jobId: string): void {
 		this.send({ jobId, action: 'cancel' });
 	}

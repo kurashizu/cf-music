@@ -76,12 +76,6 @@
 		}
 	}
 
-	function formatDuration(seconds: number | undefined): string {
-		if (seconds === undefined) return '';
-		const m = Math.floor(seconds / 60);
-		const s = Math.floor(seconds % 60);
-		return `${m}:${s.toString().padStart(2, '0')}`;
-	}
 </script>
 
 <svelte:head>
@@ -153,34 +147,7 @@
 							</span>
 						</div>
 
-						{#if job.status === 'pending_confirmation' && job.previewEntries}
-							<div class="rounded-lg border border-border p-3">
-								<div class="mb-2 flex items-center gap-1.5 text-sm">
-									<ListChecksIcon class="size-4" />
-									{job.previewEntries.length} {job.previewEntries.length === 1 ? 'song' : 'songs'} found
-								</div>
-								<ul class="mb-3 flex max-h-40 flex-col gap-1 overflow-y-auto text-sm text-muted-foreground">
-									{#each job.previewEntries as entry (entry.videoId)}
-										<li class="flex items-center justify-between gap-2">
-											<span class="truncate">{entry.title}</span>
-											<span class="shrink-0 text-xs">{formatDuration(entry.durationSeconds)}</span>
-										</li>
-									{/each}
-								</ul>
-								<div class="flex gap-2">
-									<Button size="sm" onclick={() => importStore.confirm(job.jobId, true)}>
-										Import all
-									</Button>
-									<Button
-										size="sm"
-										variant="outline"
-										onclick={() => importStore.confirm(job.jobId, false)}
-									>
-										Cancel
-									</Button>
-								</div>
-							</div>
-						{:else if job.status === 'running' || job.status === 'pending'}
+						{#if job.status === 'running' || job.status === 'pending'}
 							<div class="flex items-center gap-3">
 								<LoaderCircleIcon class="size-4 shrink-0 animate-spin text-muted-foreground" />
 								<div class="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
@@ -198,6 +165,12 @@
 									Cancel
 								</Button>
 							</div>
+							{#if job.previewEntries}
+								<div class="flex items-center gap-1.5 text-xs text-muted-foreground">
+									<ListChecksIcon class="size-4" />
+									{job.previewEntries.length} {job.previewEntries.length === 1 ? 'song' : 'songs'} found
+								</div>
+							{/if}
 						{:else if job.status === 'completed'}
 							<div class="flex items-center gap-1.5 text-sm text-muted-foreground">
 								<CircleCheckIcon class="size-4" />

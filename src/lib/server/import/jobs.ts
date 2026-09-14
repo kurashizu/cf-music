@@ -111,41 +111,18 @@ export async function startImportJob(db: Db, jobId: string, totalCount: number):
 
 /**
  * Called once CI has resolved the source URL into a concrete list of
- * videos. Parks the job in pending_confirmation — CI then polls
- * getImportJob() and only starts downloading once a user confirms via
- * confirmImportJob() (or gives up and treats a lingering
- * pending_confirmation as a timeout on its own side).
+ * videos — informational only (lets the UI show what was found). CI sends
+ * this immediately followed by a `start` event (see startImportJob), so
+ * this deliberately does not touch `status`: there's no confirmation gate
+ * to park the job behind anymore, downloading begins right away.
  */
 export async function submitImportPreview(db: Db, jobId: string, entries: PreviewEntry[]): Promise<void> {
 	await db
 		.update(importJobs)
 		.set({
-			status: 'pending_confirmation',
 			totalCount: entries.length,
 			previewEntries: JSON.stringify(entries)
 		})
-		.where(eq(importJobs.id, jobId));
-}
-
-/**
- * User-facing decision on a previewed import: `approved` moves the job to
- * running (CI's poll loop picks this up and starts downloading), rejecting
- * moves it straight to cancelled without ever downloading anything.
- */
-export async function confirmImportJob(
-	db: Db,
-	jobId: string,
-	userId: string,
-	approved: boolean
-): Promise<void> {
-	const job = await getOwnedJob(db, jobId, userId);
-	if (job.status !== 'pending_confirmation') {
-		throw new ImportJobError('Job is not awaiting confirmation', 'invalid_transition');
-	}
-
-	await db
-		.update(importJobs)
-		.set({ status: approved ? 'running' : 'cancelled' })
 		.where(eq(importJobs.id, jobId));
 }
 
@@ -154,14 +131,14 @@ export async function confirmImportJob(
  * between songs (see getImportJob polling in the CI script) and stops
  * early rather than continuing to download after the user has backed out.
  */
-const CANCELLABLE_STATUSES = new Set(['pending', 'pending_confirmation', 'running']);
+const CANCELLABLE_STATUSES = new Set(['pending', 'running']);
 
 /**
- * `pending` is included alongside `pending_confirmation`/`running` because
- * a job can get stuck there permanently if the GitHub Actions dispatch
- * itself failed (see dispatchImportWorkflow) — no CI process is ever going
- * to connect and move it forward on its own, so the user must be able to
- * cancel it from here too, not just once CI has picked it up.
+ * `pending` is included alongside `running` because a job can get stuck
+ * there permanently if the GitHub Actions dispatch itself failed (see
+ * dispatchImportWorkflow) — no CI process is ever going to connect and
+ * move it forward on its own, so the user must be able to cancel it from
+ * here too, not just once CI has picked it up.
  */
 export async function cancelImportJob(db: Db, jobId: string, userId: string): Promise<void> {
 	const job = await getOwnedJob(db, jobId, userId);

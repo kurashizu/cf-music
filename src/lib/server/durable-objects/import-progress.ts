@@ -6,7 +6,6 @@ import {
 	recordSongImported,
 	recordSongFailed,
 	completeImportJob,
-	confirmImportJob,
 	cancelImportJob,
 	ImportJobError
 } from '../import/jobs';
@@ -151,14 +150,10 @@ export class ImportProgressDurableObject implements DurableObject {
 			// /api/import/ws, which only lets a browser reach this instance
 			// after checking its own session cookie — so any browser socket
 			// connected here already belongs to this job's owner. The
-			// ownership check inside confirmImportJob/cancelImportJob is
-			// therefore redundant defense-in-depth, not the primary guard.
+			// ownership check inside cancelImportJob is therefore redundant
+			// defense-in-depth, not the primary guard.
 			const job = await getImportJobUnchecked(db, control.jobId);
-			if (control.action === 'confirm') {
-				await confirmImportJob(db, control.jobId, job.userId, control.approved ?? false);
-			} else {
-				await cancelImportJob(db, control.jobId, job.userId);
-			}
+			await cancelImportJob(db, control.jobId, job.userId);
 		} catch (err) {
 			if (!(err instanceof ImportJobError)) throw err;
 			return;

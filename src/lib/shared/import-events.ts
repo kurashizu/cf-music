@@ -47,14 +47,7 @@ export interface ImportProgressMessage {
 
 export interface ImportControlMessage {
 	jobId: string;
-	action: 'confirm' | 'cancel';
-	approved?: boolean;
+	action: 'cancel';
 }
 
-export type ImportJobStatus =
-	| 'pending'
-	| 'pending_confirmation'
-	| 'running'
-	| 'completed'
-	| 'failed'
-	| 'cancelled';
+export type ImportJobStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';

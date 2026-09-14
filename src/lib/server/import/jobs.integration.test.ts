@@ -13,7 +13,6 @@ import {
 	completeImportJob,
 	findKnownVideoIds,
 	submitImportPreview,
-	confirmImportJob,
 	cancelImportJob,
 	ImportJobError,
 	type SongImportSuccess
@@ -223,7 +222,7 @@ describe('findKnownVideoIds', () => {
 });
 
 describe('submitImportPreview', () => {
-	it('moves the job to pending_confirmation and stores the preview entries', async () => {
+	it('stores the preview entries without changing status (informational only, no confirmation gate)', async () => {
 		await seedUser('u1');
 		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x' });
 
@@ -233,52 +232,12 @@ describe('submitImportPreview', () => {
 		]);
 
 		const job = await getImportJob(db, id, 'u1');
-		expect(job.status).toBe('pending_confirmation');
+		expect(job.status).toBe('pending');
 		expect(job.totalCount).toBe(2);
 		expect(JSON.parse(job.previewEntries!)).toEqual([
 			{ videoId: 'a', title: 'Song A', durationSeconds: 120 },
 			{ videoId: 'b', title: 'Song B' }
 		]);
-	});
-});
-
-describe('confirmImportJob', () => {
-	it('moves an approved job from pending_confirmation to running', async () => {
-		await seedUser('u1');
-		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x' });
-		await submitImportPreview(db, id, [{ videoId: 'a', title: 'Song A' }]);
-
-		await confirmImportJob(db, id, 'u1', true);
-
-		const job = await getImportJob(db, id, 'u1');
-		expect(job.status).toBe('running');
-	});
-
-	it('moves a rejected job from pending_confirmation to cancelled', async () => {
-		await seedUser('u1');
-		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x' });
-		await submitImportPreview(db, id, [{ videoId: 'a', title: 'Song A' }]);
-
-		await confirmImportJob(db, id, 'u1', false);
-
-		const job = await getImportJob(db, id, 'u1');
-		expect(job.status).toBe('cancelled');
-	});
-
-	it('throws invalid_transition when the job is not awaiting confirmation', async () => {
-		await seedUser('u1');
-		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x' });
-
-		await expect(confirmImportJob(db, id, 'u1', true)).rejects.toThrow(ImportJobError);
-	});
-
-	it('throws not_found for a job belonging to a different user', async () => {
-		await seedUser('u1');
-		await seedUser('u2');
-		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x' });
-		await submitImportPreview(db, id, [{ videoId: 'a', title: 'Song A' }]);
-
-		await expect(confirmImportJob(db, id, 'u2', true)).rejects.toThrow(ImportJobError);
 	});
 });
 
@@ -304,7 +263,7 @@ describe('cancelImportJob', () => {
 		expect(job.status).toBe('cancelled');
 	});
 
-	it('cancels a job still awaiting confirmation', async () => {
+	it('cancels a job that has a preview but has not started downloading yet', async () => {
 		await seedUser('u1');
 		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x' });
 		await submitImportPreview(db, id, [{ videoId: 'a', title: 'Song A' }]);

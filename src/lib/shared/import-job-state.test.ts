@@ -23,11 +23,11 @@ describe('applyImportEvent', () => {
 		expect(next.totalCount).toBe(5);
 	});
 
-	it('preview sets status to pending_confirmation and stores the entries', () => {
+	it('preview stores the entries without changing status', () => {
 		const job = makeJob();
 		const entries = [{ videoId: 'a', title: 'Song A' }];
 		const next = applyImportEvent(job, { type: 'preview', entries });
-		expect(next.status).toBe('pending_confirmation');
+		expect(next.status).toBe('pending');
 		expect(next.previewEntries).toEqual(entries);
 	});
 

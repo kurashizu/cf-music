@@ -21,7 +21,7 @@ function applyStart(job: ImportJobState, totalCount: number): ImportJobState {
 }
 
 function applyPreview(job: ImportJobState, entries: PreviewEntry[]): ImportJobState {
-	return { ...job, status: 'pending_confirmation', previewEntries: entries };
+	return { ...job, previewEntries: entries };
 }
 
 function applySongSuccess(job: ImportJobState): ImportJobState {

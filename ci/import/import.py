@@ -62,7 +62,6 @@ MINIO_SECRET_KEY = os.environ["MINIO_SECRET_KEY"]
 
 SOCKS5_PROXY = "socks5://127.0.0.1:40000"
 COVER_CRF = "40"
-CONFIRMATION_TIMEOUT_SECONDS = 600
 
 
 def sign(message: str) -> str:
@@ -250,17 +249,10 @@ async def run() -> None:
             }
         )
 
-        try:
-            raw = await asyncio.wait_for(ws.recv(), timeout=CONFIRMATION_TIMEOUT_SECONDS)
-        except asyncio.TimeoutError:
-            print(f"No confirmation within {CONFIRMATION_TIMEOUT_SECONDS}s, exiting", file=sys.stderr)
-            return
-
-        decision = json.loads(raw)
-        if decision.get("action") != "confirm" or not decision.get("approved"):
-            print("Import was cancelled before starting", file=sys.stderr)
-            return
-
+        # No confirmation gate: the preview above is informational only now.
+        # Downloading starts immediately so the job never blocks on a human
+        # being present to click a button — a user can still cancel a job
+        # already in progress (checked before each song below).
         await send_event({"type": "start", "totalCount": len(entries)})
 
         s3_client = boto3.client(
