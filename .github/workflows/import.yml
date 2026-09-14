@@ -35,6 +35,19 @@ jobs:
             ci/import
             .github/workflows/import.yml
 
+      # actions/cache's restore/save steps both run as the unprivileged
+      # runner user, but /var/cache/apt/archives starts out root-owned on a
+      # fresh runner (nothing has run apt yet to create it as anything
+      # else). A prior fix chown'd it back to the runner user only *after*
+      # installs finished, which fixed saving the cache but not restoring
+      # it — restore runs before that point, so every run's tar extraction
+      # into this directory failed with "Permission denied" and silently
+      # fell through to a full reinstall regardless of the "cache hit"
+      # reported above it. Owning the directory upfront fixes both
+      # directions, since nothing else needs it to be root-owned.
+      - name: Prepare apt cache directory
+        run: sudo mkdir -p /var/cache/apt/archives && sudo chown -R "$(id -u):$(id -g)" /var/cache/apt/archives
+
       - name: Cache apt packages
         uses: actions/cache@v6
         with:
@@ -58,12 +71,11 @@ jobs:
             | sudo tee /etc/apt/sources.list.d/cloudflare-client.list
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends cloudflare-warp
-          # actions/cache's save step runs as the unprivileged runner user
-          # and can't read root-owned files under here (apt-get itself runs
-          # under sudo), so the cache save silently failed with "Permission
-          # denied" on partial/lock every time. Handing the directory back
-          # to the runner user after installs are done fixes that — nothing
-          # later in the job needs apt to still own this path.
+          # apt-get itself runs under sudo and writes new .deb files as
+          # root regardless of who owns the directory, so ownership drifts
+          # back to root here every run — hand it back to the runner user
+          # again before the job ends so actions/cache's save step (which
+          # also runs as the runner user) can read them back out.
           sudo chown -R "$(id -u):$(id -g)" /var/cache/apt/archives
 
       - name: Install Python dependencies
