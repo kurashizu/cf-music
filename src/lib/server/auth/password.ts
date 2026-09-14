@@ -1,5 +1,8 @@
 // PBKDF2 via Web Crypto API — no native bindings, runs on Cloudflare Workers.
-const PBKDF2_ITERATIONS = 210_000;
+// Workers' crypto.subtle rejects PBKDF2 iteration counts above 100,000
+// (NotSupportedError), which is below OWASP's current SHA-256 recommendation
+// (600,000) — this is the platform ceiling, not a deliberately chosen value.
+const PBKDF2_ITERATIONS = 100_000;
 const SALT_BYTES = 16;
 const HASH_BYTES = 32;
 
@@ -20,7 +23,7 @@ function fromHex(hex: string): Uint8Array {
 	return new Uint8Array(pairs.map((pair) => parseInt(pair, 16)));
 }
 
-async function derive(password: string, salt: Uint8Array): Promise<ArrayBuffer> {
+async function derive(password: string, salt: Uint8Array, iterations: number): Promise<ArrayBuffer> {
 	const keyMaterial = await crypto.subtle.importKey(
 		'raw',
 		new TextEncoder().encode(password),
@@ -32,7 +35,7 @@ async function derive(password: string, salt: Uint8Array): Promise<ArrayBuffer> 
 		{
 			name: 'PBKDF2',
 			salt: salt as BufferSource,
-			iterations: PBKDF2_ITERATIONS,
+			iterations,
 			hash: 'SHA-256'
 		},
 		keyMaterial,
@@ -43,7 +46,7 @@ async function derive(password: string, salt: Uint8Array): Promise<ArrayBuffer> 
 /** Returns `pbkdf2$<iterations>$<saltHex>$<hashHex>`. */
 export async function hashPassword(password: string): Promise<string> {
 	const salt = crypto.getRandomValues(new Uint8Array(SALT_BYTES));
-	const derived = await derive(password, salt);
+	const derived = await derive(password, salt, PBKDF2_ITERATIONS);
 	return `pbkdf2$${PBKDF2_ITERATIONS}$${toHex(salt.buffer as ArrayBuffer)}$${toHex(derived)}`;
 }
 
@@ -95,7 +98,7 @@ export async function verifyPassword(password: string, stored: string): Promise<
 	const parsed = parseStoredHash(stored);
 	if (parsed === null) return false;
 
-	const derived = await derive(password, parsed.salt);
+	const derived = await derive(password, parsed.salt, parsed.iterations);
 	const actualHex = toHex(derived);
 
 	return timingSafeEqual(actualHex, parsed.expectedHex);
