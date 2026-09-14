@@ -6,6 +6,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
+	import Logo from '$lib/components/logo.svelte';
 
 	interface ErrorBody {
 		message?: string;
@@ -82,7 +83,10 @@
 <div class="flex min-h-svh items-center justify-center bg-background p-4">
 	<Card.Root class="w-full max-w-sm">
 		<Card.Header>
-			<Card.Title class="text-xl">KRSZ Music</Card.Title>
+			<div class="mb-2 flex items-center gap-2">
+				<Logo size={28} />
+				<Card.Title class="text-xl">KRSZ Music</Card.Title>
+			</div>
 			<Card.Description>Private music library, invite-only access</Card.Description>
 		</Card.Header>
 		<Card.Content>
