@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm';
 import {
 	createImportJob,
 	getImportJob,
+	listImportJobs,
 	startImportJob,
 	recordSongImported,
 	recordSongFailed,
@@ -282,6 +283,16 @@ describe('confirmImportJob', () => {
 });
 
 describe('cancelImportJob', () => {
+	it('cancels a job still pending (e.g. the GitHub Actions dispatch itself failed)', async () => {
+		await seedUser('u1');
+		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x' });
+
+		await cancelImportJob(db, id, 'u1');
+
+		const job = await getImportJob(db, id, 'u1');
+		expect(job.status).toBe('cancelled');
+	});
+
 	it('cancels a running job', async () => {
 		await seedUser('u1');
 		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x' });
@@ -325,5 +336,39 @@ describe('completeImportJob after cancellation', () => {
 
 		const job = await getImportJob(db, id, 'u1');
 		expect(job.status).toBe('cancelled');
+	});
+});
+
+describe('listImportJobs', () => {
+	it('returns an empty array for a user with no jobs', async () => {
+		await seedUser('u1');
+		expect(await listImportJobs(db, 'u1')).toEqual([]);
+	});
+
+	it('only returns jobs belonging to the given user', async () => {
+		await seedUser('u1');
+		await seedUser('u2');
+		await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x/1' });
+		await createImportJob(db, { userId: 'u2', sourceUrl: 'https://x/2' });
+
+		const jobs = await listImportJobs(db, 'u1');
+
+		expect(jobs).toHaveLength(1);
+		expect(jobs[0].sourceUrl).toBe('https://x/1');
+	});
+
+	it('orders jobs most-recently-created first', async () => {
+		await seedUser('u1');
+		const { id: firstId } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x/first' });
+		// D1's created_at default has second-level precision — advance it
+		// explicitly rather than relying on two inserts landing in different
+		// ticks, so this test can't flake on ordering.
+		await db.update(importJobs).set({ createdAt: '2020-01-01T00:00:00.000Z' }).where(eq(importJobs.id, firstId));
+		const { id: secondId } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x/second' });
+		await db.update(importJobs).set({ createdAt: '2020-01-02T00:00:00.000Z' }).where(eq(importJobs.id, secondId));
+
+		const jobs = await listImportJobs(db, 'u1');
+
+		expect(jobs.map((j) => j.sourceUrl)).toEqual(['https://x/second', 'https://x/first']);
 	});
 });

@@ -3,6 +3,13 @@ import type { Db } from '../db';
 import { importJobs, songs } from '../db/schema';
 import { addSongToPlaylist } from '../library/playlists';
 import { chunk } from '../../shared/chunk';
+import type {
+	PreviewEntry,
+	SongImportSuccess,
+	SongImportFailureInput
+} from '../../shared/import-events';
+
+export type { PreviewEntry, SongImportSuccess, SongImportFailureInput };
 
 // D1 caps bound parameters per statement at 100 (well below plain SQLite's
 // own 999 limit) — confirmed by an integration test that failed with
@@ -68,6 +75,20 @@ export async function getImportJob(db: Db, jobId: string, userId: string) {
 }
 
 /**
+ * Lists a user's import jobs, most recent first — lets the import page
+ * restore visibility into in-progress (and recently finished) imports
+ * after a page refresh, since the WebSocket connection alone only carries
+ * updates for jobs the client already knows about.
+ */
+export async function listImportJobs(db: Db, userId: string) {
+	return db.query.importJobs.findMany({
+		where: eq(importJobs.userId, userId),
+		orderBy: (t, { desc }) => desc(t.createdAt),
+		limit: 20
+	});
+}
+
+/**
  * Fetches a job without an ownership check — for the GitHub Actions webhook
  * callback only, which authenticates via HMAC signature (see
  * webhook-auth.ts) rather than a user session, and needs to first discover
@@ -86,12 +107,6 @@ export async function startImportJob(db: Db, jobId: string, totalCount: number):
 		.update(importJobs)
 		.set({ status: 'running', totalCount })
 		.where(eq(importJobs.id, jobId));
-}
-
-export interface PreviewEntry {
-	videoId: string;
-	title: string;
-	durationSeconds?: number;
 }
 
 /**
@@ -139,30 +154,22 @@ export async function confirmImportJob(
  * between songs (see getImportJob polling in the CI script) and stops
  * early rather than continuing to download after the user has backed out.
  */
+const CANCELLABLE_STATUSES = new Set(['pending', 'pending_confirmation', 'running']);
+
+/**
+ * `pending` is included alongside `pending_confirmation`/`running` because
+ * a job can get stuck there permanently if the GitHub Actions dispatch
+ * itself failed (see dispatchImportWorkflow) — no CI process is ever going
+ * to connect and move it forward on its own, so the user must be able to
+ * cancel it from here too, not just once CI has picked it up.
+ */
 export async function cancelImportJob(db: Db, jobId: string, userId: string): Promise<void> {
 	const job = await getOwnedJob(db, jobId, userId);
-	if (job.status !== 'running' && job.status !== 'pending_confirmation') {
+	if (!CANCELLABLE_STATUSES.has(job.status)) {
 		throw new ImportJobError('Job cannot be cancelled from its current status', 'invalid_transition');
 	}
 
 	await db.update(importJobs).set({ status: 'cancelled' }).where(eq(importJobs.id, jobId));
-}
-
-export interface SongImportSuccess {
-	videoId: string;
-	sourcePlatform: string;
-	sourceUrl: string;
-	title: string;
-	durationSeconds?: number;
-	audioKey: string;
-	codec: string;
-	container: string;
-	bitrateKbps?: number;
-	sampleRate?: number;
-	fileSizeBytes: number;
-	coverKey?: string;
-	coverWidth?: number;
-	coverHeight?: number;
 }
 
 /**
@@ -202,11 +209,6 @@ export async function recordSongImported(db: Db, jobId: string, userId: string, 
 		.update(importJobs)
 		.set({ completedCount: sql`${importJobs.completedCount} + 1` })
 		.where(eq(importJobs.id, jobId));
-}
-
-export interface SongImportFailureInput {
-	videoId: string;
-	reason: string;
 }
 
 /** Records one song that failed to import (per design: skip and continue, report failures at the end). */

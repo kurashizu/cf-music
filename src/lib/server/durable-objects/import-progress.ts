@@ -8,29 +8,19 @@ import {
 	completeImportJob,
 	confirmImportJob,
 	cancelImportJob,
-	ImportJobError,
-	type SongImportSuccess,
-	type SongImportFailureInput,
-	type PreviewEntry
+	ImportJobError
 } from '../import/jobs';
+import type {
+	ImportProgressMessage as CiProgressMessage,
+	ImportControlMessage as BrowserControlMessage
+} from '../../shared/import-events';
 
-export type ImportProgressEvent =
-	| { type: 'start'; totalCount: number }
-	| { type: 'preview'; entries: PreviewEntry[] }
-	| { type: 'song_success'; song: SongImportSuccess }
-	| { type: 'song_failed'; failure: SongImportFailureInput }
-	| { type: 'complete' };
-
-interface CiProgressMessage {
-	jobId: string;
-	event: ImportProgressEvent;
-}
-
-interface BrowserControlMessage {
-	jobId: string;
-	action: 'confirm' | 'cancel';
-	approved?: boolean;
-}
+export type {
+	ImportProgressEvent,
+	PreviewEntry,
+	SongImportSuccess,
+	SongImportFailureInput
+} from '../../shared/import-events';
 
 function ciTag(jobId: string): string {
 	return `ci:${jobId}`;

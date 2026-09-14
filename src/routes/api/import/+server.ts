@@ -3,14 +3,24 @@ import type { RequestHandler } from './$types';
 import { getDb } from '$lib/server/db';
 import { requireSession } from '$lib/server/auth/guard';
 import { pickStrings } from '$lib/server/http/validate';
-import { createImportJob } from '$lib/server/import/jobs';
+import { createImportJob, listImportJobs } from '$lib/server/import/jobs';
 import { dispatchImportWorkflow } from '$lib/server/import/github-actions';
+
+/** Lists the caller's own recent import jobs, most recent first — see listImportJobs for why. */
+export const GET: RequestHandler = async (event) => {
+	const session = requireSession(event);
+	const db = getDb(event.platform!.env.DB);
+
+	return json(await listImportJobs(db, session.userId));
+};
 
 /**
  * Starts an import: creates the D1 job record, then dispatches the GitHub
- * Actions workflow that actually runs yt-dlp. Per-song progress and
- * completion are reported back asynchronously via
- * POST /api/import/[jobId]/events, not this endpoint's response.
+ * Actions workflow that actually runs yt-dlp. Progress (preview, per-song
+ * results, completion) is reported back asynchronously over the CI job's
+ * own WebSocket connection to /api/import/ws — see
+ * src/lib/server/durable-objects/import-progress.ts — not this endpoint's
+ * response.
  */
 export const POST: RequestHandler = async (event) => {
 	const session = requireSession(event);
