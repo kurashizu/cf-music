@@ -104,6 +104,25 @@ export async function clearCachedAudio(videoIds: string[]): Promise<void> {
 	await postToServiceWorker({ type: 'EVICT_AUDIO', videoIds });
 }
 
+/**
+ * Downloads one song into the offline cache on demand, independent of pin
+ * state — used by explicit "download" actions in the UI (playlist rows,
+ * batch toolbar), as opposed to precachePinnedSongs' background warm-up of
+ * already-pinned songs.
+ */
+export async function downloadSongForOffline(videoId: string): Promise<boolean> {
+	if (!('serviceWorker' in navigator)) return false;
+	try {
+		const response = await fetch(`/api/stream-url/${videoId}`);
+		if (!response.ok) return false;
+		const { audioUrl }: StreamUrlResponse = await response.json();
+		await postToServiceWorker({ type: 'PRECACHE_AUDIO', videoId, audioUrl });
+		return true;
+	} catch {
+		return false;
+	}
+}
+
 export interface StorageEstimate {
 	usageBytes: number;
 	quotaBytes: number;

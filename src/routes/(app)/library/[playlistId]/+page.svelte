@@ -14,7 +14,12 @@
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import GripVerticalIcon from '@lucide/svelte/icons/grip-vertical';
 	import MusicIcon from '@lucide/svelte/icons/music';
+	import DownloadIcon from '@lucide/svelte/icons/download';
+	import XIcon from '@lucide/svelte/icons/x';
+	import SearchIcon from '@lucide/svelte/icons/search';
 	import { untrack } from 'svelte';
+	import { downloadSongForOffline } from '$lib/client/offline-cache';
+	import { Input } from '$lib/components/ui/input/index.js';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -48,6 +53,37 @@
 	let removeSubmitting = $state(false);
 	let deleteTarget = $state<{ videoId: string; title: string } | null>(null);
 	let deleteSubmitting = $state(false);
+	let downloadingVideoId = $state<string | null>(null);
+
+	let selected = $state<Set<string>>(new Set());
+	let batchWorking = $state(false);
+	let batchRemoveConfirm = $state(false);
+	let batchDeleteConfirm = $state(false);
+	let searchQuery = $state('');
+
+	// Indices into `songs`, filtered by title — drag-to-reorder (which is
+	// index-based, see visualOrder/handleDragOver) only makes sense against
+	// the full unfiltered order, so it's disabled while a search is active
+	// rather than taught to reorder through a filtered view.
+	const visibleIndices = $derived(
+		searchQuery.trim().length === 0
+			? songs.map((_, i) => i)
+			: songs
+					.map((s, i) => [s, i] as const)
+					.filter(([s]) => s.title.toLowerCase().includes(searchQuery.trim().toLowerCase()))
+					.map(([, i]) => i)
+	);
+
+	function toggleSelected(videoId: string) {
+		const next = new Set(selected);
+		if (next.has(videoId)) next.delete(videoId);
+		else next.add(videoId);
+		selected = next;
+	}
+
+	function clearSelection() {
+		selected = new Set();
+	}
 
 	const isThisPlaylistPlaying = $derived(
 		player.isPlaying && songs.some((s) => s.videoId === player.currentTrack?.videoId)
@@ -78,6 +114,10 @@
 	}
 
 	async function playFrom(index: number) {
+		if (player.currentTrack?.videoId === songs[index].videoId) {
+			await player.togglePlayPause();
+			return;
+		}
 		await player.playQueue(toQueueTracks(), index);
 	}
 
@@ -124,6 +164,71 @@
 			toast.error('Failed to delete song');
 		} finally {
 			deleteSubmitting = false;
+		}
+	}
+
+	async function handleDownload(videoId: string) {
+		downloadingVideoId = videoId;
+		try {
+			const ok = await downloadSongForOffline(videoId);
+			toast[ok ? 'success' : 'error'](ok ? 'Downloaded for offline playback' : 'Failed to download song');
+		} finally {
+			downloadingVideoId = null;
+		}
+	}
+
+	async function handleBatchDownload() {
+		batchWorking = true;
+		try {
+			let failures = 0;
+			for (const videoId of selected) {
+				const ok = await downloadSongForOffline(videoId);
+				if (!ok) failures++;
+			}
+			toast[failures === 0 ? 'success' : 'error'](
+				failures === 0 ? 'Downloaded for offline playback' : `Failed to download ${failures} song(s)`
+			);
+			clearSelection();
+		} finally {
+			batchWorking = false;
+		}
+	}
+
+	async function handleBatchRemove() {
+		batchWorking = true;
+		try {
+			const results = await Promise.all(
+				[...selected].map((videoId) =>
+					fetch(`/api/playlists/${data.playlist.id}/songs/${videoId}`, { method: 'DELETE' })
+				)
+			);
+			const failures = results.filter((r) => !r.ok).length;
+			toast[failures === 0 ? 'success' : 'error'](
+				failures === 0 ? 'Removed from playlist' : `Failed to remove ${failures} song(s)`
+			);
+			batchRemoveConfirm = false;
+			clearSelection();
+			await invalidateAll();
+		} finally {
+			batchWorking = false;
+		}
+	}
+
+	async function handleBatchDelete() {
+		batchWorking = true;
+		try {
+			const results = await Promise.all(
+				[...selected].map((videoId) => fetch(`/api/songs/${videoId}`, { method: 'DELETE' }))
+			);
+			const failures = results.filter((r) => !r.ok).length;
+			toast[failures === 0 ? 'success' : 'error'](
+				failures === 0 ? 'Songs deleted' : `Failed to delete ${failures} song(s)`
+			);
+			batchDeleteConfirm = false;
+			clearSelection();
+			await invalidateAll();
+		} finally {
+			batchWorking = false;
 		}
 	}
 
@@ -207,32 +312,99 @@
 		</div>
 	</div>
 
+	{#if songs.length > 0}
+		<div class="relative mb-3">
+			<SearchIcon class="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+			<Input placeholder="Search songs…" bind:value={searchQuery} class="pl-9" />
+		</div>
+	{/if}
+
+	{#if selected.size > 0}
+		<div
+			class="sticky top-0 z-10 mb-2 flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2"
+		>
+			<div class="flex items-center gap-2">
+				<Button variant="ghost" size="icon-sm" onclick={clearSelection} aria-label="Clear selection">
+					<XIcon class="size-4" />
+				</Button>
+				<span class="text-sm text-muted-foreground">{selected.size} selected</span>
+			</div>
+			<div class="flex items-center gap-2">
+				<Button
+					size="sm"
+					variant="outline"
+					class="gap-1.5"
+					disabled={batchWorking}
+					onclick={handleBatchDownload}
+				>
+					<DownloadIcon class="size-3.5" />
+					Download
+				</Button>
+				<Button
+					size="sm"
+					variant="outline"
+					class="gap-1.5"
+					disabled={batchWorking}
+					onclick={() => (batchRemoveConfirm = true)}
+				>
+					<ListMusicIcon class="size-3.5" />
+					Remove
+				</Button>
+				<Button
+					size="sm"
+					variant="destructive"
+					class="gap-1.5"
+					disabled={batchWorking}
+					onclick={() => (batchDeleteConfirm = true)}
+				>
+					<Trash2Icon class="size-3.5" />
+					Delete
+				</Button>
+			</div>
+		</div>
+	{/if}
+
 	{#if songs.length === 0}
 		<div class="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border py-16 text-center">
 			<ListMusicIcon class="size-8 text-muted-foreground" />
 			<p class="text-sm text-muted-foreground">This playlist is empty. Import some songs to get started.</p>
 		</div>
+	{:else if visibleIndices.length === 0}
+		<p class="py-8 text-center text-sm text-muted-foreground">No songs match "{searchQuery}".</p>
 	{:else}
 		<ul class="flex flex-col">
-			{#each songs as song, index (song.videoId)}
+			{#each visibleIndices as index (songs[index].videoId)}
+				{@const song = songs[index]}
+				{@const draggable = searchQuery.trim().length === 0}
 				<li
 					class="group flex items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-muted {player
 						.currentTrack?.videoId === song.videoId
 						? 'bg-muted'
 						: ''} {draggingIndex === index ? 'opacity-50' : ''}"
 					style="order: {visualOrder(index)}"
-					draggable="true"
-					ondragstart={() => handleDragStart(index)}
-					ondragover={(e) => handleDragOver(e, index)}
-					ondragend={handleDragEnd}
+					draggable={draggable}
+					ondragstart={() => draggable && handleDragStart(index)}
+					ondragover={(e) => draggable && handleDragOver(e, index)}
+					ondragend={() => draggable && handleDragEnd()}
 				>
 					<button
 						type="button"
-						class="cursor-grab touch-none text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 active:cursor-grabbing"
+						class="cursor-grab touch-none text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 active:cursor-grabbing {draggable
+							? ''
+							: 'invisible'}"
 						aria-label="Drag to reorder"
+						tabindex={draggable ? 0 : -1}
 					>
 						<GripVerticalIcon class="size-4" />
 					</button>
+
+					<input
+						type="checkbox"
+						class="size-4 shrink-0 accent-foreground"
+						checked={selected.has(song.videoId)}
+						onchange={() => toggleSelected(song.videoId)}
+						aria-label="Select {song.title}"
+					/>
 
 					<button
 						type="button"
@@ -277,6 +449,17 @@
 						<ClockIcon class="size-3" />
 						{formatDuration(song.durationSeconds)}
 					</span>
+
+					<Button
+						variant="ghost"
+						size="icon-sm"
+						class="opacity-0 transition-opacity group-hover:opacity-100"
+						disabled={downloadingVideoId === song.videoId}
+						onclick={() => handleDownload(song.videoId)}
+						aria-label="Download for offline playback"
+					>
+						<DownloadIcon class="size-4" />
+					</Button>
 
 					<DropdownMenu.Root>
 						<DropdownMenu.Trigger>
@@ -323,6 +506,38 @@
 			<Button variant="outline" onclick={() => (removeTarget = null)}>Cancel</Button>
 			<Button variant="destructive" disabled={removeSubmitting} onclick={handleRemove}>
 				{removeSubmitting ? 'Removing…' : 'Remove'}
+			</Button>
+		</Dialog.Footer>
+	</Dialog.Content>
+</Dialog.Root>
+
+<Dialog.Root open={batchRemoveConfirm} onOpenChange={(open) => !open && (batchRemoveConfirm = false)}>
+	<Dialog.Content class="sm:max-w-sm">
+		<Dialog.Header>
+			<Dialog.Title>Remove {selected.size} songs?</Dialog.Title>
+			<Dialog.Description>This only removes them from this playlist.</Dialog.Description>
+		</Dialog.Header>
+		<Dialog.Footer>
+			<Button variant="outline" onclick={() => (batchRemoveConfirm = false)}>Cancel</Button>
+			<Button variant="destructive" disabled={batchWorking} onclick={handleBatchRemove}>
+				{batchWorking ? 'Removing…' : 'Remove'}
+			</Button>
+		</Dialog.Footer>
+	</Dialog.Content>
+</Dialog.Root>
+
+<Dialog.Root open={batchDeleteConfirm} onOpenChange={(open) => !open && (batchDeleteConfirm = false)}>
+	<Dialog.Content class="sm:max-w-sm">
+		<Dialog.Header>
+			<Dialog.Title>Delete {selected.size} songs?</Dialog.Title>
+			<Dialog.Description>
+				This deletes them from your library entirely, not just this playlist. This can't be undone.
+			</Dialog.Description>
+		</Dialog.Header>
+		<Dialog.Footer>
+			<Button variant="outline" onclick={() => (batchDeleteConfirm = false)}>Cancel</Button>
+			<Button variant="destructive" disabled={batchWorking} onclick={handleBatchDelete}>
+				{batchWorking ? 'Deleting…' : 'Delete'}
 			</Button>
 		</Dialog.Footer>
 	</Dialog.Content>

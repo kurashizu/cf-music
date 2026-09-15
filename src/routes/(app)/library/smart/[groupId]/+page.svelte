@@ -35,6 +35,10 @@
 	}
 
 	async function playFrom(index: number) {
+		if (player.currentTrack?.videoId === data.songs[index].videoId) {
+			await player.togglePlayPause();
+			return;
+		}
 		await player.playQueue(toQueueTracks(), index);
 	}
 </script>

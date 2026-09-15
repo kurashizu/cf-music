@@ -65,53 +65,39 @@
 <div class="mx-auto max-w-2xl p-4 md:p-8">
 	<h1 class="mb-6 text-lg font-medium">Settings</h1>
 
-	<Card.Root class="mb-4">
-		<Card.Content>
-			<div class="mb-2 flex items-center justify-between text-sm">
-				<span class="flex items-center gap-1.5 text-muted-foreground">
-					<HardDriveIcon class="size-4" />
-					Account storage
-				</span>
-				<span class="text-muted-foreground">
-					{formatBytes(data.usageBytes)} / {formatBytes(data.quotaBytes)}
-				</span>
-			</div>
-			<div class="h-1.5 overflow-hidden rounded-full bg-muted">
-				<div
-					class="h-full bg-foreground transition-all duration-300"
-					style="width: {usagePercent}%"
-				></div>
-			</div>
-		</Card.Content>
-	</Card.Root>
-
-	<a href="/settings/offline-cache" class="mb-4 block">
+	<a href="/settings/storage" class="mb-4 block">
 		<Card.Root class="transition-colors hover:border-ring/50">
 			<Card.Content>
 				<div class="mb-2 flex items-center justify-between text-sm">
 					<span class="flex items-center gap-1.5 text-muted-foreground">
-						<GlobeIcon class="size-4" />
-						Browser offline cache
+						<HardDriveIcon class="size-4" />
+						Manage storage
 					</span>
 					<div class="flex items-center gap-1.5 text-muted-foreground">
-						{#if browserStorage}
-							<span>{formatBytes(browserStorage.usageBytes)} / {formatBytes(data.quotaBytes)}</span>
-						{/if}
+						<span>{formatBytes(data.usageBytes)} / {formatBytes(data.quotaBytes)} cloud</span>
 						<ChevronRightIcon class="size-4 shrink-0" />
 					</div>
 				</div>
+				<div class="h-1.5 overflow-hidden rounded-full bg-muted">
+					<div class="h-full bg-foreground transition-all duration-300" style="width: {usagePercent}%"></div>
+				</div>
 				{#if browserStorage}
-					<div class="h-1.5 overflow-hidden rounded-full bg-muted">
+					<div class="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+						<span class="flex items-center gap-1.5">
+							<GlobeIcon class="size-3.5" />
+							Offline cache
+						</span>
+						<span>{formatBytes(browserStorage.usageBytes)} / {formatBytes(data.quotaBytes)}</span>
+					</div>
+					<div class="mt-1 h-1.5 overflow-hidden rounded-full bg-muted">
 						<div
 							class="h-full bg-foreground transition-all duration-300"
 							style="width: {browserUsagePercent}%"
 						></div>
 					</div>
-				{:else}
-					<p class="text-xs text-muted-foreground">Not available in this browser.</p>
 				{/if}
 				<p class="mt-2 text-xs text-muted-foreground">
-					Pin songs to keep them downloaded for offline playback, and manage what's cached.
+					Manage which songs are stored in the cloud and pinned for offline playback.
 				</p>
 			</Card.Content>
 		</Card.Root>
