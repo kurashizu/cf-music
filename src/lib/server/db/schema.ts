@@ -207,7 +207,10 @@ export const quotaReservations = sqliteTable('quota_reservations', {
 	index('idx_quota_reservations_user_id').on(t.userId)
 ]);
 
-// Audit log: storage/auth/admin actions, 30-day retention (cleaned up via a Cron Trigger), admin-only visibility
+// Audit log: storage/auth/admin actions, admin-only visibility. No
+// retention/cleanup mechanism exists — rows accumulate indefinitely (no
+// Cron Trigger is configured in wrangler.jsonc, and nothing else in this
+// codebase ever deletes from this table).
 export const auditLog = sqliteTable('audit_log', {
 	id: integer('id').primaryKey({ autoIncrement: true }),
 	userId: text('user_id').references(() => users.id, { onDelete: 'set null' }), // the user the event relates to

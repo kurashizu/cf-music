@@ -110,8 +110,12 @@ export async function listImportJobs(db: Db, userId: string) {
  * actually connects at all (workflow_dispatch was accepted but the run
  * never started, or import.py crashed before opening its WebSocket), so
  * there is no close/error event to react to. Nothing else in this codebase
- * ever notices that case on its own — this is meant to be driven by a
- * scheduled Cron Trigger, not called from request handlers.
+ * ever notices that case on its own. Ideally driven by a scheduled Cron
+ * Trigger, but this account's Workers Free plan is already at its 5-cron
+ * account-wide cap — so instead it's called via `ctx.waitUntil` from the
+ * import page's own `load` (see runImportSweep in
+ * src/lib/server/scheduled/import-sweep.ts), which only sweeps when a user
+ * actually looks at the page, not on a fixed schedule.
  */
 export async function findStaleImportJobs(db: Db, staleAfterMs: number) {
 	const staleAfterSeconds = Math.floor(staleAfterMs / 1000);
