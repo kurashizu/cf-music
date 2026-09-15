@@ -20,6 +20,10 @@ permissions:
 jobs:
   import:
     runs-on: ubuntu-latest
+    # Hard backstop so a bot-check block or pathological retry storm can't
+    # hang the runner indefinitely — with_retry's own backoff in import.py
+    # is bounded per-song, but this caps the whole job regardless.
+    timeout-minutes: 60
     steps:
       # A job-level `container:` puts every step inside the container,
       # with no way to mix in a bare-host step — and a container step

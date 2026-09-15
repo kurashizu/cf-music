@@ -69,6 +69,14 @@ DOWNLOAD_CONCURRENCY = 3  # sequential downloads were the bottleneck on large pl
 YT_DLP_MAX_RETRIES = 4
 YT_DLP_RETRY_BASE_DELAY_SECONDS = 5  # doubles each retry, plus jitter — see with_retry
 
+# A 429 that escalates into YouTube's bot-check page is a harder, longer-lived
+# block than plain rate-limiting, so it gets its own (much longer) backoff
+# ladder rather than reusing YT_DLP_RETRY_BASE_DELAY_SECONDS — the job-level
+# timeout-minutes: 60 in import.yml is the actual backstop against this ladder
+# still not being enough.
+YT_DLP_BOT_CHECK_MAX_RETRIES = 3
+YT_DLP_BOT_CHECK_BASE_DELAY_SECONDS = 45
+
 
 class QuotaExceededError(Exception):
     """Raised when a batch's estimated total size exceeds the user's remaining storage quota."""
@@ -85,29 +93,57 @@ def _is_rate_limit_error(exc: Exception) -> bool:
     return "429" in message or "Too Many Requests" in message
 
 
+def _is_bot_check_error(exc: Exception) -> bool:
+    """True for YouTube's "Sign in to confirm you're not a bot" wall, which
+    yt-dlp raises as a plain ExtractorError/DownloadError with no distinct
+    exception type. This tends to follow a burst of 429s on the same proxy
+    IP (seen in production: dozens of 429s in a row, then every subsequent
+    video on that IP hits this instead) — it's a harsher, longer block than
+    a plain 429, but still transient once the IP cools down, so it's worth
+    retrying with a longer delay rather than failing the song immediately."""
+    message = str(exc)
+    return "Sign in to confirm you" in message and "bot" in message
+
+
 def with_retry(fn, *args, description: str, **kwargs):
-    """Runs a blocking yt-dlp call, retrying on rate-limit errors with
-    exponential backoff + jitter (the jitter matters here specifically:
-    DOWNLOAD_CONCURRENCY songs hitting a 429 around the same moment and
-    retrying on the exact same fixed schedule would just recreate the
-    same burst against the same shared proxy IP). Non-rate-limit failures
-    (age-gated video, region-blocked, genuinely removed) are raised
-    immediately — retrying those would only waste the job's time budget
-    on something no amount of waiting fixes."""
+    """Runs a blocking yt-dlp call, retrying on rate-limit and bot-check
+    errors with exponential backoff + jitter (the jitter matters here
+    specifically: DOWNLOAD_CONCURRENCY songs hitting the same error around
+    the same moment and retrying on the exact same fixed schedule would
+    just recreate the same burst against the same shared proxy IP). Other
+    failures (age-gated video, region-blocked, genuinely removed) are
+    raised immediately — retrying those would only waste the job's time
+    budget on something no amount of waiting fixes."""
     last_exc: Exception | None = None
-    for attempt in range(YT_DLP_MAX_RETRIES + 1):
+    rate_limit_attempts = 0
+    bot_check_attempts = 0
+    while True:
         try:
             return fn(*args, **kwargs)
         except Exception as exc:  # noqa: BLE001 - re-raised below if not retried
             last_exc = exc
-            if not _is_rate_limit_error(exc) or attempt == YT_DLP_MAX_RETRIES:
+            if _is_bot_check_error(exc):
+                if bot_check_attempts >= YT_DLP_BOT_CHECK_MAX_RETRIES:
+                    raise
+                delay = YT_DLP_BOT_CHECK_BASE_DELAY_SECONDS * (2**bot_check_attempts) + random.uniform(0, 5)
+                bot_check_attempts += 1
+                print(
+                    f"{description}: bot-check wall (attempt {bot_check_attempts}/"
+                    f"{YT_DLP_BOT_CHECK_MAX_RETRIES}), retrying in {delay:.1f}s",
+                    file=sys.stderr,
+                )
+            elif _is_rate_limit_error(exc):
+                if rate_limit_attempts >= YT_DLP_MAX_RETRIES:
+                    raise
+                delay = YT_DLP_RETRY_BASE_DELAY_SECONDS * (2**rate_limit_attempts) + random.uniform(0, 3)
+                rate_limit_attempts += 1
+                print(
+                    f"{description}: rate limited (attempt {rate_limit_attempts}/"
+                    f"{YT_DLP_MAX_RETRIES}), retrying in {delay:.1f}s",
+                    file=sys.stderr,
+                )
+            else:
                 raise
-            delay = YT_DLP_RETRY_BASE_DELAY_SECONDS * (2**attempt) + random.uniform(0, 3)
-            print(
-                f"{description}: rate limited (attempt {attempt + 1}/{YT_DLP_MAX_RETRIES + 1}), "
-                f"retrying in {delay:.1f}s",
-                file=sys.stderr,
-            )
             time.sleep(delay)
     raise last_exc  # unreachable, but satisfies type checkers
 
