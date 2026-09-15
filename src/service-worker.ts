@@ -8,12 +8,22 @@
 // on every deploy. Precaching these is what makes the app shell itself
 // (not song audio — see below) available offline.
 import { build, files, version } from '$service-worker';
-import { audioCacheKey, extractVideoIdFromAudioPath } from '$lib/shared/audio-cache-key';
+import {
+	audioCacheKey,
+	extractVideoIdFromAudioPath,
+	coverCacheKey,
+	extractVideoIdFromCoverPath
+} from '$lib/shared/audio-cache-key';
 
 const sw = self as unknown as ServiceWorkerGlobalScope;
 
 const APP_CACHE = `app-${version}`;
 const AUDIO_CACHE = 'audio-v1';
+// Separate from AUDIO_CACHE: covers are small and every song has one, so
+// there's no reason to gate them behind the same explicit pin/download
+// flow audio uses — they're cached opportunistically, cache-first, the
+// first time any page happens to request one.
+const COVER_CACHE = 'cover-v1';
 
 sw.addEventListener('install', (event) => {
 	event.waitUntil(
@@ -27,12 +37,12 @@ sw.addEventListener('install', (event) => {
 sw.addEventListener('activate', (event) => {
 	event.waitUntil(
 		(async () => {
-			// Drop every cache from a previous deploy except the audio one —
-			// that's keyed by videoId, not by deploy version, and clearing it
-			// on every deploy would defeat the entire point of downloading
-			// songs for offline use.
+			// Drop every cache from a previous deploy except audio/covers —
+			// those are keyed by videoId, not by deploy version, and clearing
+			// them on every deploy would defeat the point of caching them at
+			// all.
 			for (const key of await caches.keys()) {
-				if (key !== APP_CACHE && key !== AUDIO_CACHE) {
+				if (key !== APP_CACHE && key !== AUDIO_CACHE && key !== COVER_CACHE) {
 					await caches.delete(key);
 				}
 			}
@@ -42,18 +52,21 @@ sw.addEventListener('activate', (event) => {
 
 sw.addEventListener('fetch', (event) => {
 	const url = new URL(event.request.url);
-	const videoId = extractVideoIdFromAudioPath(url.pathname);
+	const audioVideoId = extractVideoIdFromAudioPath(url.pathname);
+	const coverVideoId = audioVideoId ? null : extractVideoIdFromCoverPath(url.pathname);
 
-	// Anything that isn't a song audio request (the app shell, API calls)
-	// goes straight through untouched — no cache-first behavior for those,
-	// since a stale API response or a stale app shell asset is far worse
-	// than a network request that could have been avoided.
-	if (!videoId) return;
+	// Anything that isn't a song audio/cover request (the app shell, API
+	// calls) goes straight through untouched — no cache-first behavior for
+	// those, since a stale API response or a stale app shell asset is far
+	// worse than a network request that could have been avoided.
+	if (!audioVideoId && !coverVideoId) return;
+
+	const cacheName = audioVideoId ? AUDIO_CACHE : COVER_CACHE;
+	const cacheKey = audioVideoId ? audioCacheKey(audioVideoId) : coverCacheKey(coverVideoId!);
 
 	event.respondWith(
 		(async () => {
-			const cache = await caches.open(AUDIO_CACHE);
-			const cacheKey = audioCacheKey(videoId);
+			const cache = await caches.open(cacheName);
 			const cached = await cache.match(cacheKey);
 			if (cached) return cached;
 

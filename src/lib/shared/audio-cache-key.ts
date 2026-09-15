@@ -17,3 +17,22 @@ export function extractVideoIdFromAudioPath(pathname: string): string | null {
 	const match = pathname.match(/\/audio\/([^/.]+)\.[^/]+$/);
 	return match ? match[1] : null;
 }
+
+/**
+ * Same signed-URL-instability problem as audioCacheKey, for cover images:
+ * presigned cover URLs carry a signature query string that changes on
+ * every page load (a fresh presign per request — see the various
+ * +page.server.ts loads), so the browser's own HTTP cache can never treat
+ * two loads of the same cover as the same resource, even though the
+ * underlying image never changes. Deliberately a different origin than
+ * audioCacheKey's so the two never collide in the same Cache API store.
+ */
+export function coverCacheKey(videoId: string): string {
+	return `https://covers.cf-music.internal/${videoId}`;
+}
+
+/** MinIO object keys are covers/{videoId}.{ext} — see object-key.ts for the authoritative format. */
+export function extractVideoIdFromCoverPath(pathname: string): string | null {
+	const match = pathname.match(/\/covers\/([^/.]+)\.[^/]+$/);
+	return match ? match[1] : null;
+}
