@@ -117,7 +117,7 @@
 						{/if}
 						<button
 							type="button"
-							class="shrink-0 rounded p-1 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground"
+							class="shrink-0 rounded p-1 text-muted-foreground opacity-100 transition-opacity hover:text-foreground sm:opacity-0 sm:group-hover:opacity-100"
 							onclick={() => player.removeFromQueue(queueArrayIndex)}
 							aria-label="Remove {track.title} from queue"
 						>

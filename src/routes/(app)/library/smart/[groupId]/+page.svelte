@@ -418,7 +418,7 @@
 						{/if}
 						<button
 							type="button"
-							class="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100"
+							class="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors sm:group-hover:bg-black/40"
 							onclick={(e) => {
 								e.stopPropagation();
 								playFrom(index);
@@ -428,11 +428,14 @@
 								: 'Play'}
 						>
 							{#key player.currentTrack?.videoId === song.videoId && player.isPlaying}
-								<span transition:scale={motionParams({ duration: 100, start: 0.7 })}>
+								<span
+									class="flex size-9 items-center justify-center rounded-full bg-black/50 opacity-100 backdrop-blur-sm transition-opacity sm:bg-black/60 sm:opacity-0 sm:group-hover:opacity-100"
+									transition:scale={motionParams({ duration: 100, start: 0.7 })}
+								>
 									{#if player.currentTrack?.videoId === song.videoId && player.isPlaying}
-										<PauseIcon class="size-8 text-white" />
+										<PauseIcon class="size-4 text-white" />
 									{:else}
-										<PlayIcon class="size-8 text-white" />
+										<PlayIcon class="size-4 text-white" />
 									{/if}
 								</span>
 							{/key}
@@ -445,7 +448,7 @@
 											{...props}
 											variant="secondary"
 											size="icon-sm"
-											class="opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100"
+											class="opacity-100 backdrop-blur-sm transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:data-[state=open]:opacity-100"
 										>
 											<MoreHorizontalIcon class="size-4" />
 										</Button>
@@ -566,7 +569,7 @@
 					<Button
 						variant="ghost"
 						size="icon-sm"
-						class="opacity-0 transition-opacity group-hover:opacity-100"
+						class="opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100"
 						disabled={downloadingVideoId === song.videoId}
 						onclick={(e) => {
 							e.stopPropagation();
@@ -586,7 +589,7 @@
 										{...props}
 										variant="ghost"
 										size="icon-sm"
-										class="opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100"
+										class="opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:data-[state=open]:opacity-100"
 									>
 										<MoreHorizontalIcon class="size-4" />
 									</Button>

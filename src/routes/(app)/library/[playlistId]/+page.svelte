@@ -20,6 +20,8 @@
 	import ListPlusIcon from '@lucide/svelte/icons/list-plus';
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle';
+	import ArrowUpIcon from '@lucide/svelte/icons/arrow-up';
+	import ArrowDownIcon from '@lucide/svelte/icons/arrow-down';
 	import { untrack, onMount } from 'svelte';
 	import { flip } from 'svelte/animate';
 	import { slide, scale } from 'svelte/transition';
@@ -410,15 +412,8 @@
 		return index;
 	}
 
-	async function handleDragEnd() {
-		if (draggingIndex !== null && overIndex !== null && draggingIndex !== overIndex) {
-			const reordered = [...songs];
-			const [moved] = reordered.splice(draggingIndex, 1);
-			reordered.splice(overIndex, 0, moved);
-			songs = reordered;
-		}
-		draggingIndex = null;
-		overIndex = null;
+	/** Persists the current `songs` order to the server, reverting on failure. Shared by both the drag-and-drop and the touch-friendly "Move up/down" menu paths below. */
+	async function persistReorder() {
 		try {
 			const response = await fetch(`/api/playlists/${data.playlist.id}/reorder`, {
 				method: 'PUT',
@@ -433,6 +428,35 @@
 			toast.error('Failed to save the new order');
 			await invalidateAll();
 		}
+	}
+
+	async function handleDragEnd() {
+		if (draggingIndex !== null && overIndex !== null && draggingIndex !== overIndex) {
+			const reordered = [...songs];
+			const [moved] = reordered.splice(draggingIndex, 1);
+			reordered.splice(overIndex, 0, moved);
+			songs = reordered;
+		}
+		draggingIndex = null;
+		overIndex = null;
+		await persistReorder();
+	}
+
+	/**
+	 * Touch-friendly reorder fallback: HTML5 drag-and-drop (draggable/
+	 * ondragstart/ondragover/ondragend above) never fires from touch
+	 * gestures on mobile browsers, so a phone user has no way to reorder
+	 * via drag at all — these "Move up"/"Move down" menu items are the
+	 * only path that works there. Kept as a single swap (not full DnD
+	 * mechanics) since that's all one tap can express.
+	 */
+	async function moveSong(fromIndex: number, toIndex: number) {
+		if (toIndex < 0 || toIndex >= songs.length) return;
+		const reordered = [...songs];
+		const [moved] = reordered.splice(fromIndex, 1);
+		reordered.splice(toIndex, 0, moved);
+		songs = reordered;
+		await persistReorder();
 	}
 </script>
 
@@ -602,7 +626,7 @@
 						{/if}
 						<button
 							type="button"
-							class="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100"
+							class="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors sm:group-hover:bg-black/40"
 							onclick={(e) => {
 								e.stopPropagation();
 								playFrom(index);
@@ -612,11 +636,14 @@
 								: 'Play'}
 						>
 							{#key player.currentTrack?.videoId === song.videoId && player.isPlaying}
-								<span transition:scale={motionParams({ duration: 100, start: 0.7 })}>
+								<span
+									class="flex size-9 items-center justify-center rounded-full bg-black/50 opacity-100 backdrop-blur-sm transition-opacity sm:bg-black/60 sm:opacity-0 sm:group-hover:opacity-100"
+									transition:scale={motionParams({ duration: 100, start: 0.7 })}
+								>
 									{#if player.currentTrack?.videoId === song.videoId && player.isPlaying}
-										<PauseIcon class="size-8 text-white" />
+										<PauseIcon class="size-4 text-white" />
 									{:else}
-										<PlayIcon class="size-8 text-white" />
+										<PlayIcon class="size-4 text-white" />
 									{/if}
 								</span>
 							{/key}
@@ -633,7 +660,7 @@
 											{...props}
 											variant="secondary"
 											size="icon-sm"
-											class="opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100"
+											class="opacity-100 backdrop-blur-sm transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:data-[state=open]:opacity-100"
 										>
 											<MoreHorizontalIcon class="size-4" />
 										</Button>
@@ -697,7 +724,8 @@
 		<ul class="flex flex-col">
 			{#each windowedIndices as index (songs[index].videoId)}
 				{@const song = songs[index]}
-				{@const draggable = searchQuery.trim().length === 0 && visibleCount >= visibleIndices.length}
+				{@const unfiltered = searchQuery.trim().length === 0}
+				{@const draggable = unfiltered && visibleCount >= visibleIndices.length}
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 				<li
@@ -716,6 +744,11 @@
 					onclick={(e) => handleRowClick(e, index)}
 					animate:flip={motionParams({ duration: draggingIndex === null ? 200 : 0 })}
 				>
+					<!-- Deliberately still hover-only, not sm:-gated like the other
+					     row controls: HTML5 drag-and-drop never fires from touch
+					     gestures, so this handle is genuinely inert on a phone —
+					     the "..." menu's Move up/down items are the reorder path
+					     there instead (see that menu's own comment). -->
 					<button
 						type="button"
 						class="cursor-grab touch-none text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 active:cursor-grabbing {draggable
@@ -787,7 +820,7 @@
 					<Button
 						variant="ghost"
 						size="icon-sm"
-						class="opacity-0 transition-opacity group-hover:opacity-100"
+						class="opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100"
 						disabled={downloadingVideoId === song.videoId}
 						onclick={(e) => {
 							e.stopPropagation();
@@ -807,13 +840,37 @@
 										{...props}
 										variant="ghost"
 										size="icon-sm"
-										class="opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100"
+										class="opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:data-[state=open]:opacity-100"
 									>
 										<MoreHorizontalIcon class="size-4" />
 									</Button>
 								{/snippet}
 							</DropdownMenu.Trigger>
 						<DropdownMenu.Content align="end" class="min-w-52">
+							<!-- Touch has no persistent hover to reveal the drag handle
+							     with (see the handle's own comment below), and HTML5
+							     drag-and-drop doesn't fire from touch gestures at all —
+							     these two menu items are the only way to reorder a song
+							     on a phone. Always shown (not sm:-gated) since desktop
+							     users can use them too, drag is just the faster path there.
+							     Gated on `unfiltered`, not `draggable` — a plain adjacent
+							     swap doesn't care whether every row below has scrolled
+							     into view yet (unlike drag, see draggable's own comment),
+							     it only needs songs[index-1]/[index+1] to exist, which is
+							     always true against the real (not windowed) songs array. -->
+							{#if unfiltered}
+								<DropdownMenu.Item disabled={index === 0} onclick={() => moveSong(index, index - 1)}>
+									<ArrowUpIcon class="size-4" />
+									Move up
+								</DropdownMenu.Item>
+								<DropdownMenu.Item
+									disabled={index === songs.length - 1}
+									onclick={() => moveSong(index, index + 1)}
+								>
+									<ArrowDownIcon class="size-4" />
+									Move down
+								</DropdownMenu.Item>
+							{/if}
 							<DropdownMenu.Item onclick={() => addToQueue(index)}>
 								<ListPlusIcon class="size-4" />
 								Add to queue

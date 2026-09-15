@@ -254,7 +254,7 @@
 									{...props}
 									variant="ghost"
 									size="icon-sm"
-									class="absolute top-2 right-2 bg-card/80 opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100"
+									class="absolute top-2 right-2 bg-card/80 opacity-100 backdrop-blur-sm transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:data-[state=open]:opacity-100"
 								>
 									<MoreVerticalIcon class="size-4" />
 								</Button>
