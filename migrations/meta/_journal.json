@@ -43,6 +43,13 @@
       "when": 1789436181945,
       "tag": "0005_marvelous_patch",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1789440085722,
+      "tag": "0006_nervous_lockheed",
+      "breakpoints": true
     }
   ]
 }

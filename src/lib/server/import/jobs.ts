@@ -61,7 +61,13 @@ export async function createImportJob(db: Db, input: CreateImportJobInput): Prom
 		id,
 		userId: input.userId,
 		sourceUrl: input.sourceUrl,
-		targetPlaylistId: input.targetPlaylistId
+		targetPlaylistId: input.targetPlaylistId,
+		// updated_at's column default can't be `current_timestamp` — D1
+		// rejects a non-constant default on ALTER TABLE ADD COLUMN, unlike
+		// plain SQLite (see migrations/0006_nervous_lockheed.sql) — so every
+		// insert has to set it explicitly instead of relying on the column
+		// default the way created_at does.
+		updatedAt: sql`(current_timestamp)`
 	});
 	return { id };
 }
@@ -98,6 +104,43 @@ export async function listImportJobs(db: Db, userId: string) {
 }
 
 /**
+ * Finds jobs stuck at `pending`/`running` with no progress update in over
+ * `staleAfterMs` — the fallback for the zombie case the Durable Object's
+ * webSocketClose/webSocketError handler can't see: CI's socket never
+ * actually connects at all (workflow_dispatch was accepted but the run
+ * never started, or import.py crashed before opening its WebSocket), so
+ * there is no close/error event to react to. Nothing else in this codebase
+ * ever notices that case on its own — this is meant to be driven by a
+ * scheduled Cron Trigger, not called from request handlers.
+ */
+export async function findStaleImportJobs(db: Db, staleAfterMs: number) {
+	const staleAfterSeconds = Math.floor(staleAfterMs / 1000);
+	// updated_at is stored via SQLite's own `current_timestamp` ("YYYY-MM-DD
+	// HH:MM:SS", no "T"/"Z"/milliseconds) — comparing it against a
+	// JS-generated `Date.toISOString()` string ("YYYY-MM-DDTHH:MM:SS.sssZ")
+	// is wrong: at the 11th character ' ' (0x20) sorts below 'T' (0x54), so
+	// every real timestamp reads as "less than" any ISO cutoff regardless of
+	// actual date, matching every job instead of just stale ones. Computing
+	// the cutoff with SQLite's own datetime() keeps both sides in the same
+	// format.
+	return db.query.importJobs.findMany({
+		where: and(
+			inArray(importJobs.status, ['pending', 'running']),
+			sql`${importJobs.updatedAt} < datetime('now', ${'-' + staleAfterSeconds + ' seconds'})`
+		)
+	});
+}
+
+/** Runs findStaleImportJobs and fails every match — see findStaleImportJobs for why this exists. */
+export async function failStaleImportJobs(db: Db, staleAfterMs: number): Promise<number> {
+	const stale = await findStaleImportJobs(db, staleAfterMs);
+	for (const job of stale) {
+		await failImportJob(db, job.id, job.userId, 'Import timed out with no progress — the process likely never started or crashed silently');
+	}
+	return stale.length;
+}
+
+/**
  * Fetches a job without an ownership check — for the GitHub Actions webhook
  * callback only, which authenticates via HMAC signature (see
  * webhook-auth.ts) rather than a user session, and needs to first discover
@@ -114,7 +157,7 @@ export async function getImportJobUnchecked(db: Db, jobId: string) {
 export async function startImportJob(db: Db, jobId: string, totalCount: number): Promise<void> {
 	await db
 		.update(importJobs)
-		.set({ status: 'running', totalCount })
+		.set({ status: 'running', totalCount, updatedAt: sql`(current_timestamp)` })
 		.where(eq(importJobs.id, jobId));
 }
 
@@ -130,7 +173,8 @@ export async function submitImportPreview(db: Db, jobId: string, entries: Previe
 		.update(importJobs)
 		.set({
 			totalCount: entries.length,
-			previewEntries: JSON.stringify(entries)
+			previewEntries: JSON.stringify(entries),
+			updatedAt: sql`(current_timestamp)`
 		})
 		.where(eq(importJobs.id, jobId));
 }
@@ -214,7 +258,7 @@ export async function recordSongImported(db: Db, jobId: string, userId: string, 
 
 	await db
 		.update(importJobs)
-		.set({ completedCount: sql`${importJobs.completedCount} + 1` })
+		.set({ completedCount: sql`${importJobs.completedCount} + 1`, updatedAt: sql`(current_timestamp)` })
 		.where(eq(importJobs.id, jobId));
 
 	// The song's real size is now committed as actual usage (via the songs
@@ -235,7 +279,8 @@ export async function recordSongFailed(db: Db, jobId: string, userId: string, fa
 		.update(importJobs)
 		.set({
 			failedCount: sql`${importJobs.failedCount} + 1`,
-			failures: JSON.stringify(existingFailures)
+			failures: JSON.stringify(existingFailures),
+			updatedAt: sql`(current_timestamp)`
 		})
 		.where(eq(importJobs.id, jobId));
 

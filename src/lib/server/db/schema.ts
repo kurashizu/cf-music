@@ -162,6 +162,15 @@ export const importJobs = sqliteTable('import_jobs', {
 	createdAt: text('created_at')
 		.notNull()
 		.default(sql`(current_timestamp)`),
+	// Bumped on every progress-bearing write (start, preview, per-song
+	// success/failure) — the only signal a scheduled sweep has for telling a
+	// genuinely stuck job apart from one that's just slow. Defaults to
+	// created_at's value so a job that dispatch-failed before ever reporting
+	// progress is still eligible for the sweep rather than reading as
+	// "just updated" from a null.
+	updatedAt: text('updated_at')
+		.notNull()
+		.default(sql`(current_timestamp)`),
 	completedAt: text('completed_at')
 }, (t) => [index('idx_import_jobs_user_id').on(t.userId)]);
 

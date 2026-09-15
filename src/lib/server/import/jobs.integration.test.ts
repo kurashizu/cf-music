@@ -15,6 +15,7 @@ import {
 	findKnownVideoIds,
 	submitImportPreview,
 	cancelImportJob,
+	failStaleImportJobs,
 	ImportJobError,
 	type SongImportSuccess
 } from './jobs';
@@ -484,5 +485,74 @@ describe('listImportJobs', () => {
 		const jobs = await listImportJobs(db, 'u1');
 
 		expect(jobs.map((j) => j.sourceUrl)).toEqual(['https://x/failed']);
+	});
+});
+
+describe('failStaleImportJobs', () => {
+	it('fails a pending job whose CI socket never connected at all (no progress since creation)', async () => {
+		await seedUser('u1');
+		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x/stuck' });
+		// No startImportJob/submitImportPreview ever ran — updated_at still
+		// reflects insert time, same as a real workflow_dispatch that was
+		// accepted by GitHub but never actually started a runner.
+		await db.update(importJobs).set({ updatedAt: '2020-01-01 00:00:00' }).where(eq(importJobs.id, id));
+
+		const failedCount = await failStaleImportJobs(db, 60 * 60 * 1000);
+
+		expect(failedCount).toBe(1);
+		const job = await getImportJob(db, id, 'u1');
+		expect(job.status).toBe('failed');
+		expect(job.fatalError).toMatch(/timed out/i);
+	});
+
+	it('fails a running job that stalled mid-import with no recent progress', async () => {
+		await seedUser('u1');
+		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x/stalled' });
+		await startImportJob(db, id, 5);
+		await db.update(importJobs).set({ updatedAt: '2020-01-01 00:00:00' }).where(eq(importJobs.id, id));
+
+		await failStaleImportJobs(db, 60 * 60 * 1000);
+
+		const job = await getImportJob(db, id, 'u1');
+		expect(job.status).toBe('failed');
+	});
+
+	it('leaves a recently-updated job alone', async () => {
+		await seedUser('u1');
+		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x/fresh' });
+		await startImportJob(db, id, 5);
+
+		const failedCount = await failStaleImportJobs(db, 60 * 60 * 1000);
+
+		expect(failedCount).toBe(0);
+		const job = await getImportJob(db, id, 'u1');
+		expect(job.status).toBe('running');
+	});
+
+	it('does not touch a job that already completed', async () => {
+		await seedUser('u1');
+		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x/done' });
+		await recordSongImported(db, id, 'u1', makeSong('a'));
+		await completeImportJob(db, id, 'u1');
+		await db.update(importJobs).set({ updatedAt: '2020-01-01 00:00:00' }).where(eq(importJobs.id, id));
+
+		const failedCount = await failStaleImportJobs(db, 60 * 60 * 1000);
+
+		expect(failedCount).toBe(0);
+		const job = await getImportJob(db, id, 'u1');
+		expect(job.status).toBe('completed');
+	});
+
+	it('releases quota reservations abandoned by a stale job', async () => {
+		await seedUser('u1', 1_000_000);
+		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x/stuck' });
+		await reserveQuota(db, 'u1', id, 'a', 900_000);
+		await db.update(importJobs).set({ updatedAt: '2020-01-01 00:00:00' }).where(eq(importJobs.id, id));
+
+		await failStaleImportJobs(db, 60 * 60 * 1000);
+
+		const secondJob = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://y' });
+		const result = await reserveQuota(db, 'u1', secondJob.id, 'b', 900_000);
+		expect(result.reserved).toBe(true);
 	});
 });
