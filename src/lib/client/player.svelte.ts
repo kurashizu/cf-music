@@ -11,6 +11,25 @@ interface StreamUrlResponse {
 	audioUrl: string;
 	coverUrl: string | null;
 	expiresInSeconds: number;
+	codec: string;
+	bitrateKbps: number | null;
+	sampleRate: number | null;
+}
+
+export interface AudioSpec {
+	codec: string;
+	bitrateKbps: number | null;
+	sampleRate: number | null;
+}
+
+const VOLUME_STORAGE_KEY = 'krsz-music:volume';
+
+function readStoredVolume(): number {
+	if (typeof localStorage === 'undefined') return 1;
+	const raw = localStorage.getItem(VOLUME_STORAGE_KEY);
+	if (raw === null) return 1;
+	const parsed = Number(raw);
+	return Number.isFinite(parsed) ? Math.min(1, Math.max(0, parsed)) : 1;
 }
 
 class PlayerStore {
@@ -25,11 +44,23 @@ class PlayerStore {
 	durationSeconds = $state(0);
 	audioUrl = $state<string | null>(null);
 	coverUrl = $state<string | null>(null);
+	audioSpec = $state<AudioSpec | null>(null);
+	volume = $state(readStoredVolume());
+	muted = $state(false);
 
 	private audio: HTMLAudioElement | null = null;
 	private shuffleIndices: number[] = [];
 	private playThresholdReached = false;
 	private urlExpiresAt = 0;
+	// Web Audio nodes exist purely to feed the spectrum visualizer — created
+	// lazily on first play() (not in getAudio()) since AudioContext starts
+	// suspended until a real user gesture resumes it in most browsers, and
+	// connecting a MediaElementSourceNode is a one-time, irreversible action
+	// per <audio> element (a second connect() on the same element throws),
+	// so it must happen exactly once, not on every loadCurrent().
+	private audioContext: AudioContext | null = null;
+	private analyserNode: AnalyserNode | null = null;
+	private gainNode: GainNode | null = null;
 	// HTMLMediaElement.play() is asynchronous — it can take real time (a
 	// stream URL fetch, then the browser buffering enough to start) before
 	// its promise resolves. Tracking "is a play() in flight" separately
@@ -76,8 +107,58 @@ class PlayerStore {
 			this.audio.addEventListener('ended', () => this.handleEnded());
 			this.audio.addEventListener('waiting', () => (this.isLoading = true));
 			this.audio.addEventListener('canplay', () => (this.isLoading = false));
+			this.audio.volume = this.muted ? 0 : this.volume;
 		}
 		return this.audio;
+	}
+
+	/**
+	 * Wires the <audio> element through a GainNode (volume, so the
+	 * visualizer sees the same signal the user hears) into an AnalyserNode
+	 * the spectrum visualizer reads from, then out to the real speakers —
+	 * skipping this graph entirely and just setting audio.volume directly
+	 * would work for volume alone, but there'd be no tap point for FFT
+	 * data. Lazy + idempotent: createMediaElementSource throws if called
+	 * twice on the same element, so this only ever runs once per <audio>.
+	 */
+	private ensureAudioGraph(): void {
+		if (this.audioContext) return;
+		const audio = this.getAudio();
+		const AudioContextCtor = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+		this.audioContext = new AudioContextCtor();
+		const source = this.audioContext.createMediaElementSource(audio);
+		this.gainNode = this.audioContext.createGain();
+		this.gainNode.gain.value = this.muted ? 0 : this.volume;
+		this.analyserNode = this.audioContext.createAnalyser();
+		this.analyserNode.fftSize = 64;
+		source.connect(this.gainNode);
+		this.gainNode.connect(this.analyserNode);
+		this.analyserNode.connect(this.audioContext.destination);
+	}
+
+	/** Exposes the analyser for the spectrum visualizer component to read frequency data from every animation frame. Null until playback has actually started once. */
+	getAnalyser(): AnalyserNode | null {
+		return this.analyserNode;
+	}
+
+	setVolume(volume: number): void {
+		this.volume = Math.min(1, Math.max(0, volume));
+		this.muted = false;
+		this.applyVolume();
+		if (typeof localStorage !== 'undefined') {
+			localStorage.setItem(VOLUME_STORAGE_KEY, String(this.volume));
+		}
+	}
+
+	toggleMute(): void {
+		this.muted = !this.muted;
+		this.applyVolume();
+	}
+
+	private applyVolume(): void {
+		const effective = this.muted ? 0 : this.volume;
+		if (this.audio) this.audio.volume = effective;
+		if (this.gainNode) this.gainNode.gain.value = effective;
 	}
 
 	/** Replaces the queue and starts playback at `startIndex`. */
@@ -137,6 +218,10 @@ class PlayerStore {
 	 */
 	private async startPlayback(): Promise<void> {
 		const audio = this.getAudio();
+		this.ensureAudioGraph();
+		if (this.audioContext?.state === 'suspended') {
+			await this.audioContext.resume();
+		}
 		this.isPlaying = true;
 		const playPromise = audio.play().catch(() => {
 			// A play() rejection (e.g. immediately superseded by a pause(),
@@ -273,6 +358,7 @@ class PlayerStore {
 
 		this.audioUrl = data.audioUrl;
 		this.coverUrl = data.coverUrl;
+		this.audioSpec = { codec: data.codec, bitrateKbps: data.bitrateKbps, sampleRate: data.sampleRate };
 		this.urlExpiresAt = Date.now() + data.expiresInSeconds * 1000;
 
 		const audio = this.getAudio();

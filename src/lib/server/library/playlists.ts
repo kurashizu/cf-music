@@ -1,6 +1,6 @@
 import { eq, and, isNull, max, inArray } from 'drizzle-orm';
 import type { Db } from '../db';
-import { playlists, playlistSongs, songs, users, importJobs } from '../db/schema';
+import { playlists, playlistSongs, songs, users, importJobs, userSongs } from '../db/schema';
 
 export class LibraryError extends Error {
 	constructor(
@@ -148,23 +148,52 @@ export async function isSongInUserLibrary(db: Db, userId: string, videoId: strin
 export interface LibrarySongSummary {
 	videoId: string;
 	title: string;
+	artist: string | null;
+	durationSeconds: number | null;
 	fileSizeBytes: number;
 	coverKey: string | null;
+	codec: string;
+	importedAt: string;
+	playCount: number;
+	lastPlayedAt: string | null;
 }
 
-/** Every distinct song reachable through any of userId's playlists — the storage management page's song list. */
+/**
+ * Every distinct song reachable through any of userId's playlists — the
+ * storage management page's song list, and the library homepage's global
+ * search/filter. userSongs is left-joined (not inner-joined) for
+ * playCount/lastPlayedAt: that table only gains a row on a song's first
+ * play event (see plays.ts), so a freshly imported, never-played song has
+ * no userSongs row at all yet — an inner join would silently drop it from
+ * this whole list rather than just reporting it as never played. The join
+ * is still at most one row per song despite starting from playlistSongs
+ * (which fans out per playlist membership), because selectDistinct
+ * collapses that back down and userSongs itself is one row per
+ * (userId, videoId).
+ */
 export async function listUserLibrarySongs(db: Db, userId: string): Promise<LibrarySongSummary[]> {
-	return db
+	const rows = await db
 		.selectDistinct({
 			videoId: songs.videoId,
 			title: songs.title,
+			artist: songs.artist,
+			durationSeconds: songs.durationSeconds,
 			fileSizeBytes: songs.fileSizeBytes,
-			coverKey: songs.coverKey
+			coverKey: songs.coverKey,
+			codec: songs.codec,
+			importedAt: songs.importedAt,
+			playCount: userSongs.playCount,
+			lastPlayedAt: userSongs.lastPlayedAt
 		})
 		.from(playlistSongs)
 		.innerJoin(playlists, eq(playlistSongs.playlistId, playlists.id))
 		.innerJoin(songs, eq(playlistSongs.videoId, songs.videoId))
+		.leftJoin(
+			userSongs,
+			and(eq(userSongs.userId, playlists.userId), eq(userSongs.videoId, songs.videoId))
+		)
 		.where(eq(playlists.userId, userId));
+	return rows.map((row) => ({ ...row, playCount: row.playCount ?? 0 }));
 }
 
 /** Fetches a playlist owned by the given user, or throws if missing/not owned. */

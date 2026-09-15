@@ -15,7 +15,10 @@
 	import UserIcon from '@lucide/svelte/icons/user';
 	import TagIcon from '@lucide/svelte/icons/tag';
 	import SearchIcon from '@lucide/svelte/icons/search';
+	import MusicIcon from '@lucide/svelte/icons/music';
 	import PlaylistCover from '$lib/components/playlist-cover.svelte';
+	import { player } from '$lib/client/player.svelte';
+	import * as Select from '$lib/components/ui/select/index.js';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -25,19 +28,52 @@
 	let createSubmitting = $state(false);
 
 	let searchQuery = $state('');
+	let artistFilter = $state<string>('all');
+
+	const artistOptions = $derived(
+		[...new Set(data.librarySongs.map((s) => s.artist).filter((a): a is string => a !== null))].sort(
+			(a, b) => a.localeCompare(b)
+		)
+	);
+
+	const normalizedQuery = $derived(searchQuery.trim().toLowerCase());
 
 	const filteredPlaylists = $derived(
-		searchQuery.trim().length === 0
+		normalizedQuery.length === 0
 			? data.playlists
-			: data.playlists.filter((p) => p.name.toLowerCase().includes(searchQuery.trim().toLowerCase()))
+			: data.playlists.filter((p) => p.name.toLowerCase().includes(normalizedQuery))
 	);
 	const filteredSmartPlaylists = $derived(
-		searchQuery.trim().length === 0
+		normalizedQuery.length === 0
 			? data.smartPlaylists
-			: data.smartPlaylists.filter((g) =>
-					g.value.toLowerCase().includes(searchQuery.trim().toLowerCase())
-				)
+			: data.smartPlaylists.filter((g) => g.value.toLowerCase().includes(normalizedQuery))
 	);
+	// Song results only show once there's an actual query — with no query,
+	// every one of potentially hundreds of library songs would "match",
+	// which isn't a useful thing to render below the playlist grid.
+	const matchingSongs = $derived(
+		normalizedQuery.length === 0
+			? []
+			: data.librarySongs.filter((s) => {
+					if (artistFilter !== 'all' && s.artist !== artistFilter) return false;
+					return (
+						s.title.toLowerCase().includes(normalizedQuery) ||
+						(s.artist?.toLowerCase().includes(normalizedQuery) ?? false)
+					);
+				})
+	);
+
+	async function playSong(song: { videoId: string; title: string; durationSeconds: number | null }) {
+		const index = matchingSongs.findIndex((s) => s.videoId === song.videoId);
+		await player.playQueue(matchingSongs, Math.max(0, index));
+	}
+
+	function formatDuration(seconds: number | null): string {
+		if (seconds === null) return '—';
+		const m = Math.floor(seconds / 60);
+		const s = Math.floor(seconds % 60);
+		return `${m}:${s.toString().padStart(2, '0')}`;
+	}
 
 	let renameTarget = $state<{ id: string; name: string } | null>(null);
 	let renameValue = $state('');
@@ -126,9 +162,24 @@
 
 <div class="mx-auto max-w-5xl p-4 md:p-8">
 	{#if data.playlists.length > 0 || data.smartPlaylists.length > 0}
-		<div class="relative mb-6">
-			<SearchIcon class="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-			<Input placeholder="Search playlists…" bind:value={searchQuery} class="pl-9" />
+		<div class="mb-6 flex flex-wrap items-center gap-2">
+			<div class="relative min-w-48 flex-1">
+				<SearchIcon class="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+				<Input placeholder="Search playlists and songs…" bind:value={searchQuery} class="pl-9" />
+			</div>
+			{#if artistOptions.length > 0}
+				<Select.Root type="single" bind:value={artistFilter}>
+					<Select.Trigger class="w-40">
+						{artistFilter === 'all' ? 'All artists' : artistFilter}
+					</Select.Trigger>
+					<Select.Content>
+						<Select.Item value="all" label="All artists">All artists</Select.Item>
+						{#each artistOptions as artist (artist)}
+							<Select.Item value={artist} label={artist}>{artist}</Select.Item>
+						{/each}
+					</Select.Content>
+				</Select.Root>
+			{/if}
 		</div>
 	{/if}
 
@@ -226,8 +277,34 @@
 		</div>
 	{/if}
 
-	{#if searchQuery.trim().length > 0 && filteredPlaylists.length === 0 && filteredSmartPlaylists.length === 0}
-		<p class="py-8 text-center text-sm text-muted-foreground">No playlists match "{searchQuery}".</p>
+	{#if searchQuery.trim().length > 0 && filteredPlaylists.length === 0 && filteredSmartPlaylists.length === 0 && matchingSongs.length === 0}
+		<p class="py-8 text-center text-sm text-muted-foreground">No matches for "{searchQuery}".</p>
+	{/if}
+
+	{#if matchingSongs.length > 0}
+		<h2 class="mt-10 mb-4 text-sm font-medium text-muted-foreground">
+			Songs ({matchingSongs.length})
+		</h2>
+		<div class="flex flex-col gap-1">
+			{#each matchingSongs as song (song.videoId)}
+				<button
+					type="button"
+					class="flex items-center gap-3 rounded-lg px-2 py-2 text-left hover:bg-muted"
+					onclick={() => playSong(song)}
+				>
+					<div class="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted">
+						<MusicIcon class="size-3.5 text-muted-foreground" />
+					</div>
+					<div class="min-w-0 flex-1">
+						<p class="truncate text-sm font-medium">{song.title}</p>
+						{#if song.artist}
+							<p class="truncate text-xs text-muted-foreground">{song.artist}</p>
+						{/if}
+					</div>
+					<span class="shrink-0 text-xs text-muted-foreground">{formatDuration(song.durationSeconds)}</span>
+				</button>
+			{/each}
+		</div>
 	{/if}
 
 	{#if filteredSmartPlaylists.length > 0}

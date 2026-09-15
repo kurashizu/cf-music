@@ -14,8 +14,10 @@ import {
 	reorderPlaylist,
 	isSongInUserLibrary,
 	ensureDefaultPlaylist,
+	listUserLibrarySongs,
 	LibraryError
 } from './playlists';
+import { recordSongPlay } from './plays';
 
 const db = getDb(env.DB);
 
@@ -446,5 +448,58 @@ describe('isSongInUserLibrary', () => {
 	it('returns false for a video id that does not exist anywhere', async () => {
 		await seedUser('u1');
 		await expect(isSongInUserLibrary(db, 'u1', 'does-not-exist')).resolves.toBe(false);
+	});
+});
+
+describe('listUserLibrarySongs', () => {
+	it('includes a never-played song with playCount 0 and no lastPlayedAt', async () => {
+		await seedUser('u1');
+		await seedSong('a', { artist: 'Radiohead' });
+		const { id } = await createPlaylist(db, { userId: 'u1', name: 'Mix' });
+		await addSongToPlaylist(db, id, 'u1', 'a');
+
+		const [song] = await listUserLibrarySongs(db, 'u1');
+		expect(song).toMatchObject({ videoId: 'a', artist: 'Radiohead', playCount: 0, lastPlayedAt: null });
+	});
+
+	it('reports playCount and lastPlayedAt once the song has been played', async () => {
+		await seedUser('u1');
+		await seedSong('a');
+		const { id } = await createPlaylist(db, { userId: 'u1', name: 'Mix' });
+		await addSongToPlaylist(db, id, 'u1', 'a');
+		await recordSongPlay(db, 'u1', 'a');
+		await recordSongPlay(db, 'u1', 'a');
+
+		const [song] = await listUserLibrarySongs(db, 'u1');
+		expect(song?.playCount).toBe(2);
+		expect(song?.lastPlayedAt).not.toBeNull();
+	});
+
+	it('does not duplicate a song that belongs to multiple of the user\'s playlists', async () => {
+		await seedUser('u1');
+		await seedSong('a');
+		const mix1 = await createPlaylist(db, { userId: 'u1', name: 'Mix 1' });
+		const mix2 = await createPlaylist(db, { userId: 'u1', name: 'Mix 2' });
+		await addSongToPlaylist(db, mix1.id, 'u1', 'a');
+		await addSongToPlaylist(db, mix2.id, 'u1', 'a');
+
+		const result = await listUserLibrarySongs(db, 'u1');
+		expect(result).toHaveLength(1);
+	});
+
+	it('only reflects one user\'s own play count for a song shared with another user', async () => {
+		await seedUser('u1');
+		await seedUser('u2');
+		await seedSong('shared');
+		const p1 = await createPlaylist(db, { userId: 'u1', name: 'Mix' });
+		const p2 = await createPlaylist(db, { userId: 'u2', name: 'Their Mix' });
+		await addSongToPlaylist(db, p1.id, 'u1', 'shared');
+		await addSongToPlaylist(db, p2.id, 'u2', 'shared');
+		await recordSongPlay(db, 'u2', 'shared');
+		await recordSongPlay(db, 'u2', 'shared');
+		await recordSongPlay(db, 'u2', 'shared');
+
+		const [song] = await listUserLibrarySongs(db, 'u1');
+		expect(song?.playCount).toBe(0);
 	});
 });

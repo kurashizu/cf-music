@@ -1,6 +1,6 @@
 import { redirect } from '@sveltejs/kit';
 import { getDb } from '$lib/server/db';
-import { listPlaylists, ensureDefaultPlaylist } from '$lib/server/library/playlists';
+import { listPlaylists, ensureDefaultPlaylist, listUserLibrarySongs } from '$lib/server/library/playlists';
 import { listSmartPlaylists } from '$lib/server/library/smart-playlists';
 import { getObjectStorage } from '$lib/server/storage/factory';
 import type { PageServerLoad } from './$types';
@@ -17,10 +17,11 @@ export const load: PageServerLoad = async ({ platform, locals }) => {
 	}
 
 	const db = getDb(platform!.env.DB);
-	const [playlists, smartPlaylists, { id: defaultPlaylistId }] = await Promise.all([
+	const [playlists, smartPlaylists, { id: defaultPlaylistId }, librarySongs] = await Promise.all([
 		listPlaylists(db, locals.session.userId),
 		listSmartPlaylists(db, locals.session.userId),
-		ensureDefaultPlaylist(db, locals.session.userId)
+		ensureDefaultPlaylist(db, locals.session.userId),
+		listUserLibrarySongs(db, locals.session.userId)
 	]);
 
 	// Playlists/smart playlists carry up to 4 member songs' raw coverKeys
@@ -43,5 +44,19 @@ export const load: PageServerLoad = async ({ platform, locals }) => {
 		)
 	]);
 
-	return { playlists: playlistsWithCovers, smartPlaylists: smartPlaylistsWithCovers, defaultPlaylistId };
+	return {
+		playlists: playlistsWithCovers,
+		smartPlaylists: smartPlaylistsWithCovers,
+		defaultPlaylistId,
+		// videoId/title/artist/durationSeconds is all the global search
+		// needs to both match and immediately start playback — it doesn't
+		// need cover art, unlike the mosaic covers above, since a click
+		// hands off straight to the player, which fetches its own cover URL.
+		librarySongs: librarySongs.map((song) => ({
+			videoId: song.videoId,
+			title: song.title,
+			artist: song.artist,
+			durationSeconds: song.durationSeconds
+		}))
+	};
 };

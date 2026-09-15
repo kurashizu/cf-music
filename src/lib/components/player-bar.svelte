@@ -12,6 +12,15 @@
 	import MusicIcon from '@lucide/svelte/icons/music';
 	import ListMusicIcon from '@lucide/svelte/icons/list-music';
 	import XIcon from '@lucide/svelte/icons/x';
+	import VolumeControl from '$lib/components/volume-control.svelte';
+	import SpectrumVisualizer from '$lib/components/spectrum-visualizer.svelte';
+
+	function formatAudioSpec(spec: typeof player.audioSpec): string {
+		if (!spec) return '';
+		const parts = [spec.codec];
+		if (spec.bitrateKbps) parts.push(`${spec.bitrateKbps}kbps`);
+		return parts.join(' · ');
+	}
 
 	function formatTime(seconds: number): string {
 		if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
@@ -127,14 +136,27 @@
 			<p class="truncate text-sm font-medium">
 				{player.currentTrack?.title ?? 'Nothing playing'}
 			</p>
-			<p class="text-xs text-muted-foreground">
+			<p class="flex items-center gap-1.5 text-xs text-muted-foreground">
 				{#if player.currentTrack}
-					{formatTime(player.currentTimeSeconds)} / {formatTime(player.durationSeconds)}
+					<span>{formatTime(player.currentTimeSeconds)} / {formatTime(player.durationSeconds)}</span>
+					{#if player.audioSpec}
+						<span
+							class="hidden rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] leading-normal text-muted-foreground sm:inline"
+						>
+							{formatAudioSpec(player.audioSpec)}
+						</span>
+					{/if}
 				{:else}
 					Pick a song to get started
 				{/if}
 			</p>
 		</div>
+
+		<div class="hidden md:block">
+			<SpectrumVisualizer />
+		</div>
+
+		<VolumeControl />
 
 		<div class="hidden items-center gap-1 sm:flex">
 			<Button

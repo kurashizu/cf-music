@@ -37,6 +37,9 @@ export const GET: RequestHandler = async (event) => {
 	return json({
 		audioUrl,
 		coverUrl,
-		expiresInSeconds: PRESIGNED_URL_EXPIRY_SECONDS
+		expiresInSeconds: PRESIGNED_URL_EXPIRY_SECONDS,
+		codec: song.codec,
+		bitrateKbps: song.bitrateKbps,
+		sampleRate: song.sampleRate
 	});
 };
