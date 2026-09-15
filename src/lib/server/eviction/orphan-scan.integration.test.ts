@@ -2,9 +2,16 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { env } from 'cloudflare:test';
 import { eq } from 'drizzle-orm';
 import { getDb } from '../db';
-import { songs, users, auditLog } from '../db/schema';
+import { songs, users, auditLog, playlists, playlistSongs } from '../db/schema';
 import type { ObjectStorage } from '../storage/s3';
-import { findOrphanedObjects, findDeadSongReferences, resolveDeadSongReference } from './orphan-scan';
+import {
+	findOrphanedObjects,
+	findDeadSongReferences,
+	resolveDeadSongReference,
+	findUnreferencedSongs,
+	resolveUnreferencedSong
+} from './orphan-scan';
+import { createPlaylist, addSongToPlaylist } from '../library/playlists';
 
 const db = getDb(env.DB);
 
@@ -15,7 +22,7 @@ class FakeObjectStorage implements ObjectStorage {
 		return `https://fake.example/${key}`;
 	}
 
-	async deleteObjects(): Promise<void> {}
+	async deleteObjects(_keys: string[]): Promise<void> {}
 
 	async listAllKeys(): Promise<string[]> {
 		return this.keys;
@@ -44,7 +51,13 @@ async function seedUser(id: string) {
 }
 
 beforeEach(async () => {
+	// defaultPlaylistId references playlists.id (see schema.ts) — clear it
+	// before deleting playlists/users, or a leftover default from a
+	// previous test violates that foreign key.
+	await db.update(users).set({ defaultPlaylistId: null });
 	await db.delete(auditLog);
+	await db.delete(playlistSongs);
+	await db.delete(playlists);
 	await db.delete(songs);
 	await db.delete(users);
 });
@@ -216,5 +229,123 @@ describe('resolveDeadSongReference', () => {
 		expect(song?.coverKey).toBe('covers/new.avif');
 		const entries = await db.query.auditLog.findMany({ where: eq(auditLog.targetId, 'a') });
 		expect(entries).toHaveLength(0);
+	});
+});
+
+describe('findUnreferencedSongs', () => {
+	it('reports nothing unreferenced when every song is reachable through a playlist', async () => {
+		await seedUser('admin1');
+		await seedSong('a');
+		const { id: playlistId } = await createPlaylist(db, { userId: 'admin1', name: 'Mix' });
+		await addSongToPlaylist(db, playlistId, 'admin1', 'a');
+
+		const result = await findUnreferencedSongs(db);
+
+		expect(result.unreferencedSongs).toEqual([]);
+		expect(result.totalSongs).toBe(1);
+	});
+
+	it('reports a song with no playlist_songs row at all as unreferenced', async () => {
+		await seedSong('a', { title: 'Orphan Song' });
+
+		const result = await findUnreferencedSongs(db);
+
+		expect(result.unreferencedSongs).toEqual([{ videoId: 'a', title: 'Orphan Song' }]);
+	});
+
+	it('does not flag a song that lost one playlist reference but still has another', async () => {
+		await seedUser('admin1');
+		await seedSong('a');
+		const { id: p1 } = await createPlaylist(db, { userId: 'admin1', name: 'Mix 1' });
+		const { id: p2 } = await createPlaylist(db, { userId: 'admin1', name: 'Mix 2' });
+		await addSongToPlaylist(db, p1, 'admin1', 'a');
+		await addSongToPlaylist(db, p2, 'admin1', 'a');
+
+		const result = await findUnreferencedSongs(db);
+
+		expect(result.unreferencedSongs).toEqual([]);
+	});
+
+	it('reports only the unreferenced songs out of a mix of referenced and unreferenced', async () => {
+		await seedUser('admin1');
+		await seedSong('a');
+		await seedSong('b');
+		const { id: playlistId } = await createPlaylist(db, { userId: 'admin1', name: 'Mix' });
+		await addSongToPlaylist(db, playlistId, 'admin1', 'a');
+
+		const result = await findUnreferencedSongs(db);
+
+		expect(result.unreferencedSongs).toEqual([{ videoId: 'b', title: 'Song b' }]);
+		expect(result.totalSongs).toBe(2);
+	});
+});
+
+describe('resolveUnreferencedSong', () => {
+	it('deletes the song row', async () => {
+		await seedUser('admin1');
+		await seedSong('a');
+
+		await resolveUnreferencedSong(db, new FakeObjectStorage([]), 'admin1', 'a');
+
+		const song = await db.query.songs.findFirst({ where: eq(songs.videoId, 'a') });
+		expect(song).toBeUndefined();
+	});
+
+	it('deletes both the audio and cover objects from storage', async () => {
+		await seedUser('admin1');
+		await seedSong('a', { audioKey: 'audio/a.webm', coverKey: 'covers/a.avif' });
+		const deleted: string[][] = [];
+		class RecordingStorage extends FakeObjectStorage {
+			async deleteObjects(keys: string[]): Promise<void> {
+				deleted.push(keys);
+			}
+		}
+
+		await resolveUnreferencedSong(db, new RecordingStorage([]), 'admin1', 'a');
+
+		expect(deleted).toEqual([['audio/a.webm', 'covers/a.avif']]);
+	});
+
+	it('records an audit event with the acting admin as actorId', async () => {
+		await seedUser('admin1');
+		await seedSong('a');
+
+		await resolveUnreferencedSong(db, new FakeObjectStorage([]), 'admin1', 'a');
+
+		const entry = await db.query.auditLog.findFirst({ where: eq(auditLog.targetId, 'a') });
+		expect(entry?.actorId).toBe('admin1');
+		expect(entry?.eventType).toBe('manual_delete');
+	});
+
+	it('reports resolved: true when the delete actually removes a row', async () => {
+		await seedUser('admin1');
+		await seedSong('a');
+
+		const result = await resolveUnreferencedSong(db, new FakeObjectStorage([]), 'admin1', 'a');
+
+		expect(result.resolved).toBe(true);
+	});
+
+	it('reports resolved: false and writes no audit event on a second concurrent resolve of the same song', async () => {
+		await seedUser('admin1');
+		await seedUser('admin2');
+		await seedSong('a');
+
+		const first = await resolveUnreferencedSong(db, new FakeObjectStorage([]), 'admin1', 'a');
+		const second = await resolveUnreferencedSong(db, new FakeObjectStorage([]), 'admin2', 'a');
+
+		expect(first.resolved).toBe(true);
+		expect(second.resolved).toBe(false);
+		const entries = await db.query.auditLog.findMany({ where: eq(auditLog.targetId, 'a') });
+		expect(entries).toHaveLength(1);
+		expect(entries[0].actorId).toBe('admin1');
+	});
+
+	it('reports resolved: false when the song no longer exists', async () => {
+		await seedUser('admin1');
+
+		const result = await resolveUnreferencedSong(db, new FakeObjectStorage([]), 'admin1', 'does-not-exist');
+
+		expect(result.resolved).toBe(false);
 	});
 });

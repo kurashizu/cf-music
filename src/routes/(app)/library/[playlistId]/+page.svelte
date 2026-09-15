@@ -13,6 +13,7 @@
 	import MoreHorizontalIcon from '@lucide/svelte/icons/more-horizontal';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import GripVerticalIcon from '@lucide/svelte/icons/grip-vertical';
+	import MusicIcon from '@lucide/svelte/icons/music';
 	import { untrack } from 'svelte';
 	import type { PageProps } from './$types';
 
@@ -37,6 +38,8 @@
 	let draggingIndex = $state<number | null>(null);
 	let removeTarget = $state<{ videoId: string; title: string } | null>(null);
 	let removeSubmitting = $state(false);
+	let deleteTarget = $state<{ videoId: string; title: string } | null>(null);
+	let deleteSubmitting = $state(false);
 
 	const isThisPlaylistPlaying = $derived(
 		player.isPlaying && songs.some((s) => s.videoId === player.currentTrack?.videoId)
@@ -55,6 +58,10 @@
 		const m = Math.floor(seconds / 60);
 		const s = Math.floor(seconds % 60);
 		return `${m}:${s.toString().padStart(2, '0')}`;
+	}
+
+	function formatAudioSpec(codec: string, bitrateKbps: number | null): string {
+		return bitrateKbps ? `${codec} · ${bitrateKbps}kbps` : codec;
 	}
 
 	async function playAll(shuffle = false) {
@@ -85,6 +92,30 @@
 			toast.error('Failed to remove song');
 		} finally {
 			removeSubmitting = false;
+		}
+	}
+
+	// Distinct from handleRemove: this deletes the song itself (see
+	// DELETE /api/songs/[videoId] — evictSongForUser), not just its
+	// membership in this one playlist. It disappears from every playlist
+	// it was in, and its storage is freed if no one else still references
+	// it (songs are deduplicated/shared across users' libraries).
+	async function handleDelete() {
+		if (!deleteTarget) return;
+		deleteSubmitting = true;
+		try {
+			const response = await fetch(`/api/songs/${deleteTarget.videoId}`, { method: 'DELETE' });
+			if (!response.ok) {
+				toast.error('Failed to delete song');
+				return;
+			}
+			toast.success('Song deleted');
+			deleteTarget = null;
+			await invalidateAll();
+		} catch {
+			toast.error('Failed to delete song');
+		} finally {
+			deleteSubmitting = false;
 		}
 	}
 
@@ -195,6 +226,14 @@
 						{/if}
 					</button>
 
+					<div class="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
+						{#if song.coverUrl}
+							<img src={song.coverUrl} alt="" class="size-8 object-cover" />
+						{:else}
+							<MusicIcon class="size-3.5 text-muted-foreground" />
+						{/if}
+					</div>
+
 					<div class="min-w-0 flex-1">
 						<p
 							class="truncate text-sm {player.currentTrack?.videoId === song.videoId
@@ -204,6 +243,12 @@
 							{song.title}
 						</p>
 					</div>
+
+					<span
+						class="hidden shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground sm:inline-block"
+					>
+						{formatAudioSpec(song.codec, song.bitrateKbps)}
+					</span>
 
 					<span class="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
 						<ClockIcon class="size-3" />
@@ -225,11 +270,17 @@
 						</DropdownMenu.Trigger>
 						<DropdownMenu.Content align="end">
 							<DropdownMenu.Item
-								variant="destructive"
 								onclick={() => (removeTarget = { videoId: song.videoId, title: song.title })}
 							>
-								<Trash2Icon class="size-4" />
+								<ListMusicIcon class="size-4" />
 								Remove from playlist
+							</DropdownMenu.Item>
+							<DropdownMenu.Item
+								variant="destructive"
+								onclick={() => (deleteTarget = { videoId: song.videoId, title: song.title })}
+							>
+								<Trash2Icon class="size-4" />
+								Delete from library
 							</DropdownMenu.Item>
 						</DropdownMenu.Content>
 					</DropdownMenu.Root>
@@ -249,6 +300,24 @@
 			<Button variant="outline" onclick={() => (removeTarget = null)}>Cancel</Button>
 			<Button variant="destructive" disabled={removeSubmitting} onclick={handleRemove}>
 				{removeSubmitting ? 'Removing…' : 'Remove'}
+			</Button>
+		</Dialog.Footer>
+	</Dialog.Content>
+</Dialog.Root>
+
+<Dialog.Root open={deleteTarget !== null} onOpenChange={(open) => !open && (deleteTarget = null)}>
+	<Dialog.Content class="sm:max-w-sm">
+		<Dialog.Header>
+			<Dialog.Title>Delete "{deleteTarget?.title}"?</Dialog.Title>
+			<Dialog.Description>
+				This deletes the song from your library entirely, not just this playlist — it disappears from
+				every playlist it's in. This can't be undone.
+			</Dialog.Description>
+		</Dialog.Header>
+		<Dialog.Footer>
+			<Button variant="outline" onclick={() => (deleteTarget = null)}>Cancel</Button>
+			<Button variant="destructive" disabled={deleteSubmitting} onclick={handleDelete}>
+				{deleteSubmitting ? 'Deleting…' : 'Delete'}
 			</Button>
 		</Dialog.Footer>
 	</Dialog.Content>

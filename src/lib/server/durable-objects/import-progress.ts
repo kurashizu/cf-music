@@ -4,9 +4,11 @@ import {
 	startImportJob,
 	submitImportPreview,
 	recordSongImported,
+	recordKnownSongLinked,
 	recordSongFailed,
 	completeImportJob,
 	failImportJob,
+	disconnectImportJob,
 	cancelImportJob,
 	ImportJobError
 } from '../import/jobs';
@@ -119,6 +121,9 @@ export class ImportProgressDurableObject implements DurableObject {
 			case 'song_success':
 				await recordSongImported(db, message.jobId, job.userId, message.event.song);
 				break;
+			case 'song_known':
+				await recordKnownSongLinked(db, message.jobId, job.userId, message.event.videoId);
+				break;
 			case 'song_failed':
 				await recordSongFailed(db, message.jobId, job.userId, message.event.failure);
 				break;
@@ -190,7 +195,10 @@ export class ImportProgressDurableObject implements DurableObject {
 	 * (a WebSocket disconnect during a long-running batch left the job
 	 * spinning in the UI with nothing to cancel it automatically). A CI
 	 * socket closing while its job is still non-terminal is exactly that
-	 * situation, so it's treated as an implicit fatal_error.
+	 * situation, so it's treated as an implicit disconnect (see
+	 * disconnectImportJob for why this isn't always a hard failure — a
+	 * disconnect after real progress keeps that progress instead of
+	 * discarding it).
 	 */
 	private async handlePossibleZombieJob(ws: WebSocket): Promise<void> {
 		const tags = this.ctx.getTags(ws);
@@ -209,9 +217,16 @@ export class ImportProgressDurableObject implements DurableObject {
 		}
 		if (TERMINAL_STATUSES.has(job.status)) return;
 
-		await failImportJob(db, jobId, job.userId, 'Import process disconnected unexpectedly');
+		const reason = 'Import process disconnected unexpectedly';
+		await disconnectImportJob(db, jobId, job.userId, reason);
 
-		const event = { type: 'fatal_error', reason: 'Import process disconnected unexpectedly' };
+		// completedCount > 0 at disconnect time is exactly disconnectImportJob's
+		// own branch condition for resolving to `completed` instead of
+		// `failed` — reusing it here keeps the broadcast event in sync with
+		// whichever branch the D1 write actually took, without a second
+		// read back.
+		const event =
+			job.completedCount > 0 ? { type: 'complete' } : { type: 'fatal_error', reason };
 		const raw = JSON.stringify({ jobId, event });
 		for (const browserWs of this.ctx.getWebSockets()) {
 			if (!isCiSocket(this.ctx.getTags(browserWs))) {

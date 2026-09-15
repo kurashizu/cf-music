@@ -1,16 +1,33 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { goto, invalidateAll } from '$app/navigation';
+	import { toast } from 'svelte-sonner';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Card from '$lib/components/ui/card/index.js';
 	import HardDriveIcon from '@lucide/svelte/icons/hard-drive';
 	import GlobeIcon from '@lucide/svelte/icons/globe';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
+	import LogOutIcon from '@lucide/svelte/icons/log-out';
 	import { estimateBrowserStorage, type StorageEstimate } from '$lib/client/offline-cache';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
 
 	let browserStorage = $state<StorageEstimate | null>(null);
+
+	async function handleLogout() {
+		try {
+			const response = await fetch('/api/auth/logout', { method: 'POST' });
+			if (!response.ok) {
+				toast.error('Failed to log out');
+				return;
+			}
+			await invalidateAll();
+			await goto('/');
+		} catch {
+			toast.error('Failed to log out');
+		}
+	}
 
 	const usagePercent = $derived(
 		data.quotaBytes > 0 ? Math.min(100, (data.usageBytes / data.quotaBytes) * 100) : 0
@@ -100,7 +117,7 @@
 		</Card.Content>
 	</Card.Root>
 
-	<a href="/settings/offline-cache" class="block">
+	<a href="/settings/offline-cache" class="mb-4 block">
 		<Card.Root class="transition-colors hover:border-ring/50">
 			<Card.Content class="flex items-center justify-between gap-3">
 				<div>
@@ -111,4 +128,14 @@
 			</Card.Content>
 		</Card.Root>
 	</a>
+
+	<Card.Root>
+		<Card.Content>
+			<p class="mb-3 truncate text-xs text-muted-foreground">{data.session.username}</p>
+			<Button variant="outline" size="sm" class="w-full justify-start gap-2" onclick={handleLogout}>
+				<LogOutIcon class="size-4" />
+				Log out
+			</Button>
+		</Card.Content>
+	</Card.Root>
 </div>

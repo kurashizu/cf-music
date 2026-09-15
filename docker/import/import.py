@@ -140,8 +140,8 @@ def estimate_song_size_bytes(entry: dict) -> int:
         return 0
 
 
-def extract_and_filter(source_url: str) -> tuple[list[dict], list[dict]]:
-    """Extracts the playlist and drops songs already owned by someone —
+def extract_and_filter(source_url: str) -> tuple[list[dict], list[dict], set[str]]:
+    """Extracts the playlist and splits out songs already owned by someone —
     everything this touches (yt-dlp, urllib) is synchronous/blocking, so
     this is meant to be run via asyncio.to_thread from run(), not awaited
     directly. Deliberately does NOT also do the per-song size probing that
@@ -154,12 +154,18 @@ def extract_and_filter(source_url: str) -> tuple[list[dict], list[dict]]:
     but the connection still died mid-batch because nothing but pings
     crossed the wire for 17 minutes). The size probing loop now lives in
     run() itself, one to_thread call per song, so a real progress event
-    can go out after each one."""
+    can go out after each one.
+
+    known_video_ids is returned (not just used to filter) so run() can send
+    a song_known event for each one — without that, a song already in the
+    library was skipped here (correctly: no need to re-download it) but
+    then never linked into this job's target playlist either, silently
+    dropped from an import that named it."""
     entries = extract_playlist_entries(source_url)
     video_ids = [e["id"] for e in entries]
     known_video_ids = fetch_known_video_ids(video_ids)
     pending_entries = [e for e in entries if e["id"] not in known_video_ids]
-    return entries, pending_entries
+    return entries, pending_entries, known_video_ids
 
 
 def fetch_remaining_quota_bytes() -> int:
@@ -278,8 +284,32 @@ def probe_image_dimensions(image_path: Path) -> tuple[int, int]:
     return int(stream["width"]), int(stream["height"])
 
 
+# boto3's upload_file has no built-in content-type guessing of its own —
+# left unset, MinIO stores the object as application/octet-stream (or
+# whatever binary/octet-stream default it falls back to). A browser's
+# <audio>/<img> element uses this header, not the actual bytes, to decide
+# whether a resource is even playable/renderable at all: a real fetch()
+# against such an object succeeds fine (it doesn't care about content-type),
+# but an <audio> tag pointed at the same URL silently sits at
+# readyState=HAVE_NOTHING forever, no error event, because the browser
+# never considered it a decodable audio source in the first place. This
+# is keyed by container (the actual probed ffprobe value, not the source
+# extension) since that's what ends up in the object key/audio_key.
+CONTENT_TYPES = {
+    "webm": "audio/webm",
+    "m4a": "audio/mp4",
+    "mp3": "audio/mpeg",
+    "opus": "audio/opus",
+    "ogg": "audio/ogg",
+    "avif": "image/avif",
+}
+
+
 def upload_to_minio(s3_client, local_path: Path, object_key: str) -> None:
-    s3_client.upload_file(str(local_path), MINIO_BUCKET, object_key)
+    content_type = CONTENT_TYPES.get(local_path.suffix.lstrip("."), "application/octet-stream")
+    s3_client.upload_file(
+        str(local_path), MINIO_BUCKET, object_key, ExtraArgs={"ContentType": content_type}
+    )
 
 
 def download_and_upload_song(entry: dict, s3_client) -> dict:
@@ -404,7 +434,7 @@ async def run() -> None:
             # so this doesn't block the event loop while it runs (a fast
             # call anyway: extraction + the known-video-ids lookup, not the
             # per-song size probing below).
-            entries, pending_entries = await asyncio.to_thread(extract_and_filter, SOURCE_URL)
+            entries, pending_entries, known_video_ids = await asyncio.to_thread(extract_and_filter, SOURCE_URL)
 
             # Probes each pending song's real download size concurrently
             # (DOWNLOAD_CONCURRENCY at once, same as the download loop
@@ -477,7 +507,29 @@ async def run() -> None:
         # Downloading starts immediately so the job never blocks on a human
         # being present to click a button — a user can still cancel a job
         # already in progress (checked before each song below).
-        await send_event({"type": "start", "totalCount": len(entries)})
+        #
+        # totalCount is len(pending_entries) + len(known_video_ids), not
+        # len(entries): entries is the whole source playlist as extracted,
+        # before yt-dlp's own dedup/availability quirks are accounted for,
+        # but pending_entries + known_video_ids is exactly the set of songs
+        # this job will actually report progress for — every one of them
+        # gets either a song_success/song_failed event (pending) or a
+        # song_known event (already owned), and nothing else ever
+        # increments completedCount. Using entries here previously made the
+        # progress bar's denominator permanently larger than anything that
+        # could complete it (a 98-song playlist with 86 already-owned songs
+        # showed "12/98" forever).
+        await send_event(
+            {"type": "start", "totalCount": len(pending_entries) + len(known_video_ids)}
+        )
+
+        # Each already-owned song just needs linking into this job's target
+        # playlist (see recordKnownSongLinked) — it was correctly never
+        # downloaded, but was silently dropped from the import's result
+        # entirely before this existed, since nothing else in the job ever
+        # reported it at all.
+        for video_id in known_video_ids:
+            await send_event({"type": "song_known", "videoId": video_id})
 
         s3_client = boto3.client(
             "s3",

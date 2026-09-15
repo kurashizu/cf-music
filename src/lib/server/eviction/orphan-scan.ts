@@ -1,6 +1,6 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull, count } from 'drizzle-orm';
 import type { Db } from '../db';
-import { songs } from '../db/schema';
+import { songs, playlistSongs } from '../db/schema';
 import type { ObjectStorage } from '../storage/s3';
 import { recordAuditEvent } from '../audit/log';
 
@@ -20,6 +20,16 @@ export interface DeadReference {
 export interface DeadReferenceScanResult {
 	deadReferences: DeadReference[];
 	totalBucketKeys: number;
+	totalSongs: number;
+}
+
+export interface UnreferencedSong {
+	videoId: string;
+	title: string;
+}
+
+export interface UnreferencedSongScanResult {
+	unreferencedSongs: UnreferencedSong[];
 	totalSongs: number;
 }
 
@@ -85,6 +95,32 @@ export async function findDeadSongReferences(db: Db, storage: ObjectStorage): Pr
 }
 
 /**
+ * A third orphan direction, distinct from both findOrphanedObjects
+ * (S3-without-D1) and findDeadSongReferences (D1-referencing-missing-S3):
+ * `songs` rows with real, intact S3 objects, but that no playlist_songs
+ * row reaches at all — invisible in every user's library, contributing
+ * nothing but silent storage usage. This should never happen (every
+ * import links its song into a target playlist, and eviction deletes the
+ * row itself once the last reference is gone — see evictSongForUser), so
+ * a row here means something upstream left the two out of sync (an
+ * interrupted operation, manual data surgery, a stale test artifact) —
+ * this is report-only, same as the other two scans; resolveUnreferencedSong
+ * is the separate action that actually deletes one.
+ */
+export async function findUnreferencedSongs(db: Db): Promise<UnreferencedSongScanResult> {
+	const [rows, [{ totalSongs }]] = await Promise.all([
+		db
+			.select({ videoId: songs.videoId, title: songs.title })
+			.from(songs)
+			.leftJoin(playlistSongs, eq(playlistSongs.videoId, songs.videoId))
+			.where(isNull(playlistSongs.videoId)),
+		db.select({ totalSongs: count() }).from(songs)
+	]);
+
+	return { unreferencedSongs: rows, totalSongs };
+}
+
+/**
  * Resolves one dead reference found by findDeadSongReferences — the two
  * fields need different actions, not a single "delete it" for both: a dead
  * audioKey means the song has no audio at all, so the row itself is
@@ -135,6 +171,50 @@ export async function resolveDeadSongReference(
 		targetType: 'song',
 		targetId: reference.videoId,
 		detail: { reason: 'dead_cover_reference', key: reference.key }
+	});
+	return { resolved: true };
+}
+
+/**
+ * Deletes one unreferenced song found by findUnreferencedSongs — its D1 row
+ * and its S3 objects, the same as evictSongForUser's hard-delete branch
+ * (there's no user's own playlist references to remove first here, since
+ * the whole point is that nothing references it). D1 row deleted before
+ * S3 objects for the same reason as evictSongForUser: a crash between the
+ * two leaves a stray S3 object with no songs row, which is exactly what
+ * findOrphanedObjects already detects and is safe to clean up — the
+ * opposite ordering risks a songs row surviving with a dead key instead,
+ * undetectable except by a second, judgment-requiring scan.
+ *
+ * Returns whether the delete actually happened, via `.returning()` rather
+ * than assuming it did — the same double-resolve race as
+ * resolveDeadSongReference (two admins acting on the same stale scan
+ * result) applies here too.
+ */
+export async function resolveUnreferencedSong(
+	db: Db,
+	storage: ObjectStorage,
+	actorId: string,
+	videoId: string
+): Promise<{ resolved: boolean }> {
+	const deleted = await db.delete(songs).where(eq(songs.videoId, videoId)).returning({
+		videoId: songs.videoId,
+		title: songs.title,
+		audioKey: songs.audioKey,
+		coverKey: songs.coverKey,
+		fileSizeBytes: songs.fileSizeBytes
+	});
+	if (deleted.length === 0) return { resolved: false };
+	const song = deleted[0];
+
+	await storage.deleteObjects([song.audioKey, ...(song.coverKey ? [song.coverKey] : [])]);
+
+	await recordAuditEvent(db, {
+		actorId,
+		eventType: 'manual_delete',
+		targetType: 'song',
+		targetId: videoId,
+		detail: { reason: 'unreferenced_song', title: song.title, fileSizeBytes: song.fileSizeBytes }
 	});
 	return { resolved: true };
 }

@@ -47,6 +47,14 @@
 		totalBucketKeys: number;
 		totalSongs: number;
 	}
+	interface UnreferencedSong {
+		videoId: string;
+		title: string;
+	}
+	interface UnreferencedSongScanResult {
+		unreferencedSongs: UnreferencedSong[];
+		totalSongs: number;
+	}
 
 	let orphanScan = $state<OrphanScanResult | null>(null);
 	let orphanScanLoading = $state(false);
@@ -55,6 +63,13 @@
 	let deadReferenceScan = $state<DeadReferenceScanResult | null>(null);
 	let deadReferenceScanLoading = $state(false);
 	let deadReferenceResolving = $state<string | null>(null);
+
+	let unreferencedScan = $state<UnreferencedSongScanResult | null>(null);
+	let unreferencedScanLoading = $state(false);
+	let unreferencedResolving = $state<string | null>(null);
+	// Deleting an unreferenced song is just as irreversible as deleting one
+	// for a dead audioKey — same confirm-before-destroy treatment.
+	let deleteUnreferencedTarget = $state<UnreferencedSong | null>(null);
 	// Deleting a song for a dead audioKey is irreversible and can affect
 	// other users who share the song (see resolveDeadSongReference) —
 	// unlike clearing a dead coverKey (the song still plays fine either
@@ -171,6 +186,60 @@
 		const target = deleteSongTarget;
 		deleteSongTarget = null;
 		await resolveDeadReference(target);
+	}
+
+	async function runUnreferencedScan() {
+		unreferencedScanLoading = true;
+		try {
+			const response = await fetch('/api/admin/storage/unreferenced-songs');
+			if (!response.ok) {
+				toast.error('Failed to scan for unreferenced songs');
+				return;
+			}
+			unreferencedScan = (await response.json()) as UnreferencedSongScanResult;
+		} catch {
+			toast.error('Failed to scan for unreferenced songs');
+		} finally {
+			unreferencedScanLoading = false;
+		}
+	}
+
+	async function resolveUnreferenced(song: UnreferencedSong) {
+		unreferencedResolving = song.videoId;
+		try {
+			const response = await fetch('/api/admin/storage/unreferenced-songs', {
+				method: 'DELETE',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ videoId: song.videoId })
+			});
+			if (!response.ok) {
+				toast.error('Failed to delete unreferenced song');
+				return;
+			}
+			const { resolved } = (await response.json()) as { resolved: boolean };
+			if (resolved && unreferencedScan) {
+				unreferencedScan = {
+					...unreferencedScan,
+					unreferencedSongs: unreferencedScan.unreferencedSongs.filter(
+						(s) => s.videoId !== song.videoId
+					)
+				};
+				toast.success('Song deleted');
+			} else {
+				toast.error('No longer unreferenced — it may have been added to a playlist since the scan');
+			}
+		} catch {
+			toast.error('Failed to delete unreferenced song');
+		} finally {
+			unreferencedResolving = null;
+		}
+	}
+
+	async function confirmDeleteUnreferenced() {
+		if (!deleteUnreferencedTarget) return;
+		const target = deleteUnreferencedTarget;
+		deleteUnreferencedTarget = null;
+		await resolveUnreferenced(target);
 	}
 
 	async function generateInviteCode() {
@@ -438,6 +507,49 @@
 						{/if}
 					{/if}
 				</div>
+
+				<div>
+					<div class="mb-3 flex items-center justify-between gap-3">
+						<div>
+							<p class="text-sm font-medium">Unreferenced songs</p>
+							<p class="text-xs text-muted-foreground">
+								Songs with no playlist reaching them at all — invisible everywhere, safe to delete.
+							</p>
+						</div>
+						<Button
+							size="sm"
+							variant="outline"
+							disabled={unreferencedScanLoading}
+							onclick={runUnreferencedScan}
+						>
+							{unreferencedScanLoading ? 'Scanning…' : 'Run scan'}
+						</Button>
+					</div>
+					{#if unreferencedScan}
+						<p class="mb-2 text-xs text-muted-foreground">
+							{unreferencedScan.unreferencedSongs.length} unreferenced of {unreferencedScan.totalSongs} songs
+						</p>
+						{#if unreferencedScan.unreferencedSongs.length === 0}
+							<p class="py-6 text-center text-sm text-muted-foreground">No unreferenced songs found.</p>
+						{:else}
+							<ul class="flex flex-col gap-1">
+								{#each unreferencedScan.unreferencedSongs as song (song.videoId)}
+									<li class="flex items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-muted">
+										<p class="min-w-0 flex-1 truncate text-sm">{song.title}</p>
+										<Button
+											variant="destructive"
+											size="sm"
+											disabled={unreferencedResolving === song.videoId}
+											onclick={() => (deleteUnreferencedTarget = song)}
+										>
+											Delete song
+										</Button>
+									</li>
+								{/each}
+							</ul>
+						{/if}
+					{/if}
+				</div>
 			</div>
 		</Tabs.Content>
 	</Tabs.Root>
@@ -486,6 +598,35 @@
 				onclick={confirmDeleteSong}
 			>
 				{deleteSongTarget !== null && deadReferenceResolving === deadReferenceKey(deleteSongTarget)
+					? 'Deleting…'
+					: 'Delete'}
+			</Button>
+		</Dialog.Footer>
+	</Dialog.Content>
+</Dialog.Root>
+
+<Dialog.Root
+	open={deleteUnreferencedTarget !== null}
+	onOpenChange={(open) => !open && (deleteUnreferencedTarget = null)}
+>
+	<Dialog.Content class="sm:max-w-sm">
+		<Dialog.Header>
+			<Dialog.Title>Delete "{deleteUnreferencedTarget?.title}"?</Dialog.Title>
+			<Dialog.Description>
+				This song isn't reachable from any playlist, so no one can see or play it anyway —
+				deleting removes it and its storage permanently. This cannot be undone.
+			</Dialog.Description>
+		</Dialog.Header>
+		<Dialog.Footer>
+			<Button variant="outline" onclick={() => (deleteUnreferencedTarget = null)}>Cancel</Button>
+			<Button
+				variant="destructive"
+				disabled={deleteUnreferencedTarget !== null &&
+					unreferencedResolving === deleteUnreferencedTarget.videoId}
+				onclick={confirmDeleteUnreferenced}
+			>
+				{deleteUnreferencedTarget !== null &&
+				unreferencedResolving === deleteUnreferencedTarget.videoId
 					? 'Deleting…'
 					: 'Delete'}
 			</Button>

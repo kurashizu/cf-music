@@ -28,9 +28,10 @@
 </script>
 
 {#if player.currentTrack}
-	<div
-		class="fixed inset-x-0 bottom-14 z-40 border-t border-border bg-card/95 backdrop-blur-sm md:bottom-0"
-	>
+	<!-- mb-14 clears the mobile bottom nav, which is fixed and overlays
+	     whatever's otherwise at the bottom of the viewport; not needed on
+	     desktop, where that nav doesn't exist. -->
+	<div class="mb-14 shrink-0 border-t border-border bg-card/95 backdrop-blur-sm md:mb-0">
 		<!-- Seek bar spans the full width, as a subtle top edge of the player -->
 		<input
 			type="range"

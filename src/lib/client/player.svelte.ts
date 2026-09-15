@@ -30,6 +30,20 @@ class PlayerStore {
 	private shuffleIndices: number[] = [];
 	private playThresholdReached = false;
 	private urlExpiresAt = 0;
+	// HTMLMediaElement.play() is asynchronous — it can take real time (a
+	// stream URL fetch, then the browser buffering enough to start) before
+	// its promise resolves. Tracking "is a play() in flight" separately
+	// from `isPlaying` closes two real bugs that showed up from treating
+	// `isPlaying` as if it only ever flips once play() resolves:
+	// 1) A user hitting pause while that promise is still pending saw
+	//    `isPlaying` still false (not yet flipped true), so
+	//    togglePlayPause's own `if (this.isPlaying)` branch took the wrong
+	//    path and called play() *again* instead of pausing — the reported
+	//    "pause does nothing" bug.
+	// 2) Calling pause() while a play() promise is still unsettled throws
+	//    in some browsers ("The play() request was interrupted..."); this
+	//    flag lets pause wait for that promise first instead of racing it.
+	private pendingPlay: Promise<void> | null = null;
 
 	currentTrack = $derived<QueueTrack | null>(this.queue[this.queueIndex] ?? null);
 	hasNext = $derived(this.queueIndex < this.queue.length - 1 || this.repeatMode !== 'off');
@@ -38,6 +52,20 @@ class PlayerStore {
 	private getAudio(): HTMLAudioElement {
 		if (!this.audio) {
 			this.audio = new Audio();
+			// The default preload ("metadata" in most browsers) makes the
+			// browser issue its own HEAD request against `src` as soon as
+			// it's set, before play() is ever called — this account's MinIO
+			// policy allows GetObject but not HeadObject (confirmed
+			// directly: a HEAD against the same presigned URL a GET
+			// succeeds on returns 403 regardless of how it's signed), so
+			// that probe request always failed and left the element stuck
+			// at readyState HAVE_NOTHING forever, with no error event ever
+			// firing (browsers don't surface a failed preload HEAD as a
+			// playback error) — this is what "clicking play does nothing"
+			// actually was. preload="none" skips that probe entirely; the
+			// real GET play() triggers is unaffected, since GetObject does
+			// work.
+			this.audio.preload = 'none';
 			this.audio.addEventListener('timeupdate', () => {
 				this.currentTimeSeconds = this.audio!.currentTime;
 				this.maybeRecordPlay();
@@ -63,17 +91,46 @@ class PlayerStore {
 
 	async togglePlayPause(): Promise<void> {
 		if (!this.currentTrack) return;
-		const audio = this.getAudio();
 		if (this.isPlaying) {
-			audio.pause();
-			this.isPlaying = false;
+			await this.pause();
 			return;
 		}
 		if (!this.audioUrl || Date.now() >= this.urlExpiresAt) {
 			await this.loadCurrent(false);
+			return;
 		}
-		await audio.play();
+		await this.startPlayback();
+	}
+
+	/**
+	 * `isPlaying` flips to true immediately (reflecting the user's intent
+	 * the instant they hit play), not after the browser's play() promise
+	 * resolves — see the `pendingPlay` field comment for why waiting until
+	 * resolution made a fast pause-after-play a no-op.
+	 */
+	private async startPlayback(): Promise<void> {
+		const audio = this.getAudio();
 		this.isPlaying = true;
+		const playPromise = audio.play().catch(() => {
+			// A play() rejection (e.g. immediately superseded by a pause(),
+			// or the source changed mid-request) isn't a real error to
+			// surface — whichever call actually reflects the current
+			// intent already set `isPlaying` correctly on its own.
+		});
+		this.pendingPlay = playPromise;
+		await playPromise;
+		if (this.pendingPlay === playPromise) this.pendingPlay = null;
+	}
+
+	private async pause(): Promise<void> {
+		// Pausing while a play() promise is still unsettled throws in some
+		// browsers ("The play() request was interrupted by a call to
+		// pause()") — waiting for it first avoids that, and is safe because
+		// startPlayback's own rejection handler already swallows the
+		// interruption this pause() is about to cause.
+		if (this.pendingPlay) await this.pendingPlay;
+		this.getAudio().pause();
+		this.isPlaying = false;
 	}
 
 	async next(): Promise<void> {
@@ -128,7 +185,7 @@ class PlayerStore {
 	private async handleEnded(): Promise<void> {
 		if (this.repeatMode === 'one') {
 			this.getAudio().currentTime = 0;
-			await this.getAudio().play();
+			await this.startPlayback();
 			return;
 		}
 		const advanced = this.advanceIndex(1);
@@ -165,8 +222,7 @@ class PlayerStore {
 		audio.src = data.audioUrl;
 
 		if (autoplay) {
-			await audio.play();
-			this.isPlaying = true;
+			await this.startPlayback();
 		}
 		this.isLoading = false;
 	}

@@ -272,6 +272,31 @@ export async function recordSongImported(db: Db, jobId: string, userId: string, 
 	await releaseQuotaReservation(db, jobId, song.videoId);
 }
 
+/**
+ * Records one song that was already in the library (found via
+ * findKnownVideoIds) and so was never downloaded at all — only links it
+ * into the job's target playlist and bumps completedCount, no `songs` row
+ * write (there's nothing new to write; the existing row is reused as-is).
+ * Without this, a known song was skipped by CI's own filtering (so it's
+ * correctly never re-downloaded) but then silently never linked into the
+ * playlist either — dropped entirely from an import that named it, even
+ * though the whole point of "already in the library" is that it's
+ * available to reuse, not that it should be excluded from this import's
+ * result.
+ */
+export async function recordKnownSongLinked(db: Db, jobId: string, userId: string, videoId: string): Promise<void> {
+	const job = await getOwnedJob(db, jobId, userId);
+
+	if (job.targetPlaylistId) {
+		await addSongToPlaylist(db, job.targetPlaylistId, userId, videoId);
+	}
+
+	await db
+		.update(importJobs)
+		.set({ completedCount: sql`${importJobs.completedCount} + 1`, updatedAt: sql`(current_timestamp)` })
+		.where(eq(importJobs.id, jobId));
+}
+
 /** Records one song that failed to import (per design: skip and continue, report failures at the end). */
 export async function recordSongFailed(db: Db, jobId: string, userId: string, failure: SongImportFailureInput): Promise<void> {
 	const job = await getOwnedJob(db, jobId, userId);
@@ -327,6 +352,32 @@ export async function failImportJob(db: Db, jobId: string, userId: string, reaso
 		targetId: jobId,
 		detail: { sourceUrl: job.sourceUrl, status: 'failed', reason: truncatedReason }
 	});
+}
+
+/**
+ * Called when the CI process's WebSocket disconnects unexpectedly (see
+ * handlePossibleZombieJob) — distinct from failImportJob because an
+ * unexpected disconnect after real progress isn't the same situation as
+ * one before any song ever succeeded. Mirrors completeImportJob's own
+ * status rule: some songs already landed (completedCount > 0) means the
+ * user gets to keep that partial result marked `completed`, the same as
+ * if CI had sent its own `complete` event right then — only a disconnect
+ * with nothing to show for it is a real `failed`. Without this
+ * distinction, a 12-song batch that fully succeeded before CI's process
+ * happened to drop the connection on its way to sending `complete` showed
+ * up as an outright failure, even though every song the user asked for
+ * was sitting in their library already.
+ */
+export async function disconnectImportJob(db: Db, jobId: string, userId: string, reason: string): Promise<void> {
+	const job = await getOwnedJob(db, jobId, userId);
+	if (job.status === 'cancelled' || job.status === 'completed' || job.status === 'failed') return;
+
+	if (job.completedCount > 0) {
+		await completeImportJob(db, jobId, userId);
+		return;
+	}
+
+	await failImportJob(db, jobId, userId, reason);
 }
 
 export async function completeImportJob(db: Db, jobId: string, userId: string): Promise<void> {

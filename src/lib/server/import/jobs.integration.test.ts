@@ -9,9 +9,11 @@ import {
 	listImportJobs,
 	startImportJob,
 	recordSongImported,
+	recordKnownSongLinked,
 	recordSongFailed,
 	completeImportJob,
 	failImportJob,
+	disconnectImportJob,
 	findKnownVideoIds,
 	submitImportPreview,
 	cancelImportJob,
@@ -20,7 +22,7 @@ import {
 	type SongImportSuccess
 } from './jobs';
 import { reserveQuota } from './quota-reservations';
-import { getPlaylistWithSongs } from '../library/playlists';
+import { getPlaylistWithSongs, createPlaylist } from '../library/playlists';
 
 const db = getDb(env.DB);
 
@@ -149,6 +151,71 @@ describe('recordSongImported', () => {
 	});
 });
 
+describe('recordKnownSongLinked', () => {
+	it('links an already-existing song into the job\'s target playlist', async () => {
+		await seedUser('u1');
+		const { tags: _tags, ...seedRow } = makeSong('already-owned');
+		await db.insert(songs).values(seedRow);
+		const { id: playlistId } = await createPlaylist(db, { userId: 'u1', name: 'Mix' });
+		const { id: jobId } = await createImportJob(db, {
+			userId: 'u1',
+			sourceUrl: 'https://x',
+			targetPlaylistId: playlistId
+		});
+
+		await recordKnownSongLinked(db, jobId, 'u1', 'already-owned');
+
+		const playlist = await getPlaylistWithSongs(db, playlistId, 'u1');
+		expect(playlist.songs.map((s) => s.videoId)).toEqual(['already-owned']);
+	});
+
+	it('increments completedCount, same as a freshly downloaded song would', async () => {
+		await seedUser('u1');
+		const { tags: _tags, ...seedRow } = makeSong('already-owned');
+		await db.insert(songs).values(seedRow);
+		const { id: playlistId } = await createPlaylist(db, { userId: 'u1', name: 'Mix' });
+		const { id: jobId } = await createImportJob(db, {
+			userId: 'u1',
+			sourceUrl: 'https://x',
+			targetPlaylistId: playlistId
+		});
+
+		await recordKnownSongLinked(db, jobId, 'u1', 'already-owned');
+
+		const job = await getImportJob(db, jobId, 'u1');
+		expect(job.completedCount).toBe(1);
+	});
+
+	it('does not touch the songs table itself — no write for a row that already exists', async () => {
+		await seedUser('u1');
+		const { tags: _tags, ...seedRow } = makeSong('already-owned', { title: 'Original Title' });
+		await db.insert(songs).values(seedRow);
+		const { id: playlistId } = await createPlaylist(db, { userId: 'u1', name: 'Mix' });
+		const { id: jobId } = await createImportJob(db, {
+			userId: 'u1',
+			sourceUrl: 'https://x',
+			targetPlaylistId: playlistId
+		});
+
+		await recordKnownSongLinked(db, jobId, 'u1', 'already-owned');
+
+		const song = await db.query.songs.findFirst({ where: eq(songs.videoId, 'already-owned') });
+		expect(song?.title).toBe('Original Title');
+	});
+
+	it('is a no-op for the playlist link if the job has no target playlist, but still counts as completed', async () => {
+		await seedUser('u1');
+		const { tags: _tags, ...seedRow } = makeSong('already-owned');
+		await db.insert(songs).values(seedRow);
+		const { id: jobId } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x' });
+
+		await expect(recordKnownSongLinked(db, jobId, 'u1', 'already-owned')).resolves.not.toThrow();
+
+		const job = await getImportJob(db, jobId, 'u1');
+		expect(job.completedCount).toBe(1);
+	});
+});
+
 describe('recordSongFailed', () => {
 	it('increments failedCount and appends to the failures list', async () => {
 		await seedUser('u1');
@@ -273,6 +340,57 @@ describe('failImportJob', () => {
 		const secondJob = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://y' });
 		const result = await reserveQuota(db, 'u1', secondJob.id, 'b', 900_000);
 		expect(result.reserved).toBe(true);
+	});
+});
+
+describe('disconnectImportJob', () => {
+	it('marks the job failed when nothing had succeeded yet — same as a real fatal_error', async () => {
+		await seedUser('u1');
+		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x' });
+
+		await disconnectImportJob(db, id, 'u1', 'Import process disconnected unexpectedly');
+
+		const job = await getImportJob(db, id, 'u1');
+		expect(job.status).toBe('failed');
+		expect(job.fatalError).toBe('Import process disconnected unexpectedly');
+	});
+
+	it('marks the job completed, not failed, when at least one song had already succeeded', async () => {
+		await seedUser('u1');
+		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x' });
+		await recordSongImported(db, id, 'u1', makeSong('a'));
+
+		await disconnectImportJob(db, id, 'u1', 'Import process disconnected unexpectedly');
+
+		const job = await getImportJob(db, id, 'u1');
+		// The real-world case this exists for: a batch that fully succeeded
+		// before CI's own connection happened to drop on its way to sending
+		// `complete` must not show up as an outright failure when every song
+		// the user asked for is already sitting in their library.
+		expect(job.status).toBe('completed');
+	});
+
+	it('does not overwrite a cancelled status', async () => {
+		await seedUser('u1');
+		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x' });
+		await cancelImportJob(db, id, 'u1');
+
+		await disconnectImportJob(db, id, 'u1', 'Import process disconnected unexpectedly');
+
+		const job = await getImportJob(db, id, 'u1');
+		expect(job.status).toBe('cancelled');
+	});
+
+	it('does not overwrite an already-completed status', async () => {
+		await seedUser('u1');
+		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x' });
+		await recordSongImported(db, id, 'u1', makeSong('a'));
+		await completeImportJob(db, id, 'u1');
+
+		await disconnectImportJob(db, id, 'u1', 'Import process disconnected unexpectedly');
+
+		const job = await getImportJob(db, id, 'u1');
+		expect(job.status).toBe('completed');
 	});
 });
 

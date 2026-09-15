@@ -49,6 +49,10 @@ export type ImportProgressEvent =
 	| { type: 'probing_progress'; checked: number; total: number }
 	| { type: 'preview'; entries: PreviewEntry[] }
 	| { type: 'song_success'; song: SongImportSuccess }
+	// A song from the source that was already in the library (found via
+	// findKnownVideoIds), so CI never downloaded it — only needs linking
+	// into this job's target playlist, not a new `songs` row.
+	| { type: 'song_known'; videoId: string }
 	| { type: 'song_failed'; failure: SongImportFailureInput }
 	| { type: 'complete' }
 	// Something before/outside the per-song loop failed unrecoverably (e.g.

@@ -88,6 +88,19 @@ describe('applyImportEvent', () => {
 		expect(next.failures).toEqual([{ videoId: 'z', reason: 'x' }]);
 	});
 
+	it('song_known increments completedCount, same as song_success', () => {
+		const job = makeJob({ completedCount: 2 });
+		const next = applyImportEvent(job, { type: 'song_known', videoId: 'a' });
+		expect(next.completedCount).toBe(3);
+	});
+
+	it('song_known does not touch failedCount or failures', () => {
+		const job = makeJob({ failedCount: 1, failures: [{ videoId: 'z', reason: 'x' }] });
+		const next = applyImportEvent(job, { type: 'song_known', videoId: 'a' });
+		expect(next.failedCount).toBe(1);
+		expect(next.failures).toEqual([{ videoId: 'z', reason: 'x' }]);
+	});
+
 	it('song_failed increments failedCount and appends to failures', () => {
 		const job = makeJob({ failures: [{ videoId: 'z', reason: 'old' }] });
 		const next = applyImportEvent(job, {

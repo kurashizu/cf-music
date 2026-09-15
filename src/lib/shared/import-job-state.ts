@@ -73,6 +73,12 @@ export function applyImportEvent(job: ImportJobState, event: ImportProgressEvent
 			return applyPreview(job, event.entries);
 		case 'song_success':
 			return applySongSuccess(job);
+		case 'song_known':
+			// Same effect on client-side state as song_success: it counts
+			// toward completedCount either way (see recordKnownSongLinked),
+			// the only difference is server-side (no new `songs` row to
+			// write, since the video_id already existed).
+			return applySongSuccess(job);
 		case 'song_failed':
 			return applySongFailed(job, event.failure);
 		case 'complete':
