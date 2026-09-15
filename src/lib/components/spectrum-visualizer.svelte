@@ -5,6 +5,10 @@
 
 	let canvas: HTMLCanvasElement | undefined = $state();
 	let frameId: number | undefined;
+	// TEMP diagnostic: logs once/sec instead of every frame, tagged so it's
+	// easy to filter/find and easy to grep out again once this is
+	// resolved. Remove once the "spectrum never animates" report is closed.
+	let lastDiagAt = 0;
 
 	function draw(): void {
 		frameId = requestAnimationFrame(draw);
@@ -24,6 +28,18 @@
 		// canvas going fully blank while paused/loading — a flat "0" reading
 		// looks broken, a faint static shape reads as "idle, ready".
 		const levels = analyser ? readLevels(analyser) : new Array(BAR_COUNT).fill(0.06);
+
+		const now = Date.now();
+		if (now - lastDiagAt > 1000) {
+			lastDiagAt = now;
+			console.log('[spectrum-diag]', {
+				isPlaying: player.isPlaying,
+				hasAnalyser: !!analyser,
+				audioContextState: analyser?.context.state,
+				levelsSum: levels.reduce((a, b) => a + b, 0),
+				levelsSample: levels.slice(0, 5).map((v) => Math.round(v * 100) / 100)
+			});
+		}
 
 		// Canvas's fillStyle has no concept of the CSS `currentColor`
 		// keyword — assigning it is simply ignored, silently leaving

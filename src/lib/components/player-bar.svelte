@@ -170,7 +170,7 @@
 							variant="ghost"
 							size="icon-sm"
 							class={player.shuffleEnabled
-								? 'bg-muted text-foreground'
+								? 'bg-foreground text-background hover:bg-foreground/80 hover:text-background'
 								: 'text-muted-foreground'}
 							disabled={!player.currentTrack}
 							onclick={() => player.toggleShuffle()}
@@ -252,7 +252,7 @@
 							variant="ghost"
 							size="icon-sm"
 							class={player.repeatMode !== 'off'
-								? 'bg-muted text-foreground'
+								? 'bg-foreground text-background hover:bg-foreground/80 hover:text-background'
 								: 'text-muted-foreground'}
 							disabled={!player.currentTrack}
 							onclick={() => player.cycleRepeatMode()}
