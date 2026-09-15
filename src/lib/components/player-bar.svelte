@@ -11,7 +11,6 @@
 	import Repeat1Icon from '@lucide/svelte/icons/repeat-1';
 	import MusicIcon from '@lucide/svelte/icons/music';
 	import VolumeControl from '$lib/components/volume-control.svelte';
-	import SpectrumVisualizer from '$lib/components/spectrum-visualizer.svelte';
 	import QueuePanel from '$lib/components/queue-panel.svelte';
 	import QueueTriggerButton from '$lib/components/queue-trigger-button.svelte';
 	import OutputDeviceMenu from '$lib/components/output-device-menu.svelte';
@@ -153,10 +152,6 @@
 			</p>
 		</div>
 
-		<div class="hidden md:block">
-			<SpectrumVisualizer />
-		</div>
-
 		<VolumeControl />
 
 		<OutputDeviceMenu />
@@ -167,11 +162,9 @@
 					{#snippet child({ props })}
 						<Button
 							{...props}
-							variant="ghost"
+							variant={player.shuffleEnabled ? 'default' : 'ghost'}
 							size="icon-sm"
-							class={player.shuffleEnabled
-								? 'bg-foreground text-background hover:bg-foreground/80 hover:text-background'
-								: 'text-muted-foreground'}
+							class={player.shuffleEnabled ? '' : 'text-muted-foreground'}
 							disabled={!player.currentTrack}
 							onclick={() => player.toggleShuffle()}
 							aria-label="Toggle shuffle"
@@ -249,11 +242,9 @@
 					{#snippet child({ props })}
 						<Button
 							{...props}
-							variant="ghost"
+							variant={player.repeatMode !== 'off' ? 'default' : 'ghost'}
 							size="icon-sm"
-							class={player.repeatMode !== 'off'
-								? 'bg-foreground text-background hover:bg-foreground/80 hover:text-background'
-								: 'text-muted-foreground'}
+							class={player.repeatMode !== 'off' ? '' : 'text-muted-foreground'}
 							disabled={!player.currentTrack}
 							onclick={() => player.cycleRepeatMode()}
 							aria-label="Toggle repeat"
