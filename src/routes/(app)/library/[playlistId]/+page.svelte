@@ -23,6 +23,7 @@
 	import { downloadSongForOffline, listCachedVideoIds } from '$lib/client/offline-cache';
 	import { viewMode } from '$lib/client/view-mode.svelte';
 	import ViewModeToggle from '$lib/components/view-mode-toggle.svelte';
+	import InfiniteScrollSentinel from '$lib/components/infinite-scroll-sentinel.svelte';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import type { PageProps } from './$types';
 
@@ -100,6 +101,23 @@
 					.filter(([s]) => s.title.toLowerCase().includes(searchQuery.trim().toLowerCase()))
 					.map(([, i]) => i)
 	);
+
+	const PAGE_SIZE = 20;
+	let visibleCount = $state(PAGE_SIZE);
+	$effect(() => {
+		visibleIndices;
+		visibleCount = PAGE_SIZE;
+	});
+	// What's actually rendered — a further slice of visibleIndices. Drag
+	// stays index-correct either way (visualOrder/handleDragOver work off
+	// real indices into `songs`, not the windowed render position), but
+	// it's disabled while windowed anyway (see `draggable` below) since
+	// dragging a song past the last *rendered* row while more remain
+	// unloaded below it would be confusing.
+	const windowedIndices = $derived(visibleIndices.slice(0, visibleCount));
+	function loadMore() {
+		visibleCount = Math.min(visibleIndices.length, visibleCount + PAGE_SIZE);
+	}
 
 	let lastSelectedIndex = $state<number | null>(null);
 
@@ -543,7 +561,7 @@
 		<p class="py-8 text-center text-sm text-muted-foreground">No songs match "{searchQuery}".</p>
 	{:else if viewMode.mode === 'grid'}
 		<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-			{#each visibleIndices as index (songs[index].videoId)}
+			{#each windowedIndices as index (songs[index].videoId)}
 				{@const song = songs[index]}
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
@@ -658,11 +676,14 @@
 				</div>
 			{/each}
 		</div>
+		{#if visibleCount < visibleIndices.length}
+			<InfiniteScrollSentinel onIntersect={loadMore} />
+		{/if}
 	{:else}
 		<ul class="flex flex-col">
-			{#each visibleIndices as index (songs[index].videoId)}
+			{#each windowedIndices as index (songs[index].videoId)}
 				{@const song = songs[index]}
-				{@const draggable = searchQuery.trim().length === 0}
+				{@const draggable = searchQuery.trim().length === 0 && visibleCount >= visibleIndices.length}
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 				<li
@@ -815,6 +836,9 @@
 				</li>
 			{/each}
 		</ul>
+		{#if visibleCount < visibleIndices.length}
+			<InfiniteScrollSentinel onIntersect={loadMore} />
+		{/if}
 	{/if}
 </div>
 

@@ -30,6 +30,7 @@
 		estimateBrowserStorage,
 		type StorageEstimate
 	} from '$lib/client/offline-cache';
+	import InfiniteScrollSentinel from '$lib/components/infinite-scroll-sentinel.svelte';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -85,6 +86,20 @@
 				);
 		}
 	});
+
+	const PAGE_SIZE = 20;
+	let visibleCount = $state(PAGE_SIZE);
+	// Resets to one page whenever the filtered/sorted set changes shape —
+	// otherwise a new search query would just be sliced at whatever count
+	// scrolling had already reached for the *previous* query.
+	$effect(() => {
+		filteredEntries;
+		visibleCount = PAGE_SIZE;
+	});
+	const visibleEntries = $derived(filteredEntries.slice(0, visibleCount));
+	function loadMore() {
+		visibleCount = Math.min(filteredEntries.length, visibleCount + PAGE_SIZE);
+	}
 
 	const usagePercent = $derived(
 		data.quotaBytes > 0 ? Math.min(100, (data.usageBytes / data.quotaBytes) * 100) : 0
@@ -152,13 +167,14 @@
 
 	// File-manager-style click selection: plain click selects only this
 	// row, ctrl/cmd-click toggles it, and shift-click extends from the
-	// last click — against filteredEntries, the order actually on screen.
+	// last click — against visibleEntries, the order actually on screen
+	// (only what's been scrolled into view so far).
 	function handleRowClick(event: MouseEvent, index: number) {
-		const videoId = filteredEntries[index].videoId;
+		const videoId = visibleEntries[index].videoId;
 		if (event.shiftKey && lastSelectedIndex !== null) {
 			const [from, to] = [lastSelectedIndex, index].sort((a, b) => a - b);
 			const next = new Set(selected);
-			for (let i = from; i <= to; i++) next.add(filteredEntries[i].videoId);
+			for (let i = from; i <= to; i++) next.add(visibleEntries[i].videoId);
 			selected = next;
 			return;
 		}
@@ -449,7 +465,7 @@
 			<p class="py-8 text-center text-sm text-muted-foreground">No songs match "{searchQuery}".</p>
 		{:else if viewMode.mode === 'grid'}
 			<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-				{#each filteredEntries as entry, index (entry.videoId)}
+				{#each visibleEntries as entry, index (entry.videoId)}
 					<!-- svelte-ignore a11y_click_events_have_key_events -->
 					<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -541,9 +557,12 @@
 					</div>
 				{/each}
 			</div>
+			{#if visibleCount < filteredEntries.length}
+				<InfiniteScrollSentinel onIntersect={loadMore} />
+			{/if}
 		{:else}
 			<ul class="flex flex-col">
-				{#each filteredEntries as entry, index (entry.videoId)}
+				{#each visibleEntries as entry, index (entry.videoId)}
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 				<li
@@ -620,6 +639,9 @@
 				</li>
 			{/each}
 		</ul>
+		{#if visibleCount < filteredEntries.length}
+			<InfiniteScrollSentinel onIntersect={loadMore} />
+		{/if}
 		{/if}
 	{/if}
 </div>

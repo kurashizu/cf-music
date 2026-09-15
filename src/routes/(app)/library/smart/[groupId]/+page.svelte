@@ -23,6 +23,7 @@
 	import { downloadSongForOffline, listCachedVideoIds } from '$lib/client/offline-cache';
 	import { viewMode } from '$lib/client/view-mode.svelte';
 	import ViewModeToggle from '$lib/components/view-mode-toggle.svelte';
+	import InfiniteScrollSentinel from '$lib/components/infinite-scroll-sentinel.svelte';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -44,6 +45,17 @@
 			? data.songs
 			: data.songs.filter((s) => s.title.toLowerCase().includes(searchQuery.trim().toLowerCase()))
 	);
+
+	const PAGE_SIZE = 20;
+	let visibleCount = $state(PAGE_SIZE);
+	$effect(() => {
+		filteredSongs;
+		visibleCount = PAGE_SIZE;
+	});
+	const visibleSongs = $derived(filteredSongs.slice(0, visibleCount));
+	function loadMore() {
+		visibleCount = Math.min(filteredSongs.length, visibleCount + PAGE_SIZE);
+	}
 
 	let selected = $state<Set<string>>(new Set());
 	let lastSelectedIndex = $state<number | null>(null);
@@ -81,13 +93,14 @@
 		lastSelectedIndex = null;
 	}
 
-	// File-manager-style click selection, same as the playlist detail page.
+	// File-manager-style click selection, same as the playlist detail page —
+	// against visibleSongs, since that's the order actually rendered.
 	function handleRowClick(event: MouseEvent, index: number) {
-		const videoId = filteredSongs[index].videoId;
+		const videoId = visibleSongs[index].videoId;
 		if (event.shiftKey && lastSelectedIndex !== null) {
 			const [from, to] = [lastSelectedIndex, index].sort((a, b) => a - b);
 			const next = new Set(selected);
-			for (let i = from; i <= to; i++) next.add(filteredSongs[i].videoId);
+			for (let i = from; i <= to; i++) next.add(visibleSongs[i].videoId);
 			selected = next;
 			return;
 		}
@@ -125,7 +138,7 @@
 	}
 
 	async function playFrom(index: number) {
-		const song = filteredSongs[index];
+		const song = visibleSongs[index];
 		const actualIndex = data.songs.findIndex((s) => s.videoId === song.videoId);
 		if (player.currentTrack?.videoId === song.videoId) {
 			await player.togglePlayPause();
@@ -370,7 +383,7 @@
 		<p class="py-8 text-center text-sm text-muted-foreground">No songs match "{searchQuery}".</p>
 	{:else if viewMode.mode === 'grid'}
 		<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-			{#each filteredSongs as song, index (song.videoId)}
+			{#each visibleSongs as song, index (song.videoId)}
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -466,9 +479,12 @@
 				</div>
 			{/each}
 		</div>
+		{#if visibleCount < filteredSongs.length}
+			<InfiniteScrollSentinel onIntersect={loadMore} />
+		{/if}
 	{:else}
 		<ul class="flex flex-col">
-			{#each filteredSongs as song, index (song.videoId)}
+			{#each visibleSongs as song, index (song.videoId)}
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 				<li
@@ -590,6 +606,9 @@
 				</li>
 			{/each}
 		</ul>
+		{#if visibleCount < filteredSongs.length}
+			<InfiniteScrollSentinel onIntersect={loadMore} />
+		{/if}
 	{/if}
 </div>
 
