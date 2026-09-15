@@ -71,6 +71,17 @@ export async function clearCachedAudio(videoIds: string[]): Promise<void> {
 	await postToServiceWorker({ type: 'EVICT_AUDIO', videoIds });
 }
 
+/**
+ * Tells the service worker to fetch and cache one song's audio, given a
+ * URL already in hand — split out from downloadSongForOffline so the
+ * player's own auto-cache-on-buffer (see player.svelte.ts) can reuse this
+ * without re-fetching /api/stream-url for a track it's already loaded.
+ */
+export async function precacheAudio(videoId: string, audioUrl: string): Promise<void> {
+	if (!('serviceWorker' in navigator)) return;
+	await postToServiceWorker({ type: 'PRECACHE_AUDIO', videoId, audioUrl });
+}
+
 /** Downloads one song into the offline cache on demand — used by explicit "download" actions in the UI. */
 export async function downloadSongForOffline(videoId: string): Promise<boolean> {
 	if (!('serviceWorker' in navigator)) return false;
@@ -78,7 +89,7 @@ export async function downloadSongForOffline(videoId: string): Promise<boolean> 
 		const response = await fetch(`/api/stream-url/${videoId}`);
 		if (!response.ok) return false;
 		const { audioUrl }: StreamUrlResponse = await response.json();
-		await postToServiceWorker({ type: 'PRECACHE_AUDIO', videoId, audioUrl });
+		await precacheAudio(videoId, audioUrl);
 		return true;
 	} catch {
 		return false;

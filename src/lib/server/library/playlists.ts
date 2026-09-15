@@ -44,7 +44,7 @@ export async function ensureDefaultPlaylist(db: Db, userId: string): Promise<{ i
 		return { id: user.defaultPlaylistId };
 	}
 
-	const { id } = await createPlaylist(db, { userId, name: 'Imports' });
+	const { id } = await createPlaylist(db, { userId, name: 'All Imported' });
 
 	// Two concurrent calls (double-clicking Import, two tabs) can both
 	// reach here having both read defaultPlaylistId as null — the WHERE
@@ -221,6 +221,15 @@ export async function getPlaylistWithSongs(db: Db, playlistId: string, userId: s
 
 export async function renamePlaylist(db: Db, playlistId: string, userId: string, name: string): Promise<void> {
 	await getOwnedPlaylist(db, playlistId, userId);
+
+	// Same reasoning as the delete guard below: this is the one playlist
+	// guaranteed to hold the user's whole library, not an arbitrary
+	// user-named list — its name is fixed for the same reason its
+	// membership can't be edited by removing songs from it.
+	if (playlistId === (await getDefaultPlaylistId(db, userId))) {
+		throw new LibraryError('The default library playlist cannot be renamed', 'default_playlist_protected');
+	}
+
 	await db.update(playlists).set({ name }).where(eq(playlists.id, playlistId));
 }
 

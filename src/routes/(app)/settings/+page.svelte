@@ -4,17 +4,45 @@
 	import { toast } from 'svelte-sonner';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Card from '$lib/components/ui/card/index.js';
+	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import HardDriveIcon from '@lucide/svelte/icons/hard-drive';
 	import GlobeIcon from '@lucide/svelte/icons/globe';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import ShieldIcon from '@lucide/svelte/icons/shield';
 	import LogOutIcon from '@lucide/svelte/icons/log-out';
+	import DatabaseIcon from '@lucide/svelte/icons/database';
 	import { estimateBrowserStorage, type StorageEstimate } from '$lib/client/offline-cache';
+	import { summarizeLocalData, clearAllLocalData, type LocalDataSummary } from '$lib/client/local-storage-inventory';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
 
 	let browserStorage = $state<StorageEstimate | null>(null);
+	let localData = $state<LocalDataSummary | null>(null);
+	let clearConfirmOpen = $state(false);
+	let clearing = $state(false);
+
+	async function refreshLocalData() {
+		localData = await summarizeLocalData();
+	}
+
+	async function handleClearLocalData() {
+		clearing = true;
+		try {
+			await clearAllLocalData();
+			toast.success('Local data cleared');
+			clearConfirmOpen = false;
+			// Preferences (view mode, sidebar, volume) and the queue just got
+			// wiped along with everything else — reloading is the simplest
+			// way to get every part of the UI reading fresh defaults instead
+			// of whatever it already had in memory from before the clear.
+			window.location.reload();
+		} catch {
+			toast.error('Failed to clear local data');
+		} finally {
+			clearing = false;
+		}
+	}
 
 	async function handleLogout() {
 		try {
@@ -43,6 +71,7 @@
 		estimateBrowserStorage().then((estimate) => {
 			browserStorage = estimate;
 		});
+		refreshLocalData();
 	});
 
 	function formatBytes(bytes: number): string {
@@ -120,6 +149,32 @@
 		</a>
 	{/if}
 
+	<Card.Root class="mb-4">
+		<Card.Content>
+			<div class="mb-2 flex items-center gap-1.5 text-sm text-muted-foreground">
+				<DatabaseIcon class="size-4" />
+				Local data
+			</div>
+			<p class="mb-3 text-xs text-muted-foreground">
+				Preferences (view mode, volume, sidebar), your saved playback position, and cached
+				thumbnails/audio all live in this browser only.
+				{#if localData}
+					Currently: {formatBytes(localData.localStorageBytes)} of preferences, {localData.cacheEntryCount}
+					cached {localData.cacheEntryCount === 1 ? 'file' : 'files'}.
+				{/if}
+			</p>
+			<Button
+				variant="outline"
+				size="sm"
+				class="w-full justify-start gap-2"
+				onclick={() => (clearConfirmOpen = true)}
+			>
+				<DatabaseIcon class="size-4" />
+				Clear local data
+			</Button>
+		</Card.Content>
+	</Card.Root>
+
 	<Card.Root>
 		<Card.Content>
 			<p class="mb-3 truncate text-xs text-muted-foreground">{data.session.username}</p>
@@ -130,3 +185,22 @@
 		</Card.Content>
 	</Card.Root>
 </div>
+
+<Dialog.Root bind:open={clearConfirmOpen}>
+	<Dialog.Content class="sm:max-w-sm">
+		<Dialog.Header>
+			<Dialog.Title>Clear local data?</Dialog.Title>
+			<Dialog.Description>
+				Removes your saved preferences, playback position, and every cached thumbnail/audio file
+				from this browser. Your library and playlists in the cloud are unaffected — this only
+				clears what's stored locally.
+			</Dialog.Description>
+		</Dialog.Header>
+		<Dialog.Footer>
+			<Button variant="outline" onclick={() => (clearConfirmOpen = false)}>Cancel</Button>
+			<Button variant="destructive" disabled={clearing} onclick={handleClearLocalData}>
+				{clearing ? 'Clearing…' : 'Clear local data'}
+			</Button>
+		</Dialog.Footer>
+	</Dialog.Content>
+</Dialog.Root>

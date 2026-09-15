@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { scale } from 'svelte/transition';
 	import { player } from '$lib/client/player.svelte';
 	import { queuePanelState } from '$lib/client/queue-panel-state.svelte';
 	import XIcon from '@lucide/svelte/icons/x';
@@ -8,6 +9,21 @@
 	// no data implications, cheap enough to not bother persisting.
 	let nowPlayingExpanded = $state(true);
 
+	// Anchored to the trigger button's own last-measured position (see
+	// queue-trigger-button.svelte) rather than a hardcoded viewport offset —
+	// the player bar isn't a fixed height (it wraps its content), so a
+	// guessed bottom-N class drifted out of sync with where the button
+	// actually sits across breakpoints. 8px gap above the button.
+	const PANEL_WIDTH = 320;
+	const GAP_PX = 8;
+	const style = $derived.by(() => {
+		const rect = queuePanelState.anchorRect;
+		if (!rect) return '';
+		const right = Math.max(12, window.innerWidth - rect.right);
+		const bottom = window.innerHeight - rect.top + GAP_PX;
+		return `right: ${right}px; bottom: ${bottom}px; width: min(${PANEL_WIDTH}px, calc(100vw - 24px));`;
+	});
+
 	function formatTime(seconds: number): string {
 		if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
 		const m = Math.floor(seconds / 60);
@@ -16,14 +32,11 @@
 	}
 </script>
 
-<!-- Fixed to the viewport corner rather than anchored to the trigger
-     button's own position (see queue-trigger-button.svelte, which lives
-     inline in the player bar's button row) — anchoring a popover to a
-     button inside a full-width bottom bar puts the popover right on top of
-     the bar's other controls instead of reading as its own panel. -->
 {#if queuePanelState.open}
 	<div
-		class="fixed right-3 bottom-32 z-40 w-72 origin-bottom-right overflow-hidden rounded-xl border border-border bg-card shadow-lg transition-[opacity,transform] duration-150 sm:w-80 md:right-4 md:bottom-36"
+		{style}
+		class="fixed z-40 origin-bottom-right overflow-hidden rounded-xl border border-border bg-card shadow-lg"
+		transition:scale={{ duration: 150, start: 0.95, opacity: 0 }}
 	>
 		<div class="flex items-center justify-between border-b border-border px-3 py-2.5">
 			<p class="text-sm font-medium">Queue</p>

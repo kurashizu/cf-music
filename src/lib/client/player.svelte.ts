@@ -1,5 +1,6 @@
 import { hasReachedPlayThreshold } from '$lib/shared/playback';
 import { shuffleOrder, nextQueueIndex, cycleRepeatMode, moveIndexToFront, type RepeatMode } from '$lib/shared/queue';
+import { precacheAudio } from '$lib/client/offline-cache';
 
 export interface QueueTrack {
 	videoId: string;
@@ -23,6 +24,11 @@ export interface AudioSpec {
 }
 
 const VOLUME_STORAGE_KEY = 'krsz-music:volume';
+const SESSION_STORAGE_KEY = 'krsz-music:player-session';
+// Rewriting localStorage on every timeupdate (multiple times/second) would
+// be wasteful for a value only ever read back after a full page reload —
+// this bounds how often the position actually gets persisted.
+const SESSION_SAVE_INTERVAL_MS = 5000;
 
 function readStoredVolume(): number {
 	if (typeof localStorage === 'undefined') return 1;
@@ -30,6 +36,35 @@ function readStoredVolume(): number {
 	if (raw === null) return 1;
 	const parsed = Number(raw);
 	return Number.isFinite(parsed) ? Math.min(1, Math.max(0, parsed)) : 1;
+}
+
+interface PersistedSession {
+	queue: QueueTrack[];
+	queueIndex: number;
+	shuffleEnabled: boolean;
+	shuffleIndices: number[];
+	repeatMode: RepeatMode;
+	currentTimeSeconds: number;
+}
+
+function readStoredSession(): PersistedSession | null {
+	if (typeof localStorage === 'undefined') return null;
+	const raw = localStorage.getItem(SESSION_STORAGE_KEY);
+	if (raw === null) return null;
+	try {
+		const parsed = JSON.parse(raw) as Partial<PersistedSession>;
+		if (!Array.isArray(parsed.queue) || typeof parsed.queueIndex !== 'number') return null;
+		return {
+			queue: parsed.queue,
+			queueIndex: parsed.queueIndex,
+			shuffleEnabled: parsed.shuffleEnabled === true,
+			shuffleIndices: Array.isArray(parsed.shuffleIndices) ? parsed.shuffleIndices : [],
+			repeatMode: parsed.repeatMode === 'one' || parsed.repeatMode === 'all' ? parsed.repeatMode : 'off',
+			currentTimeSeconds: typeof parsed.currentTimeSeconds === 'number' ? parsed.currentTimeSeconds : 0
+		};
+	} catch {
+		return null;
+	}
 }
 
 class PlayerStore {
@@ -51,7 +86,14 @@ class PlayerStore {
 	private audio: HTMLAudioElement | null = null;
 	private shuffleIndices: number[] = [];
 	private playThresholdReached = false;
+	private autoCacheTriggered = false;
 	private urlExpiresAt = 0;
+	private lastSessionSaveAt = 0;
+	// Seconds to resume at once the restored track's metadata is loaded —
+	// set only during restoreSession(), consumed and cleared by the
+	// 'durationchange' handler in getAudio() the first time it fires for
+	// the freshly-loaded <audio> element.
+	private pendingResumeSeconds: number | null = null;
 	// Web Audio nodes exist purely to feed the spectrum visualizer — created
 	// lazily on first play() (not in getAudio()) since AudioContext starts
 	// suspended until a real user gesture resumes it in most browsers, and
@@ -75,6 +117,19 @@ class PlayerStore {
 	//    in some browsers ("The play() request was interrupted..."); this
 	//    flag lets pause wait for that promise first instead of racing it.
 	private pendingPlay: Promise<void> | null = null;
+
+	constructor() {
+		this.restoreSession();
+		if (typeof window !== 'undefined') {
+			// Catches a mid-song position that hasn't hit the next throttled
+			// timeupdate save yet — visibilitychange (not beforeunload) since
+			// it also fires on mobile backgrounding/tab-switch, which
+			// beforeunload doesn't reliably catch at all.
+			document.addEventListener('visibilitychange', () => {
+				if (document.visibilityState === 'hidden') this.saveSessionNow();
+			});
+		}
+	}
 
 	currentTrack = $derived<QueueTrack | null>(this.queue[this.queueIndex] ?? null);
 	hasNext = $derived(this.queueIndex < this.queue.length - 1 || this.repeatMode !== 'off');
@@ -100,13 +155,20 @@ class PlayerStore {
 			this.audio.addEventListener('timeupdate', () => {
 				this.currentTimeSeconds = this.audio!.currentTime;
 				this.maybeRecordPlay();
+				this.maybeSaveSession();
 			});
 			this.audio.addEventListener('durationchange', () => {
 				this.durationSeconds = this.audio!.duration || 0;
+				if (this.pendingResumeSeconds !== null && this.durationSeconds > 0) {
+					this.audio!.currentTime = Math.min(this.pendingResumeSeconds, this.durationSeconds);
+					this.currentTimeSeconds = this.audio!.currentTime;
+					this.pendingResumeSeconds = null;
+				}
 			});
 			this.audio.addEventListener('ended', () => this.handleEnded());
 			this.audio.addEventListener('waiting', () => (this.isLoading = true));
 			this.audio.addEventListener('canplay', () => (this.isLoading = false));
+			this.audio.addEventListener('progress', () => this.maybeAutoCache());
 			this.audio.volume = this.muted ? 0 : this.volume;
 		}
 		return this.audio;
@@ -243,6 +305,7 @@ class PlayerStore {
 		if (this.pendingPlay) await this.pendingPlay;
 		this.getAudio().pause();
 		this.isPlaying = false;
+		this.saveSessionNow();
 	}
 
 	async next(): Promise<void> {
@@ -277,10 +340,12 @@ class PlayerStore {
 			this.queueIndex = currentActualIndex;
 			this.shuffleIndices = [];
 		}
+		this.saveSessionNow();
 	}
 
 	cycleRepeatMode(): void {
 		this.repeatMode = cycleRepeatMode(this.repeatMode);
+		this.saveSessionNow();
 	}
 
 	private currentActualIndex(): number {
@@ -309,6 +374,7 @@ class PlayerStore {
 		} else if (queueArrayIndex < this.queueIndex) {
 			this.queueIndex -= 1;
 		}
+		this.saveSessionNow();
 	}
 
 	/** Jumps playback straight to an upcoming track by its real array index. */
@@ -347,6 +413,7 @@ class PlayerStore {
 
 		this.isLoading = true;
 		this.playThresholdReached = false;
+		this.autoCacheTriggered = false;
 		this.currentTimeSeconds = 0;
 
 		const response = await fetch(`/api/stream-url/${track.videoId}`);
@@ -368,6 +435,7 @@ class PlayerStore {
 			await this.startPlayback();
 		}
 		this.isLoading = false;
+		this.saveSessionNow();
 	}
 
 	private maybeRecordPlay(): void {
@@ -379,6 +447,91 @@ class PlayerStore {
 		const videoId = this.currentTrack.videoId;
 		fetch(`/api/play-event/${videoId}`, { method: 'POST' }).catch(() => {
 			// Best-effort: a missed play-count increment isn't worth surfacing to the user.
+		});
+	}
+
+	/**
+	 * Auto-caches a song for offline playback once its audio has fully
+	 * downloaded, mirroring the explicit "Download" action without
+	 * requiring the user to take it — the intent is that anything played
+	 * (not merely started) ends up available offline on its own, distinct
+	 * from downloadSongForOffline which stays a separate, explicit path
+	 * for songs the user wants cached ahead of ever playing them.
+	 * `progress` fires repeatedly as more of the file arrives; this only
+	 * acts once per track, on the event whose buffered range first covers
+	 * the whole duration.
+	 */
+	private maybeAutoCache(): void {
+		if (this.autoCacheTriggered || !this.audio || !this.currentTrack || !this.audioUrl) return;
+		const duration = this.audio.duration;
+		if (!Number.isFinite(duration) || duration <= 0) return;
+
+		const buffered = this.audio.buffered;
+		const fullyBuffered =
+			buffered.length > 0 && buffered.end(buffered.length - 1) >= duration - 0.5;
+		if (!fullyBuffered) return;
+
+		this.autoCacheTriggered = true;
+		precacheAudio(this.currentTrack.videoId, this.audioUrl).catch(() => {
+			// Best-effort: same as maybeRecordPlay above, a missed cache write isn't worth surfacing.
+		});
+	}
+
+	private maybeSaveSession(): void {
+		const now = Date.now();
+		if (now - this.lastSessionSaveAt < SESSION_SAVE_INTERVAL_MS) return;
+		this.lastSessionSaveAt = now;
+		this.saveSessionNow();
+	}
+
+	/**
+	 * Persists everything needed to resume where the user left off after a
+	 * reload: the queue itself, shuffle/repeat state, and last known
+	 * position. Called on a throttled timer during playback (see
+	 * maybeSaveSession) and immediately after anything that isn't covered
+	 * by that timer — queue edits, pause, track changes — so those aren't
+	 * silently lost if the tab closes before the next tick.
+	 */
+	private saveSessionNow(): void {
+		if (typeof localStorage === 'undefined') return;
+		if (this.queue.length === 0) {
+			localStorage.removeItem(SESSION_STORAGE_KEY);
+			return;
+		}
+		const session: PersistedSession = {
+			queue: this.queue,
+			queueIndex: this.queueIndex,
+			shuffleEnabled: this.shuffleEnabled,
+			shuffleIndices: this.shuffleIndices,
+			repeatMode: this.repeatMode,
+			currentTimeSeconds: this.currentTimeSeconds
+		};
+		localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+	}
+
+	/**
+	 * Restores the last session on construction — loads the track paused
+	 * (never autoplay: browsers block unprompted audio anyway, and
+	 * resuming sound on its own the moment a page loads would be
+	 * surprising even where it's not blocked) and queues up a seek to the
+	 * saved position for once its duration becomes known.
+	 */
+	private restoreSession(): void {
+		const session = readStoredSession();
+		if (!session || session.queue.length === 0) return;
+		if (session.queueIndex < 0 || session.queueIndex >= session.queue.length) return;
+
+		this.queue = session.queue;
+		this.queueIndex = session.queueIndex;
+		this.shuffleEnabled = session.shuffleEnabled;
+		this.shuffleIndices = session.shuffleIndices;
+		this.repeatMode = session.repeatMode;
+		this.pendingResumeSeconds = session.currentTimeSeconds;
+		this.currentTimeSeconds = session.currentTimeSeconds;
+
+		this.loadCurrent(false).catch(() => {
+			// Best-effort: a failed restore just leaves the player empty,
+			// same as a first visit.
 		});
 	}
 }

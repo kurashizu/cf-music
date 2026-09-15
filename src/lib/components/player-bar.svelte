@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { player } from '$lib/client/player.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import PlayIcon from '@lucide/svelte/icons/play';
 	import PauseIcon from '@lucide/svelte/icons/pause';
 	import SkipBackIcon from '@lucide/svelte/icons/skip-back';
@@ -158,69 +159,111 @@
 		<VolumeControl />
 
 		<div class="hidden items-center gap-1 sm:flex">
-			<Button
-				variant="ghost"
-				size="icon-sm"
-				class={player.shuffleEnabled ? 'text-foreground' : 'text-muted-foreground'}
-				disabled={!player.currentTrack}
-				onclick={() => player.toggleShuffle()}
-				aria-label="Toggle shuffle"
-				aria-pressed={player.shuffleEnabled}
-			>
-				<ShuffleIcon class="size-4" />
-			</Button>
+			<Tooltip.Root>
+				<Tooltip.Trigger>
+					{#snippet child({ props })}
+						<Button
+							{...props}
+							variant="ghost"
+							size="icon-sm"
+							class={player.shuffleEnabled ? 'text-foreground' : 'text-muted-foreground'}
+							disabled={!player.currentTrack}
+							onclick={() => player.toggleShuffle()}
+							aria-label="Toggle shuffle"
+							aria-pressed={player.shuffleEnabled}
+						>
+							<ShuffleIcon class="size-4" />
+						</Button>
+					{/snippet}
+				</Tooltip.Trigger>
+				<Tooltip.Content>{player.shuffleEnabled ? 'Shuffle on' : 'Shuffle off'}</Tooltip.Content>
+			</Tooltip.Root>
 		</div>
 
-		<Button
-			variant="ghost"
-			size="icon-sm"
-			disabled={!player.hasPrevious}
-			onclick={() => player.previous()}
-			aria-label="Previous"
-		>
-			<SkipBackIcon class="size-4" />
-		</Button>
+		<Tooltip.Root>
+			<Tooltip.Trigger>
+				{#snippet child({ props })}
+					<Button
+						{...props}
+						variant="ghost"
+						size="icon-sm"
+						disabled={!player.hasPrevious}
+						onclick={() => player.previous()}
+						aria-label="Previous"
+					>
+						<SkipBackIcon class="size-4" />
+					</Button>
+				{/snippet}
+			</Tooltip.Trigger>
+			<Tooltip.Content>Previous</Tooltip.Content>
+		</Tooltip.Root>
 
-		<Button
-			size="icon-sm"
-			class="rounded-full"
-			disabled={!player.currentTrack || player.isLoading}
-			onclick={() => player.togglePlayPause()}
-			aria-label={player.isPlaying ? 'Pause' : 'Play'}
-		>
-			{#if player.isPlaying}
-				<PauseIcon class="size-4" />
-			{:else}
-				<PlayIcon class="size-4" />
-			{/if}
-		</Button>
+		<Tooltip.Root>
+			<Tooltip.Trigger>
+				{#snippet child({ props })}
+					<Button
+						{...props}
+						size="icon-sm"
+						class="rounded-full"
+						disabled={!player.currentTrack || player.isLoading}
+						onclick={() => player.togglePlayPause()}
+						aria-label={player.isPlaying ? 'Pause' : 'Play'}
+					>
+						{#if player.isPlaying}
+							<PauseIcon class="size-4" />
+						{:else}
+							<PlayIcon class="size-4" />
+						{/if}
+					</Button>
+				{/snippet}
+			</Tooltip.Trigger>
+			<Tooltip.Content>{player.isPlaying ? 'Pause' : 'Play'}</Tooltip.Content>
+		</Tooltip.Root>
 
-		<Button
-			variant="ghost"
-			size="icon-sm"
-			disabled={!player.hasNext}
-			onclick={() => player.next()}
-			aria-label="Next"
-		>
-			<SkipForwardIcon class="size-4" />
-		</Button>
+		<Tooltip.Root>
+			<Tooltip.Trigger>
+				{#snippet child({ props })}
+					<Button
+						{...props}
+						variant="ghost"
+						size="icon-sm"
+						disabled={!player.hasNext}
+						onclick={() => player.next()}
+						aria-label="Next"
+					>
+						<SkipForwardIcon class="size-4" />
+					</Button>
+				{/snippet}
+			</Tooltip.Trigger>
+			<Tooltip.Content>Next</Tooltip.Content>
+		</Tooltip.Root>
 
 		<div class="hidden items-center gap-1 sm:flex">
-			<Button
-				variant="ghost"
-				size="icon-sm"
-				class={player.repeatMode !== 'off' ? 'text-foreground' : 'text-muted-foreground'}
-				disabled={!player.currentTrack}
-				onclick={() => player.cycleRepeatMode()}
-				aria-label="Toggle repeat"
-				aria-pressed={player.repeatMode !== 'off'}
-			>
-				{#if player.repeatMode === 'one'}
-					<Repeat1Icon class="size-4" />
-				{:else}
-					<RepeatIcon class="size-4" />
-				{/if}
-			</Button>
+			<Tooltip.Root>
+				<Tooltip.Trigger>
+					{#snippet child({ props })}
+						<Button
+							{...props}
+							variant="ghost"
+							size="icon-sm"
+							class={player.repeatMode !== 'off' ? 'text-foreground' : 'text-muted-foreground'}
+							disabled={!player.currentTrack}
+							onclick={() => player.cycleRepeatMode()}
+							aria-label="Toggle repeat"
+							aria-pressed={player.repeatMode !== 'off'}
+						>
+							{#if player.repeatMode === 'one'}
+								<Repeat1Icon class="size-4" />
+							{:else}
+								<RepeatIcon class="size-4" />
+							{/if}
+						</Button>
+					{/snippet}
+				</Tooltip.Trigger>
+				<Tooltip.Content>
+					{player.repeatMode === 'off' ? 'Repeat off' : player.repeatMode === 'one' ? 'Repeat one' : 'Repeat all'}
+				</Tooltip.Content>
+			</Tooltip.Root>
 		</div>
 
 		<QueueTriggerButton />

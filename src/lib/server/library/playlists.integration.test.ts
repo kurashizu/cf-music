@@ -166,6 +166,16 @@ describe('renamePlaylist', () => {
 
 		await expect(renamePlaylist(db, id, 'u2', 'Hijacked')).rejects.toThrow(LibraryError);
 	});
+
+	it('rejects renaming the default playlist', async () => {
+		await seedUser('u1');
+		const { id } = await ensureDefaultPlaylist(db, 'u1');
+
+		await expect(renamePlaylist(db, id, 'u1', 'My Library')).rejects.toThrow(LibraryError);
+
+		const playlist = await getPlaylistWithSongs(db, id, 'u1');
+		expect(playlist.name).toBe('All Imported');
+	});
 });
 
 describe('deletePlaylist', () => {
@@ -230,13 +240,13 @@ describe('deletePlaylist', () => {
 });
 
 describe('ensureDefaultPlaylist', () => {
-	it('creates an "Imports" playlist and records it as the default on first use', async () => {
+	it('creates an "All Imported" playlist and records it as the default on first use', async () => {
 		await seedUser('u1');
 
 		const { id } = await ensureDefaultPlaylist(db, 'u1');
 
 		const playlist = await getPlaylistWithSongs(db, id, 'u1');
-		expect(playlist.name).toBe('Imports');
+		expect(playlist.name).toBe('All Imported');
 		const user = await db.query.users.findFirst({ where: (t, { eq }) => eq(t.id, 'u1') });
 		expect(user?.defaultPlaylistId).toBe(id);
 	});

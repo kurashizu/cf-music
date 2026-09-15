@@ -259,11 +259,11 @@
 							{/snippet}
 						</DropdownMenu.Trigger>
 						<DropdownMenu.Content align="end">
-							<DropdownMenu.Item onclick={() => openRename(playlist)}>
-								<PencilIcon class="size-4" />
-								Rename
-							</DropdownMenu.Item>
 							{#if playlist.id !== data.defaultPlaylistId}
+								<DropdownMenu.Item onclick={() => openRename(playlist)}>
+									<PencilIcon class="size-4" />
+									Rename
+								</DropdownMenu.Item>
 								<DropdownMenu.Item
 									variant="destructive"
 									onclick={() => (deleteTarget = playlist)}

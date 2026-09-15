@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { Toaster } from '$lib/components/ui/sonner/index.js';
+	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import Logo from '$lib/components/logo.svelte';
 	import PlayerBar from '$lib/components/player-bar.svelte';
 	import BuildInfo from '$lib/components/build-info.svelte';
@@ -9,6 +10,9 @@
 	import SettingsIcon from '@lucide/svelte/icons/settings';
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import ListMusicIcon from '@lucide/svelte/icons/list-music';
+	import PanelLeftCloseIcon from '@lucide/svelte/icons/panel-left-close';
+	import PanelLeftOpenIcon from '@lucide/svelte/icons/panel-left-open';
+	import { sidebar } from '$lib/client/sidebar.svelte';
 	import type { LayoutProps } from './$types';
 
 	let { data, children }: LayoutProps = $props();
@@ -37,44 +41,72 @@
 
 <Toaster />
 
+<Tooltip.Provider>
 <div class="flex h-svh bg-background">
 	<!-- Desktop sidebar -->
-	<aside class="hidden w-56 shrink-0 flex-col border-r border-border p-4 md:flex">
-		<div class="mb-6 flex items-center gap-2 px-2">
+	<aside
+		class="hidden shrink-0 flex-col border-r border-border p-4 transition-[width] duration-150 md:flex {sidebar.collapsed
+			? 'w-16'
+			: 'w-56'}"
+	>
+		<div class="mb-6 flex items-center gap-2 px-2 {sidebar.collapsed ? 'justify-center px-0' : ''}">
 			<Logo size={24} />
-			<span class="text-sm font-medium">KRSZ Music</span>
+			{#if !sidebar.collapsed}
+				<span class="truncate text-sm font-medium">KRSZ Music</span>
+			{/if}
 		</div>
 
 		<nav class="flex min-h-0 flex-1 flex-col gap-1" aria-label="Primary">
 			{#each navItems as item (item.href)}
 				{#if item.href === '/library'}
 					<div class="flex items-center gap-0.5">
-						<a
-							href={item.href}
-							class="flex flex-1 items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground {isActive(
-								item.href
-							)
-								? 'bg-muted text-foreground'
-								: ''}"
-						>
-							<item.icon class="size-4" />
-							{item.label}
-						</a>
-						{#if data.sidebarPlaylists.length > 0}
-							<button
-								type="button"
-								class="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-								onclick={() => (playlistsExpanded = !playlistsExpanded)}
-								aria-label={playlistsExpanded ? 'Collapse playlists' : 'Expand playlists'}
-								aria-expanded={playlistsExpanded}
+						{#if sidebar.collapsed}
+							<Tooltip.Root>
+								<Tooltip.Trigger>
+									{#snippet child({ props })}
+										<a
+											{...props}
+											href={item.href}
+											class="flex flex-1 items-center justify-center rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground {isActive(
+												item.href
+											)
+												? 'bg-muted text-foreground'
+												: ''}"
+										>
+											<item.icon class="size-4" />
+										</a>
+									{/snippet}
+								</Tooltip.Trigger>
+								<Tooltip.Content side="right">{item.label}</Tooltip.Content>
+							</Tooltip.Root>
+						{:else}
+							<a
+								href={item.href}
+								class="flex flex-1 items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground {isActive(
+									item.href
+								)
+									? 'bg-muted text-foreground'
+									: ''}"
 							>
-								<ChevronDownIcon
-									class="size-3.5 transition-transform {playlistsExpanded ? '' : '-rotate-90'}"
-								/>
-							</button>
+								<item.icon class="size-4" />
+								{item.label}
+							</a>
+							{#if data.sidebarPlaylists.length > 0}
+								<button
+									type="button"
+									class="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+									onclick={() => (playlistsExpanded = !playlistsExpanded)}
+									aria-label={playlistsExpanded ? 'Collapse playlists' : 'Expand playlists'}
+									aria-expanded={playlistsExpanded}
+								>
+									<ChevronDownIcon
+										class="size-3.5 transition-transform {playlistsExpanded ? '' : '-rotate-90'}"
+									/>
+								</button>
+							{/if}
 						{/if}
 					</div>
-					{#if playlistsExpanded}
+					{#if playlistsExpanded && !sidebar.collapsed}
 						<div class="flex flex-col gap-0.5 pl-4">
 							{#each data.sidebarPlaylists as playlist (playlist.id)}
 								<a
@@ -91,6 +123,25 @@
 							{/each}
 						</div>
 					{/if}
+				{:else if sidebar.collapsed}
+					<Tooltip.Root>
+						<Tooltip.Trigger>
+							{#snippet child({ props })}
+								<a
+									{...props}
+									href={item.href}
+									class="flex items-center justify-center rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground {isActive(
+										item.href
+									)
+										? 'bg-muted text-foreground'
+										: ''}"
+								>
+									<item.icon class="size-4" />
+								</a>
+							{/snippet}
+						</Tooltip.Trigger>
+						<Tooltip.Content side="right">{item.label}</Tooltip.Content>
+					</Tooltip.Root>
 				{:else}
 					<a
 						href={item.href}
@@ -108,18 +159,66 @@
 		</nav>
 
 		<div class="flex flex-col gap-1 border-t border-border pt-2">
-			<a
-				href={settingsItem.href}
-				class="flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground {isActive(
-					settingsItem.href
-				)
-					? 'bg-muted text-foreground'
-					: ''}"
-			>
-				<settingsItem.icon class="size-4" />
-				{settingsItem.label}
-			</a>
-			<BuildInfo />
+			{#if sidebar.collapsed}
+				<Tooltip.Root>
+					<Tooltip.Trigger>
+						{#snippet child({ props })}
+							<a
+								{...props}
+								href={settingsItem.href}
+								class="flex items-center justify-center rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground {isActive(
+									settingsItem.href
+								)
+									? 'bg-muted text-foreground'
+									: ''}"
+							>
+								<settingsItem.icon class="size-4" />
+							</a>
+						{/snippet}
+					</Tooltip.Trigger>
+					<Tooltip.Content side="right">{settingsItem.label}</Tooltip.Content>
+				</Tooltip.Root>
+			{:else}
+				<a
+					href={settingsItem.href}
+					class="flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground {isActive(
+						settingsItem.href
+					)
+						? 'bg-muted text-foreground'
+						: ''}"
+				>
+					<settingsItem.icon class="size-4" />
+					{settingsItem.label}
+				</a>
+			{/if}
+
+			<Tooltip.Root>
+				<Tooltip.Trigger>
+					{#snippet child({ props })}
+						<button
+							{...props}
+							type="button"
+							class="flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground {sidebar.collapsed
+								? 'justify-center'
+								: ''}"
+							onclick={() => sidebar.toggle()}
+							aria-label={sidebar.collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+						>
+							{#if sidebar.collapsed}
+								<PanelLeftOpenIcon class="size-4" />
+							{:else}
+								<PanelLeftCloseIcon class="size-4" />
+								Collapse
+							{/if}
+						</button>
+					{/snippet}
+				</Tooltip.Trigger>
+				<Tooltip.Content side="right">{sidebar.collapsed ? 'Expand sidebar' : 'Collapse sidebar'}</Tooltip.Content>
+			</Tooltip.Root>
+
+			{#if !sidebar.collapsed}
+				<BuildInfo />
+			{/if}
 		</div>
 	</aside>
 
@@ -157,3 +256,4 @@
 		</nav>
 	</div>
 </div>
+</Tooltip.Provider>
