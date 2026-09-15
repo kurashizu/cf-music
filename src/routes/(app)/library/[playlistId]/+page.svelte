@@ -96,6 +96,13 @@
 	let batchRemoveConfirm = $state(false);
 	let batchDeleteConfirm = $state(false);
 	let searchQuery = $state('');
+	// Separate from batchWorking (shared by every other batch action) since
+	// downloads need to report how many of the selection have finished so
+	// far, not just "still running" — each one now genuinely waits for its
+	// own download to complete (see offline-cache.ts), so a plain spinner
+	// with no count would sit there for however long the whole batch takes
+	// with zero indication of progress.
+	let batchDownloadProgress = $state<{ completed: number; total: number } | null>(null);
 
 	// Indices into `songs`, filtered by title — drag-to-reorder (which is
 	// index-based, see visualOrder/handleDragOver) only makes sense against
@@ -333,23 +340,51 @@
 		}
 	}
 
+	// Downloads a fixed number of songs at a time rather than all at once —
+	// each call now genuinely waits for its own download to finish (see
+	// offline-cache.ts's PRECACHE_AUDIO reply), so firing every selected
+	// song's download simultaneously would pile dozens of concurrent large
+	// fetches onto the service worker and the S3 origin behind it at once.
+	// Fully serial (one at a time) would be correspondingly slow for a
+	// large selection, with no benefit over a small concurrency window.
+	const BATCH_DOWNLOAD_CONCURRENCY = 3;
+	async function downloadWithLimitedConcurrency(
+		videoIds: string[],
+		onEachSettled: (videoId: string, ok: boolean) => void
+	): Promise<void> {
+		let nextIndex = 0;
+		async function worker(): Promise<void> {
+			while (nextIndex < videoIds.length) {
+				const videoId = videoIds[nextIndex++];
+				const ok = await downloadSongForOffline(videoId);
+				onEachSettled(videoId, ok);
+			}
+		}
+		await Promise.all(
+			Array.from({ length: Math.min(BATCH_DOWNLOAD_CONCURRENCY, videoIds.length) }, worker)
+		);
+	}
+
 	async function handleBatchDownload() {
 		batchWorking = true;
+		const videoIds = [...selected];
+		batchDownloadProgress = { completed: 0, total: videoIds.length };
 		try {
 			let failures = 0;
 			const downloaded = new Set(cachedVideoIds);
-			for (const videoId of selected) {
-				const ok = await downloadSongForOffline(videoId);
+			await downloadWithLimitedConcurrency(videoIds, (videoId, ok) => {
 				if (ok) downloaded.add(videoId);
 				else failures++;
-			}
-			cachedVideoIds = downloaded;
+				cachedVideoIds = downloaded;
+				if (batchDownloadProgress) batchDownloadProgress.completed++;
+			});
 			toast[failures === 0 ? 'success' : 'error'](
 				failures === 0 ? 'Downloaded for offline playback' : `Failed to download ${failures} song(s)`
 			);
 			clearSelection();
 		} finally {
 			batchWorking = false;
+			batchDownloadProgress = null;
 		}
 	}
 
@@ -532,8 +567,13 @@
 					disabled={batchWorking}
 					onclick={handleBatchDownload}
 				>
-					<DownloadIcon class="size-3.5" />
-					Download
+					{#if batchDownloadProgress}
+						<LoaderCircleIcon class="size-3.5 animate-spin" />
+						Downloading {batchDownloadProgress.completed}/{batchDownloadProgress.total}
+					{:else}
+						<DownloadIcon class="size-3.5" />
+						Download
+					{/if}
 				</Button>
 				{#if data.otherPlaylists.length > 0}
 					<Button
@@ -826,9 +866,15 @@
 							e.stopPropagation();
 							handleDownload(song.videoId);
 						}}
-						aria-label="Download for offline playback"
+						aria-label={downloadingVideoId === song.videoId
+							? 'Downloading for offline playback'
+							: 'Download for offline playback'}
 					>
-						<DownloadIcon class="size-4" />
+						{#if downloadingVideoId === song.videoId}
+							<LoaderCircleIcon class="size-4 animate-spin" />
+						{:else}
+							<DownloadIcon class="size-4" />
+						{/if}
 					</Button>
 
 					<!-- svelte-ignore a11y_no_static_element_interactions -->

@@ -5,11 +5,17 @@ import { reconcileAudioCache, downloadSongForOffline, estimateBrowserStorage } f
  * Minimal fake of the one thing these functions actually touch on
  * `navigator.serviceWorker`: `.ready` resolving to a registration with an
  * `.active` worker whose `postMessage` either replies over the given
- * MessageChannel port (for LIST_CACHED_AUDIO) or just records what was
- * sent (for PRECACHE_AUDIO/EVICT_AUDIO) — real MessageChannel/MessagePort
- * are available natively in Node, no DOM/jsdom needed.
+ * MessageChannel port (for LIST_CACHED_AUDIO/PRECACHE_AUDIO) or just
+ * records what was sent (for EVICT_AUDIO, which is fire-and-forget by
+ * design) — real MessageChannel/MessagePort are available natively in
+ * Node, no DOM/jsdom needed.
  */
-function installFakeServiceWorker(options: { cachedVideoIds?: string[] | 'never-replies' } = {}) {
+function installFakeServiceWorker(
+	options: {
+		cachedVideoIds?: string[] | 'never-replies';
+		precacheReply?: { ok: boolean } | 'never-replies';
+	} = {}
+) {
 	const sentMessages: unknown[] = [];
 
 	const registration = {
@@ -20,6 +26,12 @@ function installFakeServiceWorker(options: { cachedVideoIds?: string[] | 'never-
 					const port = transfer[0];
 					if (options.cachedVideoIds !== 'never-replies') {
 						port.postMessage({ videoIds: options.cachedVideoIds ?? [] });
+					}
+				}
+				if (message.type === 'PRECACHE_AUDIO' && transfer) {
+					const port = transfer[0];
+					if (options.precacheReply !== 'never-replies') {
+						port.postMessage(options.precacheReply ?? { ok: true });
 					}
 				}
 			}
@@ -122,6 +134,34 @@ describe('downloadSongForOffline', () => {
 		vi.mocked(fetch).mockRejectedValue(new Error('network error'));
 
 		expect(await downloadSongForOffline('a')).toBe(false);
+	});
+
+	it('returns false when the service worker reports the download itself failed', async () => {
+		installFakeServiceWorker({ precacheReply: { ok: false } });
+		vi.mocked(fetch).mockResolvedValue({
+			ok: true,
+			json: async () => ({ audioUrl: 'https://signed.example/a' })
+		} as Response);
+
+		// The stream-url fetch succeeded and the service worker was
+		// reachable — only the actual audio download it attempted failed
+		// (e.g. the presigned URL expired) — this is exactly the case a
+		// bare "message was sent" signal couldn't distinguish from success.
+		expect(await downloadSongForOffline('a')).toBe(false);
+	});
+
+	it('resolves to false rather than hanging if the service worker never replies to PRECACHE_AUDIO', async () => {
+		vi.useFakeTimers();
+		installFakeServiceWorker({ precacheReply: 'never-replies' });
+		vi.mocked(fetch).mockResolvedValue({
+			ok: true,
+			json: async () => ({ audioUrl: 'https://signed.example/a' })
+		} as Response);
+
+		const pending = downloadSongForOffline('a');
+		await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+
+		expect(await pending).toBe(false);
 	});
 });
 

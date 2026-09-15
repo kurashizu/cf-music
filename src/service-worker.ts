@@ -130,26 +130,45 @@ sw.addEventListener('fetch', (event) => {
  * (presigned) URL to fetch from, since the service worker itself has no
  * way to mint one — that's a signed, authenticated call only the page
  * (which has the user's session) can make.
+ *
+ * Replies on the caller's MessageChannel port once the fetch actually
+ * settles (not just once the message was received) — without that, the
+ * page side has no real completion signal at all, only "the postMessage
+ * call itself returned," which happens essentially instantly regardless
+ * of how long the underlying download takes. That made every "download
+ * for offline" progress indicator in the UI fake: it cleared the instant
+ * the request was handed off, not when the file was actually cached.
  */
 sw.addEventListener('message', (event) => {
 	const data = event.data as { type: string; [key: string]: unknown };
 
 	if (data?.type === 'PRECACHE_AUDIO') {
 		const { videoId, audioUrl } = data as { videoId: string; audioUrl: string };
+		const port = event.ports[0];
 		event.waitUntil(
 			(async () => {
-				const cache = await caches.open(AUDIO_CACHE);
-				const cacheKey = audioCacheKey(videoId);
-				if (await cache.match(cacheKey)) return;
+				try {
+					const cache = await caches.open(AUDIO_CACHE);
+					const cacheKey = audioCacheKey(videoId);
+					if (await cache.match(cacheKey)) {
+						port?.postMessage({ ok: true });
+						return;
+					}
 
-				// Plain fetch(url) with no request options — the browser has
-				// no reason to attach a Range header on its own here, but
-				// pin to exactly 200 rather than response.ok anyway (see the
-				// 'fetch' handler above for why 206 can't go through
-				// cache.put at all).
-				const response = await fetch(audioUrl);
-				if (response.status === 200) {
-					await cache.put(cacheKey, response);
+					// Plain fetch(url) with no request options — the browser has
+					// no reason to attach a Range header on its own here, but
+					// pin to exactly 200 rather than response.ok anyway (see the
+					// 'fetch' handler above for why 206 can't go through
+					// cache.put at all).
+					const response = await fetch(audioUrl);
+					if (response.status === 200) {
+						await cache.put(cacheKey, response);
+						port?.postMessage({ ok: true });
+					} else {
+						port?.postMessage({ ok: false });
+					}
+				} catch {
+					port?.postMessage({ ok: false });
 				}
 			})()
 		);

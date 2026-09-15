@@ -11,6 +11,7 @@
 	import HardDriveIcon from '@lucide/svelte/icons/hard-drive';
 	import GlobeIcon from '@lucide/svelte/icons/globe';
 	import DownloadIcon from '@lucide/svelte/icons/download';
+	import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import XIcon from '@lucide/svelte/icons/x';
 	import SearchIcon from '@lucide/svelte/icons/search';
@@ -42,10 +43,23 @@
 	let entries = $state(untrack(() => data.entries));
 	let cachedVideoIds = $state<Set<string>>(new Set());
 	let workingVideoId = $state<string | null>(null);
+	// Separate from workingVideoId (which just disables buttons for
+	// whichever operation is in flight on a song, regardless of which one)
+	// since the grid card's cover-corner badge specifically needs to know
+	// "is this song's operation a download" — workingVideoId alone can't
+	// tell a download-in-progress apart from a delete/clear-cache in
+	// progress on a song that happens to share the same not-yet-cached
+	// state, and showing "Downloading" during a delete would be wrong.
+	let downloadingVideoId = $state<string | null>(null);
 	let browserStorage = $state<StorageEstimate | null>(null);
 
 	let selected = $state<Set<string>>(new Set());
 	let batchWorking = $state(false);
+	// Separate from batchWorking (shared by every other batch action) since
+	// downloads need to report how many of the selection have finished so
+	// far — see the playlist detail page's own version of this state for
+	// the full reasoning (each download now genuinely waits to complete).
+	let batchDownloadProgress = $state<{ completed: number; total: number } | null>(null);
 	let batchDeleteConfirm = $state(false);
 	let searchQuery = $state('');
 	let copyTarget = $state<string | null>(null); // videoId, or null when copying the current selection
@@ -245,12 +259,14 @@
 
 	async function handleDownload(videoId: string) {
 		workingVideoId = videoId;
+		downloadingVideoId = videoId;
 		try {
 			const ok = await downloadSongForOffline(videoId);
 			if (ok) cachedVideoIds = new Set([...cachedVideoIds, videoId]);
 			toast[ok ? 'success' : 'error'](ok ? 'Downloaded for offline playback' : 'Failed to download song');
 		} finally {
 			workingVideoId = null;
+			downloadingVideoId = null;
 		}
 	}
 
@@ -282,23 +298,48 @@
 		}
 	}
 
+	// Same limited-concurrency approach as the playlist detail page's own
+	// handleBatchDownload — see that copy's comment for why neither fully
+	// serial nor fully parallel is right now that each download genuinely
+	// waits for the service worker to finish it.
+	const BATCH_DOWNLOAD_CONCURRENCY = 3;
+	async function downloadWithLimitedConcurrency(
+		videoIds: string[],
+		onEachSettled: (videoId: string, ok: boolean) => void
+	): Promise<void> {
+		let nextIndex = 0;
+		async function worker(): Promise<void> {
+			while (nextIndex < videoIds.length) {
+				const videoId = videoIds[nextIndex++];
+				const ok = await downloadSongForOffline(videoId);
+				onEachSettled(videoId, ok);
+			}
+		}
+		await Promise.all(
+			Array.from({ length: Math.min(BATCH_DOWNLOAD_CONCURRENCY, videoIds.length) }, worker)
+		);
+	}
+
 	async function handleBatchDownload() {
 		batchWorking = true;
+		const videoIds = [...selected];
+		batchDownloadProgress = { completed: 0, total: videoIds.length };
 		try {
 			let failures = 0;
 			const downloaded = new Set(cachedVideoIds);
-			for (const videoId of selected) {
-				const ok = await downloadSongForOffline(videoId);
+			await downloadWithLimitedConcurrency(videoIds, (videoId, ok) => {
 				if (ok) downloaded.add(videoId);
 				else failures++;
-			}
-			cachedVideoIds = downloaded;
+				cachedVideoIds = downloaded;
+				if (batchDownloadProgress) batchDownloadProgress.completed++;
+			});
 			toast[failures === 0 ? 'success' : 'error'](
 				failures === 0 ? 'Downloaded for offline playback' : `Failed to download ${failures} song(s)`
 			);
 			clearSelection();
 		} finally {
 			batchWorking = false;
+			batchDownloadProgress = null;
 		}
 	}
 
@@ -491,8 +532,13 @@
 						disabled={batchWorking}
 						onclick={handleBatchDownload}
 					>
-						<DownloadIcon class="size-3.5" />
-						Download
+						{#if batchDownloadProgress}
+							<LoaderCircleIcon class="size-3.5 animate-spin" />
+							Downloading {batchDownloadProgress.completed}/{batchDownloadProgress.total}
+						{:else}
+							<DownloadIcon class="size-3.5" />
+							Download
+						{/if}
 					</Button>
 					<Button
 						size="sm"
@@ -555,7 +601,14 @@
 									<MusicIcon class="size-8 text-muted-foreground" />
 								</div>
 							{/if}
-							{#if cachedVideoIds.has(entry.videoId)}
+							{#if downloadingVideoId === entry.videoId}
+								<span
+									class="absolute top-1 left-1 flex items-center gap-0.5 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] text-white backdrop-blur-sm"
+								>
+									<LoaderCircleIcon class="size-2.5 animate-spin" />
+									Downloading
+								</span>
+							{:else if cachedVideoIds.has(entry.videoId)}
 								<span
 									class="absolute top-1 left-1 flex items-center gap-0.5 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] text-white backdrop-blur-sm"
 								>
@@ -690,8 +743,13 @@
 								handleDownload(entry.videoId);
 							}}
 						>
-							<DownloadIcon class="size-3.5" />
-							Download
+							{#if downloadingVideoId === entry.videoId}
+								<LoaderCircleIcon class="size-3.5 animate-spin" />
+								Downloading…
+							{:else}
+								<DownloadIcon class="size-3.5" />
+								Download
+							{/if}
 						</Button>
 					{/if}
 					{#if data.playlists.length > 0}

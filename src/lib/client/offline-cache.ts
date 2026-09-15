@@ -15,6 +15,32 @@ async function postToServiceWorker(message: unknown): Promise<void> {
 }
 
 const LIST_CACHED_AUDIO_TIMEOUT_MS = 5000;
+const PRECACHE_AUDIO_TIMEOUT_MS = 5 * 60 * 1000;
+
+/**
+ * Same MessageChannel-reply pattern as listCachedVideoIds, and for the
+ * same reason: a bare postMessage resolves the instant the call is
+ * handed off, not when the service worker's own fetch+cache.put actually
+ * finishes — which made every "download for offline" caller's await
+ * meaningless as a completion signal. Races against a generous timeout
+ * (large files, slow connections) rather than hanging forever if the
+ * service worker crashed or a deploy mid-update never replies.
+ */
+async function postToServiceWorkerAwaitingReply(message: unknown): Promise<boolean> {
+	const registration = await navigator.serviceWorker.ready;
+	if (!registration.active) return false;
+
+	const reply = new Promise<boolean>((resolve) => {
+		const channel = new MessageChannel();
+		channel.port1.onmessage = (event) => resolve(Boolean((event.data as { ok?: boolean })?.ok));
+		registration.active!.postMessage(message, [channel.port2]);
+	});
+	const timeout = new Promise<boolean>((resolve) =>
+		setTimeout(() => resolve(false), PRECACHE_AUDIO_TIMEOUT_MS)
+	);
+
+	return Promise.race([reply, timeout]);
+}
 
 /**
  * Asks the service worker (via a MessageChannel reply port, since
@@ -76,10 +102,12 @@ export async function clearCachedAudio(videoIds: string[]): Promise<void> {
  * URL already in hand — split out from downloadSongForOffline so the
  * player's own auto-cache-on-buffer (see player.svelte.ts) can reuse this
  * without re-fetching /api/stream-url for a track it's already loaded.
+ * Resolves once the download actually finishes (or fails), not just once
+ * the service worker acknowledged the request.
  */
-export async function precacheAudio(videoId: string, audioUrl: string): Promise<void> {
-	if (!('serviceWorker' in navigator)) return;
-	await postToServiceWorker({ type: 'PRECACHE_AUDIO', videoId, audioUrl });
+export async function precacheAudio(videoId: string, audioUrl: string): Promise<boolean> {
+	if (!('serviceWorker' in navigator)) return false;
+	return postToServiceWorkerAwaitingReply({ type: 'PRECACHE_AUDIO', videoId, audioUrl });
 }
 
 /** Downloads one song into the offline cache on demand — used by explicit "download" actions in the UI. */
@@ -89,8 +117,7 @@ export async function downloadSongForOffline(videoId: string): Promise<boolean> 
 		const response = await fetch(`/api/stream-url/${videoId}`);
 		if (!response.ok) return false;
 		const { audioUrl }: StreamUrlResponse = await response.json();
-		await precacheAudio(videoId, audioUrl);
-		return true;
+		return await precacheAudio(videoId, audioUrl);
 	} catch {
 		return false;
 	}
