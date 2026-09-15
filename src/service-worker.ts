@@ -77,6 +77,18 @@ sw.addEventListener('fetch', (event) => {
 	const cacheName = audioVideoId ? AUDIO_CACHE : COVER_CACHE;
 	const cacheKey = audioVideoId ? audioCacheKey(audioVideoId) : coverCacheKey(coverVideoId!);
 
+	// A browser playing/seeking an <audio> element sends real Range
+	// requests (Range: bytes=...), not just full-file GETs — every
+	// playback triggers at least one. Those go straight through, cache
+	// untouched: returning a cached *full* response for a request that
+	// asked for a specific byte range would hand the browser something
+	// that doesn't match what it asked for, and the Cache API can't
+	// store the 206 response the network would give back anyway (see the
+	// comment below — it throws outright). The only path that ever
+	// populates AUDIO_CACHE is the explicit PRECACHE_AUDIO message
+	// handler further down, a plain full-file fetch with no Range header.
+	if (event.request.headers.has('range')) return;
+
 	event.respondWith(
 		(async () => {
 			const cache = await caches.open(cacheName);
@@ -84,10 +96,19 @@ sw.addEventListener('fetch', (event) => {
 			if (cached) return cached;
 
 			const response = await fetch(event.request);
-			// Only a real, complete response is worth keeping — a presigned
-			// URL failing (expired, network error) shouldn't cache a broken
-			// entry that would then be served instead of a working retry.
-			if (response.ok) {
+			// Only a real, complete (status 200) response is worth
+			// keeping — a presigned URL failing (expired, network error)
+			// shouldn't cache a broken entry that would then be served
+			// instead of a working retry. Status 206 (Partial Content)
+			// also satisfies response.ok, but the Cache API flatly
+			// refuses to store partial responses (cache.put throws
+			// "Partial response (status code 206) is unsupported") — this
+			// shouldn't be reachable now that Range requests bail out
+			// above, but a defensive check costs nothing and a request
+			// this handler didn't anticipate is exactly the case where
+			// "silently don't cache" beats "throw and fail the request
+			// that was otherwise about to succeed".
+			if (response.status === 200) {
 				await cache.put(cacheKey, response.clone());
 			}
 			return response;
@@ -114,8 +135,13 @@ sw.addEventListener('message', (event) => {
 				const cacheKey = audioCacheKey(videoId);
 				if (await cache.match(cacheKey)) return;
 
+				// Plain fetch(url) with no request options — the browser has
+				// no reason to attach a Range header on its own here, but
+				// pin to exactly 200 rather than response.ok anyway (see the
+				// 'fetch' handler above for why 206 can't go through
+				// cache.put at all).
 				const response = await fetch(audioUrl);
-				if (response.ok) {
+				if (response.status === 200) {
 					await cache.put(cacheKey, response);
 				}
 			})()
