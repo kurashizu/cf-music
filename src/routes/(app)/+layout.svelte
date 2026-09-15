@@ -7,19 +7,20 @@
 	import LibraryIcon from '@lucide/svelte/icons/library';
 	import UploadIcon from '@lucide/svelte/icons/upload';
 	import SettingsIcon from '@lucide/svelte/icons/settings';
-	import ShieldIcon from '@lucide/svelte/icons/shield';
 	import type { LayoutProps } from './$types';
 
-	let { data, children }: LayoutProps = $props();
+	let { children }: LayoutProps = $props();
 
-	const navItems = $derived(
-		[
-			{ href: '/library', label: 'Library', icon: LibraryIcon },
-			{ href: '/import', label: 'Import', icon: UploadIcon },
-			{ href: '/settings', label: 'Settings', icon: SettingsIcon },
-			data.session.isAdmin ? { href: '/admin', label: 'Admin', icon: ShieldIcon } : null
-		].filter((item) => item !== null)
-	);
+	// Settings lives at the bottom of the desktop sidebar, separate from
+	// these — see the <aside> markup below. Mobile has no "bottom of
+	// sidebar" area, so it stays in the same list there instead (see the
+	// mobile bottom nav below, which renders navItems + settingsItem
+	// together).
+	const navItems = $derived([
+		{ href: '/library', label: 'Library', icon: LibraryIcon },
+		{ href: '/import', label: 'Import', icon: UploadIcon }
+	]);
+	const settingsItem = { href: '/settings', label: 'Settings', icon: SettingsIcon };
 
 	function isActive(href: string): boolean {
 		return page.url.pathname === href || page.url.pathname.startsWith(href + '/');
@@ -52,7 +53,18 @@
 			{/each}
 		</nav>
 
-		<div class="flex flex-col gap-2 border-t border-border pt-4">
+		<div class="flex flex-col gap-1 border-t border-border pt-2">
+			<a
+				href={settingsItem.href}
+				class="flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground {isActive(
+					settingsItem.href
+				)
+					? 'bg-muted text-foreground'
+					: ''}"
+			>
+				<settingsItem.icon class="size-4" />
+				{settingsItem.label}
+			</a>
 			<BuildInfo />
 		</div>
 	</aside>
@@ -75,7 +87,7 @@
 			class="fixed inset-x-0 bottom-0 flex items-center justify-around border-t border-border bg-card/95 py-2 backdrop-blur-sm md:hidden"
 			aria-label="Primary (mobile)"
 		>
-			{#each navItems as item (item.href)}
+			{#each [...navItems, settingsItem] as item (item.href)}
 				<a
 					href={item.href}
 					class="flex flex-col items-center gap-0.5 rounded-lg px-3 py-1 text-[11px] text-muted-foreground transition-colors {isActive(

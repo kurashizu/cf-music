@@ -7,6 +7,7 @@
 	import HardDriveIcon from '@lucide/svelte/icons/hard-drive';
 	import GlobeIcon from '@lucide/svelte/icons/globe';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
+	import ShieldIcon from '@lucide/svelte/icons/shield';
 	import LogOutIcon from '@lucide/svelte/icons/log-out';
 	import { estimateBrowserStorage, type StorageEstimate } from '$lib/client/offline-cache';
 	import type { PageProps } from './$types';
@@ -128,6 +129,23 @@
 			</Card.Content>
 		</Card.Root>
 	</a>
+
+	{#if data.session.isAdmin}
+		<a href="/admin" class="mb-4 block">
+			<Card.Root class="transition-colors hover:border-ring/50">
+				<Card.Content class="flex items-center justify-between gap-3">
+					<div class="flex items-center gap-2">
+						<ShieldIcon class="size-4 text-muted-foreground" />
+						<div>
+							<p class="text-sm font-medium">Admin</p>
+							<p class="text-xs text-muted-foreground">Invites, users, audit log, storage</p>
+						</div>
+					</div>
+					<ChevronRightIcon class="size-4 shrink-0 text-muted-foreground" />
+				</Card.Content>
+			</Card.Root>
+		</a>
+	{/if}
 
 	<Card.Root>
 		<Card.Content>

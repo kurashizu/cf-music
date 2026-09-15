@@ -268,7 +268,7 @@
 								</Button>
 							{/snippet}
 						</DropdownMenu.Trigger>
-						<DropdownMenu.Content align="end">
+						<DropdownMenu.Content align="end" class="min-w-52">
 							<DropdownMenu.Item
 								onclick={() => (removeTarget = { videoId: song.videoId, title: song.title })}
 							>
