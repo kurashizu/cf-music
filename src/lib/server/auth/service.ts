@@ -1,8 +1,9 @@
 import { eq, and, isNull, desc } from 'drizzle-orm';
 import type { Db } from '../db';
-import { users, sessions, inviteCodes } from '../db/schema';
+import { users, inviteCodes } from '../db/schema';
 import { hashPassword, verifyPassword } from './password';
 import { generateSessionId, generateInviteCode, computeSessionExpiry, isSessionExpired } from './tokens';
+import { createSession, getSession, deleteSession, deleteAllSessionsForUser } from './sessions';
 import { recordAuditEvent } from '../audit/log';
 
 export class AuthError extends Error {
@@ -88,7 +89,7 @@ export interface LoginResult {
 	expiresAt: Date;
 }
 
-export async function login(db: Db, input: LoginInput): Promise<LoginResult> {
+export async function login(db: Db, kv: KVNamespace, input: LoginInput): Promise<LoginResult> {
 	const user = await db.query.users.findFirst({
 		where: eq(users.username, input.username)
 	});
@@ -116,8 +117,7 @@ export async function login(db: Db, input: LoginInput): Promise<LoginResult> {
 	const sessionId = generateSessionId();
 	const { createdAt, expiresAt } = computeSessionExpiry();
 
-	await db.insert(sessions).values({
-		id: sessionId,
+	await createSession(kv, sessionId, {
 		userId: user.id,
 		createdAt: createdAt.toISOString(),
 		expiresAt: expiresAt.toISOString(),
@@ -147,13 +147,15 @@ export interface AuthenticatedSession {
 	isAdmin: boolean;
 }
 
-export async function resolveSession(db: Db, sessionId: string): Promise<AuthenticatedSession> {
-	const session = await db.query.sessions.findFirst({
-		where: eq(sessions.id, sessionId)
-	});
+export async function resolveSession(db: Db, kv: KVNamespace, sessionId: string): Promise<AuthenticatedSession> {
+	const session = await getSession(kv, sessionId);
 	if (!session) {
 		throw new AuthError('Session not found', 'session_not_found');
 	}
+	// Belt-and-suspenders alongside KV's own expirationTtl (set at write
+	// time in createSession) rather than the only expiry check: TTL
+	// expiry is on a best-effort background sweep in KV, not guaranteed to
+	// have already happened the instant the clock ticks past expiresAt.
 	if (isSessionExpired(new Date(session.expiresAt))) {
 		throw new AuthError('Session has expired', 'session_expired');
 	}
@@ -168,13 +170,13 @@ export async function resolveSession(db: Db, sessionId: string): Promise<Authent
 	return { userId: user.id, username: user.username, isAdmin: user.isAdmin };
 }
 
-export async function logout(db: Db, sessionId: string): Promise<void> {
-	await db.delete(sessions).where(eq(sessions.id, sessionId));
+export async function logout(kv: KVNamespace, sessionId: string): Promise<void> {
+	await deleteSession(kv, sessionId);
 }
 
 /** Invalidates every session for a user — used on password change or admin-forced logout. */
-export async function logoutAllSessions(db: Db, userId: string): Promise<void> {
-	await db.delete(sessions).where(eq(sessions.userId, userId));
+export async function logoutAllSessions(kv: KVNamespace, userId: string): Promise<void> {
+	await deleteAllSessionsForUser(kv, userId);
 }
 
 const MAX_INVITE_CODE_GENERATION_ATTEMPTS = 5;

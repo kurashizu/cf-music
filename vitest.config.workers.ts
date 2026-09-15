@@ -28,6 +28,7 @@ export default defineConfig(async () => {
 					// wrangler/workerd instead). Pin an older-but-compatible date here.
 					compatibilityDate: '2026-08-22',
 					d1Databases: ['DB'],
+					kvNamespaces: ['SESSION_KV'],
 					bindings: { TEST_MIGRATIONS: migrations }
 				}
 			})

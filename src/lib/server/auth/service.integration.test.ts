@@ -2,22 +2,28 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { env } from 'cloudflare:test';
 import { eq } from 'drizzle-orm';
 import { getDb } from '../db';
-import { users, inviteCodes, sessions } from '../db/schema';
+import { users, inviteCodes } from '../db/schema';
 import { register, login, resolveSession, logout, logoutAllSessions, listUsers, AuthError } from './service';
 
 const db = getDb(env.DB);
+const kv = env.SESSION_KV;
 
 async function seedInviteCode(code: string, createdBy = 'seed-admin') {
 	await db.insert(users).values({ id: createdBy, username: `admin-${createdBy}`, passwordHash: 'x', isAdmin: true }).onConflictDoNothing();
 	await db.insert(inviteCodes).values({ code, createdBy });
 }
 
+async function clearAllKeys(): Promise<void> {
+	const { keys } = await kv.list();
+	await Promise.all(keys.map((k) => kv.delete(k.name)));
+}
+
 beforeEach(async () => {
 	// D1 in the worker pool is reset between test files but not between
 	// `it`s within the same file, so each test starts from a clean slate.
-	await db.delete(sessions);
 	await db.delete(inviteCodes);
 	await db.delete(users);
+	await clearAllKeys();
 });
 
 describe('register', () => {
@@ -78,33 +84,32 @@ describe('login', () => {
 		await register(db, { username: 'erin', password: 'correct-password', inviteCode: 'LOGIN1' });
 	});
 
-	it('succeeds with the correct password and creates a session row', async () => {
-		const result = await login(db, { username: 'erin', password: 'correct-password' });
+	it('succeeds with the correct password and creates a session in KV', async () => {
+		const result = await login(db, kv, { username: 'erin', password: 'correct-password' });
 		expect(result.sessionId).toHaveLength(64);
 
-		const session = await db.query.sessions.findFirst({ where: (t, { eq }) => eq(t.id, result.sessionId) });
-		expect(session).not.toBeUndefined();
-		expect(session?.userId).toBe(result.userId);
+		const resolved = await resolveSession(db, kv, result.sessionId);
+		expect(resolved.userId).toBe(result.userId);
 	});
 
 	it('rejects an incorrect password', async () => {
-		await expect(login(db, { username: 'erin', password: 'wrong-password' })).rejects.toThrow(AuthError);
+		await expect(login(db, kv, { username: 'erin', password: 'wrong-password' })).rejects.toThrow(AuthError);
 	});
 
 	it('rejects a nonexistent username', async () => {
-		await expect(login(db, { username: 'nobody', password: 'anything' })).rejects.toThrow(AuthError);
+		await expect(login(db, kv, { username: 'nobody', password: 'anything' })).rejects.toThrow(AuthError);
 	});
 
 	it('records the provided user agent and IP address on the session', async () => {
-		const result = await login(db, {
+		const result = await login(db, kv, {
 			username: 'erin',
 			password: 'correct-password',
 			userAgent: 'test-agent/1.0',
 			ipAddress: '203.0.113.5'
 		});
-		const session = await db.query.sessions.findFirst({ where: (t, { eq }) => eq(t.id, result.sessionId) });
-		expect(session?.userAgent).toBe('test-agent/1.0');
-		expect(session?.ipAddress).toBe('203.0.113.5');
+		const record = await kv.get<{ userAgent?: string; ipAddress?: string }>(`session:${result.sessionId}`, 'json');
+		expect(record?.userAgent).toBe('test-agent/1.0');
+		expect(record?.ipAddress).toBe('203.0.113.5');
 	});
 });
 
@@ -112,16 +117,16 @@ describe('resolveSession', () => {
 	it('resolves an active session back to its user', async () => {
 		await seedInviteCode('RESOLVE1');
 		await register(db, { username: 'frank', password: 'pw12345678', inviteCode: 'RESOLVE1' });
-		const { sessionId, userId } = await login(db, { username: 'frank', password: 'pw12345678' });
+		const { sessionId, userId } = await login(db, kv, { username: 'frank', password: 'pw12345678' });
 
-		const resolved = await resolveSession(db, sessionId);
+		const resolved = await resolveSession(db, kv, sessionId);
 		expect(resolved.userId).toBe(userId);
 		expect(resolved.username).toBe('frank');
 		expect(resolved.isAdmin).toBe(false);
 	});
 
 	it('rejects an unknown session id', async () => {
-		await expect(resolveSession(db, 'does-not-exist')).rejects.toThrow(AuthError);
+		await expect(resolveSession(db, kv, 'does-not-exist')).rejects.toThrow(AuthError);
 	});
 
 	it('rejects an expired session', async () => {
@@ -129,13 +134,16 @@ describe('resolveSession', () => {
 		const { id: userId } = await register(db, { username: 'grace', password: 'pw12345678', inviteCode: 'RESOLVE2' });
 
 		const expiredSessionId = 'expired-session-id';
-		await db.insert(sessions).values({
-			id: expiredSessionId,
-			userId,
-			expiresAt: new Date(Date.now() - 1000).toISOString() // already in the past
-		});
+		await kv.put(
+			`session:${expiredSessionId}`,
+			JSON.stringify({
+				userId,
+				createdAt: new Date(Date.now() - 2000).toISOString(),
+				expiresAt: new Date(Date.now() - 1000).toISOString() // already in the past
+			})
+		);
 
-		await expect(resolveSession(db, expiredSessionId)).rejects.toThrow(AuthError);
+		await expect(resolveSession(db, kv, expiredSessionId)).rejects.toThrow(AuthError);
 	});
 });
 
@@ -143,11 +151,11 @@ describe('logout', () => {
 	it('removes the session so it can no longer be resolved', async () => {
 		await seedInviteCode('LOGOUT1');
 		await register(db, { username: 'henry', password: 'pw12345678', inviteCode: 'LOGOUT1' });
-		const { sessionId } = await login(db, { username: 'henry', password: 'pw12345678' });
+		const { sessionId } = await login(db, kv, { username: 'henry', password: 'pw12345678' });
 
-		await logout(db, sessionId);
+		await logout(kv, sessionId);
 
-		await expect(resolveSession(db, sessionId)).rejects.toThrow(AuthError);
+		await expect(resolveSession(db, kv, sessionId)).rejects.toThrow(AuthError);
 	});
 });
 
@@ -158,15 +166,15 @@ describe('logoutAllSessions', () => {
 		const { id: userId } = await register(db, { username: 'iris', password: 'pw12345678', inviteCode: 'LOGOUTALL1' });
 		await register(db, { username: 'jack', password: 'pw12345678', inviteCode: 'LOGOUTALL2' });
 
-		const sessionA = await login(db, { username: 'iris', password: 'pw12345678' });
-		const sessionB = await login(db, { username: 'iris', password: 'pw12345678' });
-		const otherUserSession = await login(db, { username: 'jack', password: 'pw12345678' });
+		const sessionA = await login(db, kv, { username: 'iris', password: 'pw12345678' });
+		const sessionB = await login(db, kv, { username: 'iris', password: 'pw12345678' });
+		const otherUserSession = await login(db, kv, { username: 'jack', password: 'pw12345678' });
 
-		await logoutAllSessions(db, userId);
+		await logoutAllSessions(kv, userId);
 
-		await expect(resolveSession(db, sessionA.sessionId)).rejects.toThrow(AuthError);
-		await expect(resolveSession(db, sessionB.sessionId)).rejects.toThrow(AuthError);
-		await expect(resolveSession(db, otherUserSession.sessionId)).resolves.not.toThrow();
+		await expect(resolveSession(db, kv, sessionA.sessionId)).rejects.toThrow(AuthError);
+		await expect(resolveSession(db, kv, sessionB.sessionId)).rejects.toThrow(AuthError);
+		await expect(resolveSession(db, kv, otherUserSession.sessionId)).resolves.not.toThrow();
 	});
 });
 

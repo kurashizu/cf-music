@@ -64,6 +64,13 @@
       "when": 1789449600000,
       "tag": "0008_lively_junta",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1789447107751,
+      "tag": "0009_left_toxin",
+      "breakpoints": true
     }
   ]
 }

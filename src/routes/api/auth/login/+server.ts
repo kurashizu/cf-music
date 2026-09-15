@@ -16,7 +16,7 @@ export const POST: RequestHandler = async ({ request, platform, cookies, getClie
 	const db = getDb(platform!.env.DB);
 
 	try {
-		const { sessionId, userId, expiresAt } = await login(db, {
+		const { sessionId, userId, expiresAt } = await login(db, platform!.env.SESSION_KV, {
 			username,
 			password,
 			userAgent: request.headers.get('user-agent') ?? undefined,

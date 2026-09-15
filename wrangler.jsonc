@@ -26,6 +26,13 @@
 			"database_id": "3d2a7a20-7325-4d34-9594-92d506b26535"
 		}
 	],
+	"kv_namespaces": [
+		{
+			"binding": "SESSION_KV",
+			"id": "757683a8bedf4c53bd20854f6e0f27bb",
+			"preview_id": "d299a8b14f4a4fc0993a319e091111e9"
+		}
+	],
 	"durable_objects": {
 		"bindings": [
 			{

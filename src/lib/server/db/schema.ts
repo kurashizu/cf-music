@@ -27,19 +27,6 @@ export const users = sqliteTable('users', {
 		.default(sql`(current_timestamp)`)
 });
 
-export const sessions = sqliteTable('sessions', {
-	id: text('id').primaryKey(), // random session token
-	userId: text('user_id')
-		.notNull()
-		.references(() => users.id, { onDelete: 'cascade' }),
-	createdAt: text('created_at')
-		.notNull()
-		.default(sql`(current_timestamp)`),
-	expiresAt: text('expires_at').notNull(),
-	userAgent: text('user_agent'),
-	ipAddress: text('ip_address')
-}, (t) => [index('idx_sessions_user_id').on(t.userId)]);
-
 export const inviteCodes = sqliteTable('invite_codes', {
 	code: text('code').primaryKey(),
 	createdBy: text('created_by')

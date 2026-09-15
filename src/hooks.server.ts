@@ -10,7 +10,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 	if (sessionId) {
 		const db = getDb(event.platform!.env.DB);
 		try {
-			event.locals.session = await resolveSession(db, sessionId);
+			event.locals.session = await resolveSession(db, event.platform!.env.SESSION_KV, sessionId);
 		} catch (err) {
 			if (err instanceof AuthError) {
 				// Stale/invalid cookie — clear it so the browser stops sending it.

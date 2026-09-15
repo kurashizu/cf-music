@@ -15,11 +15,31 @@ export function seedInviteCode(code: string) {
 	);
 }
 
+/**
+ * Sessions moved from D1 to KV (see src/lib/server/auth/sessions.ts) — this
+ * wipes every key in the local SESSION_KV namespace `wrangler dev` uses
+ * (see playwright.config.ts's webServer). Not scoped to a specific key
+ * prefix since nothing else in the app uses this namespace.
+ */
+function clearLocalSessionKv() {
+	const raw = execFileSync(
+		'npx',
+		['wrangler', 'kv', 'key', 'list', '--binding', 'SESSION_KV', '--local', '--preview', 'false'],
+		{ stdio: ['ignore', 'pipe', 'inherit'] }
+	).toString();
+	const keys: { name: string }[] = JSON.parse(raw);
+	for (const { name } of keys) {
+		execFileSync('npx', ['wrangler', 'kv', 'key', 'delete', '--binding', 'SESSION_KV', '--local', '--preview', 'false', name], {
+			stdio: ['ignore', 'ignore', 'inherit']
+		});
+	}
+}
+
 // Runs once before the whole Playwright suite: wipes prior E2E rows and
 // seeds a bootstrap admin so per-test invite codes can satisfy the
 // invite_codes.created_by FK without a real admin account existing.
 export default function globalSetup() {
-	d1Execute(`DELETE FROM sessions;`);
+	clearLocalSessionKv();
 	// users.default_playlist_id references playlists.id (see schema.ts) —
 	// cleared before deleting playlists below, or a leftover e2e user (from
 	// a prior run's import test, which calls ensureDefaultPlaylist) whose

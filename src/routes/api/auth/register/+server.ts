@@ -37,7 +37,7 @@ export const POST: RequestHandler = async ({ request, platform, cookies, getClie
 	}
 
 	// Register + immediately log in, so the client gets a session without a second round-trip.
-	const { sessionId, userId, expiresAt } = await login(db, {
+	const { sessionId, userId, expiresAt } = await login(db, platform!.env.SESSION_KV, {
 		username,
 		password,
 		userAgent: request.headers.get('user-agent') ?? undefined,
