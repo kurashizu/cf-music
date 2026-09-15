@@ -128,3 +128,19 @@
 		@apply font-sans;
 	}
 }
+
+/* Blanket safety net for every CSS transition/animation utility class
+   (Tailwind's transition-*, animate-*, and tailwindcss-animate's
+   data-open/data-closed keyframes) — svelte/transition calls are handled
+   per-callsite via $lib/client/motion.ts instead, since that API takes
+   JS params rather than CSS. */
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+		scroll-behavior: auto !important;
+	}
+}

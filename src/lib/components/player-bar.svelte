@@ -14,6 +14,8 @@
 	import QueuePanel from '$lib/components/queue-panel.svelte';
 	import QueueTriggerButton from '$lib/components/queue-trigger-button.svelte';
 	import OutputDeviceMenu from '$lib/components/output-device-menu.svelte';
+	import { fade } from 'svelte/transition';
+	import { motionParams } from '$lib/client/motion';
 
 	function formatAudioSpec(spec: typeof player.audioSpec): string {
 		if (!spec) return '';
@@ -124,18 +126,26 @@
 	</div>
 
 	<div class="flex items-center gap-3 px-3 py-2 md:px-4">
-		<div class="flex size-10 shrink-0 items-center justify-center rounded-md bg-muted">
-			{#if player.coverUrl}
-				<img src={player.coverUrl} alt="" class="size-10 rounded-md object-cover" />
-			{:else}
-				<MusicIcon class="size-4 text-muted-foreground" />
-			{/if}
+		<div class="relative flex size-10 shrink-0 items-center justify-center rounded-md bg-muted">
+			{#key player.currentTrack?.videoId}
+				<div class="absolute inset-0" transition:fade={motionParams({ duration: 150 })}>
+					{#if player.coverUrl}
+						<img src={player.coverUrl} alt="" class="size-10 rounded-md object-cover" />
+					{:else}
+						<div class="flex size-10 items-center justify-center">
+							<MusicIcon class="size-4 text-muted-foreground" />
+						</div>
+					{/if}
+				</div>
+			{/key}
 		</div>
 
 		<div class="min-w-0 flex-1">
-			<p class="truncate text-sm font-medium">
-				{player.currentTrack?.title ?? 'Nothing playing'}
-			</p>
+			{#key player.currentTrack?.videoId}
+				<p class="truncate text-sm font-medium" transition:fade={motionParams({ duration: 150 })}>
+					{player.currentTrack?.title ?? 'Nothing playing'}
+				</p>
+			{/key}
 			<p class="flex items-center gap-1.5 text-xs text-muted-foreground">
 				{#if player.currentTrack}
 					<span>{formatTime(player.currentTimeSeconds)} / {formatTime(player.durationSeconds)}</span>

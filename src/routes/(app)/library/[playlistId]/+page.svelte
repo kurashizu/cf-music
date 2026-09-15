@@ -19,7 +19,11 @@
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import ListPlusIcon from '@lucide/svelte/icons/list-plus';
 	import CheckIcon from '@lucide/svelte/icons/check';
+	import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle';
 	import { untrack, onMount } from 'svelte';
+	import { flip } from 'svelte/animate';
+	import { slide, scale } from 'svelte/transition';
+	import { motionParams } from '$lib/client/motion';
 	import { downloadSongForOffline, listCachedVideoIds } from '$lib/client/offline-cache';
 	import { viewMode } from '$lib/client/view-mode.svelte';
 	import ViewModeToggle from '$lib/components/view-mode-toggle.svelte';
@@ -71,6 +75,7 @@
 	let copyDialogOpen = $state(false);
 	let copyDialogMode = $state<'copy' | 'move'>('copy');
 	let copySubmitting = $state(false);
+	let copyingPlaylistId = $state<string | null>(null);
 
 	function openCopyDialogForSong(videoId: string, mode: 'copy' | 'move') {
 		copyTarget = videoId;
@@ -285,6 +290,7 @@
 		if (videoIds.length === 0) return;
 		const mode = copyDialogMode;
 		copySubmitting = true;
+		copyingPlaylistId = toPlaylistId;
 		try {
 			const results = await Promise.all(
 				videoIds.map((videoId) =>
@@ -310,6 +316,7 @@
 			if (isBatch) clearSelection();
 		} finally {
 			copySubmitting = false;
+			copyingPlaylistId = null;
 		}
 	}
 
@@ -481,6 +488,7 @@
 	{#if selected.size > 0}
 		<div
 			class="sticky top-0 z-10 mb-2 flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2"
+			transition:slide={motionParams({ duration: 150 })}
 		>
 			<div class="flex items-center gap-2">
 				<Button variant="ghost" size="icon-sm" onclick={clearSelection} aria-label="Clear selection">
@@ -574,6 +582,7 @@
 						? 'border-ring/50 bg-muted'
 						: ''}"
 					onclick={(e) => handleRowClick(e, index)}
+					animate:flip={motionParams({ duration: 200 })}
 				>
 					<div class="relative aspect-square overflow-hidden rounded-lg bg-muted">
 						{#if song.coverUrl}
@@ -602,11 +611,15 @@
 								? 'Pause'
 								: 'Play'}
 						>
-							{#if player.currentTrack?.videoId === song.videoId && player.isPlaying}
-								<PauseIcon class="size-8 text-white" />
-							{:else}
-								<PlayIcon class="size-8 text-white" />
-							{/if}
+							{#key player.currentTrack?.videoId === song.videoId && player.isPlaying}
+								<span transition:scale={motionParams({ duration: 100, start: 0.7 })}>
+									{#if player.currentTrack?.videoId === song.videoId && player.isPlaying}
+										<PauseIcon class="size-8 text-white" />
+									{:else}
+										<PlayIcon class="size-8 text-white" />
+									{/if}
+								</span>
+							{/key}
 						</button>
 						<!-- svelte-ignore a11y_no_static_element_interactions -->
 						<span
@@ -701,6 +714,7 @@
 					ondragover={(e) => draggable && handleDragOver(e, index)}
 					ondragend={() => draggable && handleDragEnd()}
 					onclick={(e) => handleRowClick(e, index)}
+					animate:flip={motionParams({ duration: draggingIndex === null ? 200 : 0 })}
 				>
 					<button
 						type="button"
@@ -865,10 +879,13 @@
 				<li>
 					<Button
 						variant="outline"
-						class="w-full justify-start"
+						class="w-full justify-start gap-2"
 						disabled={copySubmitting}
 						onclick={() => handleCopyOrMove(playlist.id)}
 					>
+						{#if copyingPlaylistId === playlist.id}
+							<LoaderCircleIcon class="size-3.5 animate-spin" />
+						{/if}
 						{playlist.name}
 					</Button>
 				</li>

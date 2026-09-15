@@ -1,5 +1,8 @@
 <script lang="ts">
 	import { untrack, onMount } from 'svelte';
+	import { flip } from 'svelte/animate';
+	import { slide, scale } from 'svelte/transition';
+	import { motionParams } from '$lib/client/motion';
 	import { invalidateAll } from '$app/navigation';
 	import { toast } from 'svelte-sonner';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -472,6 +475,7 @@
 		{#if selected.size > 0}
 			<div
 				class="sticky top-0 z-10 mb-2 flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2"
+				transition:slide={motionParams({ duration: 150 })}
 			>
 				<div class="flex items-center gap-2">
 					<Button variant="ghost" size="icon-sm" onclick={clearSelection} aria-label="Clear selection">
@@ -541,6 +545,7 @@
 							? 'border-ring/50 bg-muted'
 							: ''}"
 						onclick={(e) => handleRowClick(e, index)}
+						animate:flip={motionParams({ duration: 200 })}
 					>
 						<div class="relative aspect-square overflow-hidden rounded-lg bg-muted">
 							{#if entry.coverUrl}
@@ -569,11 +574,15 @@
 									? 'Pause'
 									: 'Play'}
 							>
-								{#if player.currentTrack?.videoId === entry.videoId && player.isPlaying}
-									<PauseIcon class="size-8 text-white" />
-								{:else}
-									<PlayIcon class="size-8 text-white" />
-								{/if}
+								{#key player.currentTrack?.videoId === entry.videoId && player.isPlaying}
+									<span transition:scale={motionParams({ duration: 100, start: 0.7 })}>
+										{#if player.currentTrack?.videoId === entry.videoId && player.isPlaying}
+											<PauseIcon class="size-8 text-white" />
+										{:else}
+											<PlayIcon class="size-8 text-white" />
+										{/if}
+									</span>
+								{/key}
 							</button>
 							<span class="absolute top-1 right-1" onclick={(e) => e.stopPropagation()}>
 								<DropdownMenu.Root>
@@ -637,6 +646,7 @@
 						? 'bg-muted ring-1 ring-inset ring-ring/50'
 						: ''}"
 					onclick={(e) => handleRowClick(e, index)}
+					animate:flip={motionParams({ duration: 200 })}
 				>
 					<div class="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
 						{#if entry.coverUrl}

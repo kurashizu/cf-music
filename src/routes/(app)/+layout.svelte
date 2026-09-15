@@ -14,6 +14,8 @@
 	import PanelLeftCloseIcon from '@lucide/svelte/icons/panel-left-close';
 	import PanelLeftOpenIcon from '@lucide/svelte/icons/panel-left-open';
 	import { sidebar } from '$lib/client/sidebar.svelte';
+	import { fade } from 'svelte/transition';
+	import { motionParams } from '$lib/client/motion';
 	import type { LayoutProps } from './$types';
 
 	let { data, children }: LayoutProps = $props();
@@ -54,7 +56,9 @@
 		<div class="mb-6 flex items-center gap-2 px-2 {sidebar.collapsed ? 'justify-center px-0' : ''}">
 			<Logo size={24} />
 			{#if !sidebar.collapsed}
-				<span class="truncate text-sm font-medium">KRSZ Music</span>
+				<span class="truncate text-sm font-medium" transition:fade={motionParams({ duration: 100 })}
+					>KRSZ Music</span
+				>
 			{/if}
 		</div>
 
@@ -210,7 +214,7 @@
 								<PanelLeftOpenIcon class="size-4" />
 							{:else}
 								<PanelLeftCloseIcon class="size-4" />
-								Collapse
+								<span transition:fade={motionParams({ duration: 100 })}>Collapse</span>
 							{/if}
 						</button>
 					{/snippet}
@@ -219,7 +223,9 @@
 			</Tooltip.Root>
 
 			{#if !sidebar.collapsed}
-				<BuildInfo />
+				<div transition:fade={motionParams({ duration: 100 })}>
+					<BuildInfo />
+				</div>
 			{/if}
 		</div>
 	</aside>

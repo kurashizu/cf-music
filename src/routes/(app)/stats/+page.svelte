@@ -212,7 +212,7 @@
 		</div>
 	{:else}
 		<div class="mb-4 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
-			<Card.Root class="transition-shadow hover:shadow-md">
+			<Card.Root class="transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-md">
 				<Card.Content class="flex flex-col gap-1">
 					<span class="flex items-center gap-1.5 text-xs text-muted-foreground">
 						<MusicIcon class="size-3.5" />
@@ -221,7 +221,7 @@
 					<span class="text-2xl font-medium">{data.songs.length}</span>
 				</Card.Content>
 			</Card.Root>
-			<Card.Root class="transition-shadow hover:shadow-md">
+			<Card.Root class="transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-md">
 				<Card.Content class="flex flex-col gap-1">
 					<span class="flex items-center gap-1.5 text-xs text-muted-foreground">
 						<UsersIcon class="size-3.5" />
@@ -230,7 +230,7 @@
 					<span class="text-2xl font-medium">{uniqueArtists}</span>
 				</Card.Content>
 			</Card.Root>
-			<Card.Root class="transition-shadow hover:shadow-md">
+			<Card.Root class="transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-md">
 				<Card.Content class="flex flex-col gap-1">
 					<span class="flex items-center gap-1.5 text-xs text-muted-foreground">
 						<ListMusicIcon class="size-3.5" />
@@ -239,7 +239,7 @@
 					<span class="text-2xl font-medium">{data.playlistCount + data.smartPlaylistCount}</span>
 				</Card.Content>
 			</Card.Root>
-			<Card.Root class="transition-shadow hover:shadow-md">
+			<Card.Root class="transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-md">
 				<Card.Content class="flex flex-col gap-1">
 					<span class="flex items-center gap-1.5 text-xs text-muted-foreground">
 						<ClockIcon class="size-3.5" />
@@ -248,7 +248,7 @@
 					<span class="text-2xl font-medium">{formatDuration(totalDurationSeconds)}</span>
 				</Card.Content>
 			</Card.Root>
-			<Card.Root class="transition-shadow hover:shadow-md">
+			<Card.Root class="transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-md">
 				<Card.Content class="flex flex-col gap-1">
 					<span class="flex items-center gap-1.5 text-xs text-muted-foreground">
 						<HardDriveIcon class="size-3.5" />
@@ -263,7 +263,7 @@
 					</div>
 				</Card.Content>
 			</Card.Root>
-			<Card.Root class="transition-shadow hover:shadow-md">
+			<Card.Root class="transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-md">
 				<Card.Content class="flex flex-col gap-1">
 					<span class="flex items-center gap-1.5 text-xs text-muted-foreground">
 						<TrendingUpIcon class="size-3.5" />

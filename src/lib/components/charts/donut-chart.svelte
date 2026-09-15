@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { reducedMotion } from '$lib/client/motion';
+
 	interface Slice {
 		label: string;
 		value: number;
@@ -17,13 +19,30 @@
 		return slices.map((slice) => {
 			const fraction = total > 0 ? slice.value / total : 0;
 			const length = fraction * circumference;
-			const arc = { ...slice, fraction, dashArray: `${length} ${circumference - length}`, dashOffset: -offset };
+			const arc = { ...slice, fraction, length, dashOffset: -offset };
 			offset += length;
 			return arc;
 		});
 	});
 
 	let hoverLabel: string | null = $state(null);
+
+	// Same draw-in trick as bar-list: render every arc's dasharray as
+	// "0 circumference" (nothing drawn) for one frame, then transition the
+	// drawn length up to its real value — a CSS transition can't animate
+	// from an element's initial paint otherwise. dashOffset (each arc's
+	// fixed rotational position around the ring) stays constant throughout
+	// — animating that instead of dasharray would just spin the segment
+	// around the circle rather than growing it.
+	let mounted = $state(false);
+	$effect(() => {
+		if (reducedMotion()) {
+			mounted = true;
+			return;
+		}
+		const raf = requestAnimationFrame(() => (mounted = true));
+		return () => cancelAnimationFrame(raf);
+	});
 </script>
 
 {#if total === 0}
@@ -41,9 +60,9 @@
 						fill="none"
 						stroke="currentColor"
 						stroke-width="16"
-						stroke-dasharray={arc.dashArray}
+						stroke-dasharray="{mounted ? arc.length : 0} {circumference}"
 						stroke-dashoffset={arc.dashOffset}
-						class="{arc.strokeClass} cursor-pointer transition-opacity duration-150 {hoverLabel && hoverLabel !== arc.label
+						class="{arc.strokeClass} cursor-pointer transition-[stroke-dasharray,opacity] duration-700 ease-out {hoverLabel && hoverLabel !== arc.label
 							? 'opacity-40'
 							: ''}"
 						onpointerenter={() => (hoverLabel = arc.label)}

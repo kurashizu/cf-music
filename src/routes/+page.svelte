@@ -7,6 +7,8 @@
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import Logo from '$lib/components/logo.svelte';
+	import { slide } from 'svelte/transition';
+	import { motionParams } from '$lib/client/motion';
 
 	interface ErrorBody {
 		message?: string;
@@ -99,9 +101,11 @@
 				<Tabs.Content value="login">
 					<form class="flex flex-col gap-4 pt-4" onsubmit={handleLogin}>
 						{#if loginError}
-							<Alert.Root variant="destructive">
-								<Alert.Description>{loginError}</Alert.Description>
-							</Alert.Root>
+							<div transition:slide={motionParams({ duration: 150 })}>
+								<Alert.Root variant="destructive">
+									<Alert.Description>{loginError}</Alert.Description>
+								</Alert.Root>
+							</div>
 						{/if}
 						<div class="flex flex-col gap-2">
 							<Label for="login-username">Username</Label>
@@ -133,9 +137,11 @@
 				<Tabs.Content value="register">
 					<form class="flex flex-col gap-4 pt-4" onsubmit={handleRegister}>
 						{#if registerError}
-							<Alert.Root variant="destructive">
-								<Alert.Description>{registerError}</Alert.Description>
-							</Alert.Root>
+							<div transition:slide={motionParams({ duration: 150 })}>
+								<Alert.Root variant="destructive">
+									<Alert.Description>{registerError}</Alert.Description>
+								</Alert.Root>
+							</div>
 						{/if}
 						<div class="flex flex-col gap-2">
 							<Label for="register-username">Username</Label>

@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { throttledFetchBlobUrl, releaseBlobUrl } from '$lib/client/image-throttle';
+	import { motionParams } from '$lib/client/motion';
+	import { fade } from 'svelte/transition';
 
 	interface Props {
 		src: string;
@@ -15,6 +17,10 @@
 		const requestedSrc = src;
 		let acquired = false;
 		let cancelled = false;
+		// Reset immediately on src change (rather than leaving the old
+		// image up) so switching covers shows the skeleton, not a stale
+		// mismatched thumbnail, while the new blob URL resolves.
+		blobUrl = undefined;
 
 		throttledFetchBlobUrl(requestedSrc).then((url) => {
 			if (cancelled) {
@@ -33,5 +39,7 @@
 </script>
 
 {#if blobUrl}
-	<img src={blobUrl} {alt} class={className} />
+	<img src={blobUrl} {alt} class={className} transition:fade={motionParams({ duration: 150 })} />
+{:else}
+	<div class="{className} animate-pulse bg-muted"></div>
 {/if}

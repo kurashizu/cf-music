@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
+	import { flip } from 'svelte/animate';
+	import { fade } from 'svelte/transition';
 	import { toast } from 'svelte-sonner';
+	import { motionParams } from '$lib/client/motion';
 	import { importStore } from '$lib/client/import.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
@@ -134,6 +137,7 @@
 		<div class="flex flex-col gap-3">
 			<h2 class="text-sm font-medium text-muted-foreground">Importing</h2>
 			{#each jobs as job (job.jobId)}
+				<div animate:flip={motionParams({ duration: 200 })} transition:fade={motionParams({ duration: 150 })}>
 				<Card.Root>
 					<Card.Content class="flex flex-col gap-3">
 						<div class="flex items-center justify-between gap-3">
@@ -143,6 +147,8 @@
 							</span>
 						</div>
 
+						{#key job.status === 'failed' ? 'failed' : job.probing ? 'probing' : 'progress'}
+						<div transition:fade={motionParams({ duration: 120 })}>
 						{#if job.status === 'failed'}
 							<div class="flex items-start gap-3">
 								<CircleXIcon class="mt-0.5 size-4 shrink-0 text-destructive" />
@@ -194,8 +200,11 @@
 								</div>
 							{/if}
 						{/if}
+						</div>
+						{/key}
 					</Card.Content>
 				</Card.Root>
+				</div>
 			{/each}
 		</div>
 	{/if}

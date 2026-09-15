@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { scale } from 'svelte/transition';
+	import { flip } from 'svelte/animate';
 	import { player } from '$lib/client/player.svelte';
 	import { queuePanelState } from '$lib/client/queue-panel-state.svelte';
+	import { motionParams } from '$lib/client/motion';
 	import XIcon from '@lucide/svelte/icons/x';
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 
@@ -97,6 +99,8 @@
 				{#each player.upcoming as { track, queueArrayIndex }, position (queueArrayIndex)}
 					<div
 						class="group flex items-center gap-2.5 rounded-md px-1.5 py-1.5 transition-colors hover:bg-muted"
+						animate:flip={motionParams({ duration: 200 })}
+						transition:scale={motionParams({ duration: 150, start: 0.9, opacity: 0 })}
 					>
 						<span class="w-4 shrink-0 text-right text-xs text-muted-foreground">{position + 1}</span>
 						<button

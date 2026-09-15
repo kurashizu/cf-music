@@ -54,6 +54,15 @@
 			day: 'numeric'
 		});
 	}
+
+	// Clamps the tooltip's horizontal anchor so it stays inside the
+	// scrollable grid instead of overflowing on the first/last few
+	// columns (same idea as area-chart's tooltip clamp).
+	function tooltipAlignClass(columnIndex: number, totalColumns: number): string {
+		if (columnIndex < 2) return 'left-0 translate-x-0';
+		if (columnIndex > totalColumns - 3) return 'right-0 left-auto translate-x-0';
+		return 'left-1/2 -translate-x-1/2';
+	}
 </script>
 
 <div class="flex gap-[3px] overflow-x-auto pb-1">
@@ -65,7 +74,10 @@
 					role="presentation"
 				>
 					<div
-						class="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1 -translate-x-1/2 rounded-md border border-border bg-popover px-1.5 py-0.5 text-[10px] whitespace-nowrap opacity-0 shadow-md transition-opacity group-hover:opacity-100"
+						class="pointer-events-none absolute bottom-full z-10 mb-1 rounded-md border border-border bg-popover px-1.5 py-0.5 text-[10px] whitespace-nowrap opacity-0 shadow-md transition-opacity group-hover:opacity-100 {tooltipAlignClass(
+							i,
+							columns.length
+						)}"
 					>
 						{day.count} {day.count === 1 ? 'play' : 'plays'} · {formatDate(day.date)}
 					</div>

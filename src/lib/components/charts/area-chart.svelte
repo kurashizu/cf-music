@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { reducedMotion } from '$lib/client/motion';
+
 	// Minimal dependency-free SVG area/line chart. Deliberately not a
 	// general-purpose charting library — just enough (linear scale, smooth
 	// path, gradient fill, hover tooltip) for the stats page's own
@@ -43,6 +45,26 @@
 	let hoverIndex: number | null = $state(null);
 	const gradientId = `area-gradient-${Math.random().toString(36).slice(2)}`;
 
+	// Draw-in effect: measure the line's real length once it's in the DOM,
+	// then animate stroke-dashoffset from that length (fully retracted)
+	// down to 0. The area fill can't dash-draw the same way (it's a closed
+	// shape, not a single stroke), so it just fades in alongside.
+	let lineEl: SVGPathElement | undefined = $state();
+	let pathLength = $state(0);
+	let drawn = $state(false);
+
+	$effect(() => {
+		if (!lineEl || linePath === '') return;
+		pathLength = lineEl.getTotalLength();
+		drawn = false;
+		if (reducedMotion()) {
+			drawn = true;
+			return;
+		}
+		const raf = requestAnimationFrame(() => (drawn = true));
+		return () => cancelAnimationFrame(raf);
+	});
+
 	function handleMove(event: PointerEvent, svgEl: SVGSVGElement) {
 		const rect = svgEl.getBoundingClientRect();
 		const relativeX = ((event.clientX - rect.left) / rect.width) * width;
@@ -80,15 +102,21 @@
 				</linearGradient>
 			</defs>
 
-			<path d={areaPath} fill="url(#{gradientId})" class="text-primary" />
 			<path
+				d={areaPath}
+				fill="url(#{gradientId})"
+				class="text-primary transition-opacity duration-700 ease-out {drawn ? 'opacity-100' : 'opacity-0'}"
+			/>
+			<path
+				bind:this={lineEl}
 				d={linePath}
 				fill="none"
 				stroke="currentColor"
 				stroke-width="2"
 				stroke-linejoin="round"
 				stroke-linecap="round"
-				class="text-primary"
+				class="text-primary transition-[stroke-dashoffset] duration-700 ease-out"
+				style="stroke-dasharray: {pathLength}; stroke-dashoffset: {drawn ? 0 : pathLength}"
 			/>
 
 			{#if hoverIndex !== null && coords[hoverIndex]}

@@ -4,6 +4,8 @@
 	import Volume2Icon from '@lucide/svelte/icons/volume-2';
 	import Volume1Icon from '@lucide/svelte/icons/volume-1';
 	import VolumeXIcon from '@lucide/svelte/icons/volume-x';
+	import { fly } from 'svelte/transition';
+	import { motionParams } from '$lib/client/motion';
 
 	let track: HTMLDivElement | undefined = $state();
 	let dragging = $state(false);
@@ -73,7 +75,10 @@
 	</Button>
 
 	{#if panelOpen}
-		<div class="absolute bottom-full left-1/2 -translate-x-1/2 pb-2">
+		<div
+			class="absolute bottom-full left-1/2 -translate-x-1/2 pb-2"
+			transition:fly={motionParams({ y: 4, duration: 100 })}
+		>
 			<div class="rounded-lg border border-border bg-card p-2 shadow-md">
 				<div
 					bind:this={track}

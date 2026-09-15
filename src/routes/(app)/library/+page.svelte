@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
 	import { toast } from 'svelte-sonner';
+	import { flip } from 'svelte/animate';
+	import { motionParams } from '$lib/client/motion';
 	import * as Card from '$lib/components/ui/card/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
@@ -295,6 +297,7 @@
 					type="button"
 					class="flex items-center gap-3 rounded-lg px-2 py-2 text-left hover:bg-muted"
 					onclick={() => playSong(song)}
+					animate:flip={motionParams({ duration: 200 })}
 				>
 					<div class="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted">
 						<MusicIcon class="size-3.5 text-muted-foreground" />

@@ -20,6 +20,9 @@
 	import XIcon from '@lucide/svelte/icons/x';
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import { onMount } from 'svelte';
+	import { flip } from 'svelte/animate';
+	import { scale } from 'svelte/transition';
+	import { motionParams } from '$lib/client/motion';
 	import { downloadSongForOffline, listCachedVideoIds } from '$lib/client/offline-cache';
 	import { viewMode } from '$lib/client/view-mode.svelte';
 	import ViewModeToggle from '$lib/components/view-mode-toggle.svelte';
@@ -395,6 +398,7 @@
 						? 'border-ring/50 bg-muted'
 						: ''}"
 					onclick={(e) => handleRowClick(e, index)}
+					animate:flip={motionParams({ duration: 200 })}
 				>
 					<div class="relative aspect-square overflow-hidden rounded-lg bg-muted">
 						{#if song.coverUrl}
@@ -423,11 +427,15 @@
 								? 'Pause'
 								: 'Play'}
 						>
-							{#if player.currentTrack?.videoId === song.videoId && player.isPlaying}
-								<PauseIcon class="size-8 text-white" />
-							{:else}
-								<PlayIcon class="size-8 text-white" />
-							{/if}
+							{#key player.currentTrack?.videoId === song.videoId && player.isPlaying}
+								<span transition:scale={motionParams({ duration: 100, start: 0.7 })}>
+									{#if player.currentTrack?.videoId === song.videoId && player.isPlaying}
+										<PauseIcon class="size-8 text-white" />
+									{:else}
+										<PlayIcon class="size-8 text-white" />
+									{/if}
+								</span>
+							{/key}
 						</button>
 						<span class="absolute top-1 right-1" onclick={(e) => e.stopPropagation()}>
 							<DropdownMenu.Root>
@@ -497,6 +505,7 @@
 							? 'bg-muted'
 							: ''}"
 					onclick={(e) => handleRowClick(e, index)}
+					animate:flip={motionParams({ duration: 200 })}
 				>
 					<button
 						type="button"

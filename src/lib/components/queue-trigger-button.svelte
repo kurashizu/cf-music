@@ -4,6 +4,8 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import LayersIcon from '@lucide/svelte/icons/layers';
+	import { scale } from 'svelte/transition';
+	import { motionParams } from '$lib/client/motion';
 
 	// bits-ui's Tooltip.Trigger child snippet already owns a `ref` binding
 	// on `props` internally (it needs the element to position the tooltip)
@@ -36,6 +38,7 @@
 				{#if player.upcoming.length > 0}
 					<span
 						class="absolute -top-1 -right-1 flex size-3.5 items-center justify-center rounded-full bg-foreground text-[9px] font-medium text-background"
+						transition:scale={motionParams({ duration: 100, start: 0.5 })}
 					>
 						{player.upcoming.length > 9 ? '9+' : player.upcoming.length}
 					</span>
