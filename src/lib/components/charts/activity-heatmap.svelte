@@ -71,24 +71,26 @@
 	}
 </script>
 
-<div class="flex justify-between gap-1.5 overflow-x-auto pb-1 sm:gap-2">
-	{#each columns as column, i (i)}
-		<div class="flex flex-1 flex-col gap-1.5 sm:gap-2">
-			{#each column as day (day.date)}
-				<div
-					class="group relative aspect-square w-full min-w-3 rounded-sm {intensityClass(day.count)} transition-transform hover:scale-125"
-					role="presentation"
-				>
+<div class="overflow-x-auto overflow-y-hidden py-2">
+	<div class="flex justify-between gap-1.5 sm:gap-2">
+		{#each columns as column, i (i)}
+			<div class="flex flex-1 flex-col gap-1.5 sm:gap-2">
+				{#each column as day (day.date)}
 					<div
-						class="pointer-events-none absolute bottom-full z-10 mb-1 rounded-md border border-border bg-popover px-1.5 py-0.5 text-[10px] whitespace-nowrap opacity-0 shadow-md transition-opacity group-hover:opacity-100 {tooltipAlignClass(
-							i,
-							columns.length
-						)}"
+						class="group relative aspect-square w-full min-w-3 rounded-sm {intensityClass(day.count)} transition-transform hover:scale-125"
+						role="presentation"
 					>
-						{day.count} {day.count === 1 ? 'play' : 'plays'} · {formatDate(day.date)}
+						<div
+							class="pointer-events-none absolute bottom-full z-10 mb-1 rounded-md border border-border bg-popover px-1.5 py-0.5 text-[10px] whitespace-nowrap opacity-0 shadow-md transition-opacity group-hover:opacity-100 {tooltipAlignClass(
+								i,
+								columns.length
+							)}"
+						>
+							{day.count} {day.count === 1 ? 'play' : 'plays'} · {formatDate(day.date)}
+						</div>
 					</div>
-				</div>
-			{/each}
-		</div>
-	{/each}
+				{/each}
+			</div>
+		{/each}
+	</div>
 </div>
