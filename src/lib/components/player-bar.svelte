@@ -12,6 +12,7 @@
 	import VolumeControl from '$lib/components/volume-control.svelte';
 	import SpectrumVisualizer from '$lib/components/spectrum-visualizer.svelte';
 	import QueuePanel from '$lib/components/queue-panel.svelte';
+	import QueueTriggerButton from '$lib/components/queue-trigger-button.svelte';
 
 	function formatAudioSpec(spec: typeof player.audioSpec): string {
 		if (!spec) return '';
@@ -221,6 +222,8 @@
 				{/if}
 			</Button>
 		</div>
+
+		<QueueTriggerButton />
 	</div>
 </div>
 

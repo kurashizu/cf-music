@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { throttledFetchBlobUrl } from '$lib/client/image-throttle';
+	import { throttledFetchBlobUrl, releaseBlobUrl } from '$lib/client/image-throttle';
 
 	interface Props {
 		src: string;
@@ -13,21 +13,21 @@
 
 	$effect(() => {
 		const requestedSrc = src;
-		let currentBlobUrl: string | undefined;
+		let acquired = false;
 		let cancelled = false;
 
 		throttledFetchBlobUrl(requestedSrc).then((url) => {
 			if (cancelled) {
-				URL.revokeObjectURL(url);
+				releaseBlobUrl(requestedSrc);
 				return;
 			}
-			currentBlobUrl = url;
+			acquired = true;
 			blobUrl = url;
 		});
 
 		return () => {
 			cancelled = true;
-			if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
+			if (acquired) releaseBlobUrl(requestedSrc);
 		};
 	});
 </script>
