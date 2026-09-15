@@ -436,22 +436,56 @@ async def run() -> None:
     # against Cloudflare's edge — the real fix there is sending genuine
     # application data regularly (probing_progress events), not just
     # relying on these.
-    async with websockets.connect(
-        websocket_url(),
+    ws_options = dict(
         additional_headers={"User-Agent": "cf-music-import-job/1.0"},
         ping_interval=20,
         ping_timeout=20,
-    ) as ws:
+    )
+
+    async with websockets.connect(websocket_url(), **ws_options) as ws_initial:
+        # Boxed in a single-item list (not a plain variable) so send_event's
+        # reconnect-and-retry below can replace the active connection out
+        # from under watch_for_cancel and every download_one call, all of
+        # which only ever hold a reference to this list, not to the socket
+        # object itself.
+        ws_box = [ws_initial]
 
         # websockets' own docs call concurrent send() calls from multiple
         # coroutines unsafe (interleaved writes can corrupt frames) — held
         # here since both the size-probing and download phases run
         # DOWNLOAD_CONCURRENCY tasks at once, each reporting its own event.
+        # Also doubles as the reconnect lock (see reconnect() below): without
+        # sharing it, a drop discovered by send_event and one discovered by
+        # watch_for_cancel at the same moment could each open their own
+        # replacement connection, silently leaking/orphaning whichever one
+        # loses the race to be stored in ws_box.
         send_lock = asyncio.Lock()
 
-        async def send_event(event: dict) -> None:
+        async def reconnect() -> None:
             async with send_lock:
-                await ws.send(json.dumps({"jobId": JOB_ID, "event": event}))
+                print("WebSocket connection dropped; reconnecting once", file=sys.stderr)
+                ws_box[0] = await websockets.connect(websocket_url(), **ws_options)
+
+        async def send_event(event: dict) -> None:
+            payload = json.dumps({"jobId": JOB_ID, "event": event})
+            async with send_lock:
+                try:
+                    await ws_box[0].send(payload)
+                    return
+                except websockets.exceptions.ConnectionClosed:
+                    pass
+            # A single dropped connection (Cloudflare edge hiccup, transient
+            # network blip — pings alone don't prevent this, see the module
+            # docstring) used to crash the whole job here even though every
+            # song's download/upload had already succeeded by this point;
+            # only the progress report was lost. One reconnect attempt,
+            # re-registering as this same job's `ci:{id}` connection (a
+            # fresh connection to the same URL does that on its own — the
+            # tag isn't tied to the old socket), covers that case without a
+            # full rewrite of this function's single `async with` scope.
+            await reconnect()
+            async with send_lock:
+                await ws_box[0].send(payload)
 
         # Cancellation is checked for the entire job lifetime (probing and
         # downloading both watch `cancelled`), not just once downloading
@@ -467,9 +501,21 @@ async def run() -> None:
             nonlocal cancelled
             while not cancelled:
                 try:
-                    cancel_message = await ws.recv()
+                    cancel_message = await ws_box[0].recv()
                 except websockets.exceptions.ConnectionClosed:
-                    return
+                    # Same connection-drop tolerance as send_event: a stale
+                    # reference here would otherwise leave cancellation
+                    # silently dead for the rest of the job the moment the
+                    # very first blip happens, even though send_event's own
+                    # reconnect keeps everything else working fine. Routed
+                    # through the same reconnect() (and its shared lock) as
+                    # send_event so a drop noticed by both at once doesn't
+                    # open two replacement connections.
+                    try:
+                        await reconnect()
+                        continue
+                    except OSError:
+                        return
                 decision = json.loads(cancel_message)
                 if decision.get("action") == "cancel":
                     print("Import was cancelled mid-run", file=sys.stderr)
