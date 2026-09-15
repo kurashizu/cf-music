@@ -433,7 +433,7 @@
 	<title>{data.playlist.name} · KRSZ Music</title>
 </svelte:head>
 
-<div class="mx-auto max-w-3xl p-4 md:p-8">
+<div class="mx-auto max-w-screen-2xl p-4 md:p-8">
 	<div class="mb-6 flex flex-wrap items-center justify-between gap-4">
 		<div class="min-w-0">
 			<h1 class="truncate text-lg font-medium">{data.playlist.name}</h1>
@@ -561,7 +561,7 @@
 	{:else if visibleIndices.length === 0}
 		<p class="py-8 text-center text-sm text-muted-foreground">No songs match "{searchQuery}".</p>
 	{:else if viewMode.mode === 'grid'}
-		<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+		<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8">
 			{#each windowedIndices as index (songs[index].videoId)}
 				{@const song = songs[index]}
 				<!-- svelte-ignore a11y_click_events_have_key_events -->

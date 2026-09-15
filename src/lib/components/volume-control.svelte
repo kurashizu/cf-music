@@ -7,8 +7,10 @@
 
 	let track: HTMLDivElement | undefined = $state();
 	let dragging = $state(false);
+	let hovering = $state(false);
 
 	const effectiveVolume = $derived(player.muted ? 0 : player.volume);
+	const panelOpen = $derived(hovering || dragging);
 
 	function percentFromPointer(clientY: number): number {
 		if (!track) return 0;
@@ -48,7 +50,12 @@
 	}
 </script>
 
-<div class="group relative hidden sm:block">
+<div
+	class="relative hidden sm:block"
+	onpointerenter={() => (hovering = true)}
+	onpointerleave={() => (hovering = false)}
+	role="group"
+>
 	<Button
 		variant="ghost"
 		size="icon-sm"
@@ -65,31 +72,29 @@
 		{/if}
 	</Button>
 
-	<div
-		class="absolute bottom-full left-1/2 hidden -translate-x-1/2 pb-2 group-hover:block {dragging
-			? '!block'
-			: ''}"
-	>
-		<div class="rounded-lg border border-border bg-card p-2 shadow-md">
-			<div
-				bind:this={track}
-				role="slider"
-				tabindex="0"
-				aria-label="Volume"
-				aria-valuemin={0}
-				aria-valuemax={100}
-				aria-valuenow={Math.round(effectiveVolume * 100)}
-				class="relative h-20 w-1.5 cursor-pointer touch-none rounded-full bg-muted"
-				onpointerdown={handlePointerDown}
-				onpointermove={handlePointerMove}
-				onpointerup={handlePointerUp}
-				onkeydown={handleKeydown}
-			>
+	{#if panelOpen}
+		<div class="absolute bottom-full left-1/2 -translate-x-1/2 pb-2">
+			<div class="rounded-lg border border-border bg-card p-2 shadow-md">
 				<div
-					class="absolute inset-x-0 bottom-0 rounded-full bg-foreground"
-					style="height: {effectiveVolume * 100}%"
-				></div>
+					bind:this={track}
+					role="slider"
+					tabindex="0"
+					aria-label="Volume"
+					aria-valuemin={0}
+					aria-valuemax={100}
+					aria-valuenow={Math.round(effectiveVolume * 100)}
+					class="relative h-20 w-3 cursor-pointer touch-none rounded-full bg-muted"
+					onpointerdown={handlePointerDown}
+					onpointermove={handlePointerMove}
+					onpointerup={handlePointerUp}
+					onkeydown={handleKeydown}
+				>
+					<div
+						class="absolute inset-x-0 bottom-0 rounded-full bg-foreground"
+						style="height: {effectiveVolume * 100}%"
+					></div>
+				</div>
 			</div>
 		</div>
-	</div>
+	{/if}
 </div>

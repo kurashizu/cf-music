@@ -25,7 +25,12 @@
 		// looks broken, a faint static shape reads as "idle, ready".
 		const levels = analyser ? readLevels(analyser) : new Array(BAR_COUNT).fill(0.06);
 
-		ctx.fillStyle = 'currentColor';
+		// Canvas's fillStyle has no concept of the CSS `currentColor`
+		// keyword — assigning it is simply ignored, silently leaving
+		// fillStyle at its default black, which is invisible against this
+		// bar's dark background. getComputedStyle resolves the element's
+		// actual (inherited) text color instead.
+		ctx.fillStyle = getComputedStyle(canvas).color;
 		for (let i = 0; i < BAR_COUNT; i++) {
 			const level = levels[i];
 			const barHeight = Math.max(2, level * height);

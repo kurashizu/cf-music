@@ -372,7 +372,7 @@
 	<title>Manage storage · KRSZ Music</title>
 </svelte:head>
 
-<div class="mx-auto max-w-2xl p-4 md:p-8">
+<div class="mx-auto max-w-screen-2xl p-4 md:p-8">
 	<div class="mb-6 flex items-center gap-2">
 		<Button href="/settings" variant="ghost" size="sm" class="-ml-2">← Settings</Button>
 	</div>
@@ -529,7 +529,7 @@
 		{#if filteredEntries.length === 0}
 			<p class="py-8 text-center text-sm text-muted-foreground">No songs match "{searchQuery}".</p>
 		{:else if viewMode.mode === 'grid'}
-			<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+			<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8">
 				{#each visibleEntries as entry, index (entry.videoId)}
 					<!-- svelte-ignore a11y_click_events_have_key_events -->
 					<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->

@@ -162,7 +162,7 @@
 	<title>Library · KRSZ Music</title>
 </svelte:head>
 
-<div class="mx-auto max-w-5xl p-4 md:p-8">
+<div class="mx-auto max-w-screen-2xl p-4 md:p-8">
 	{#if data.playlists.length > 0 || data.smartPlaylists.length > 0}
 		<div class="mb-6 flex flex-wrap items-center gap-2">
 			<div class="relative min-w-48 flex-1">
@@ -223,7 +223,7 @@
 			<Button size="sm" variant="outline" onclick={() => (createOpen = true)}>New playlist</Button>
 		</div>
 	{:else if filteredPlaylists.length > 0}
-		<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+		<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
 			{#each filteredPlaylists as playlist (playlist.id)}
 				<Card.Root
 					class="group relative overflow-hidden py-0 transition-colors hover:border-ring/50"
@@ -313,7 +313,7 @@
 
 	{#if filteredSmartPlaylists.length > 0}
 		<h2 class="mt-10 mb-4 text-sm font-medium text-muted-foreground">Auto-categorized</h2>
-		<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+		<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
 			{#each filteredSmartPlaylists as group (group.id)}
 				<Card.Root class="group relative overflow-hidden py-0 transition-colors hover:border-ring/50">
 					<a href="/library/smart/{encodeURIComponent(group.id)}" class="flex flex-col gap-3 p-4">
