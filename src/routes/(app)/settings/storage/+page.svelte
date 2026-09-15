@@ -12,6 +12,15 @@
 	import XIcon from '@lucide/svelte/icons/x';
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import ListMusicIcon from '@lucide/svelte/icons/list-music';
+	import MusicIcon from '@lucide/svelte/icons/music';
+	import PlayIcon from '@lucide/svelte/icons/play';
+	import PauseIcon from '@lucide/svelte/icons/pause';
+	import MoreHorizontalIcon from '@lucide/svelte/icons/more-horizontal';
+	import CheckIcon from '@lucide/svelte/icons/check';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
+	import { player } from '$lib/client/player.svelte';
+	import { viewMode } from '$lib/client/view-mode.svelte';
+	import ViewModeToggle from '$lib/components/view-mode-toggle.svelte';
 	import {
 		reconcileAudioCache,
 		listCachedVideoIds,
@@ -136,6 +145,17 @@
 		}
 		selected = selected.size === 1 && selected.has(videoId) ? new Set() : new Set([videoId]);
 		lastSelectedIndex = index;
+	}
+
+	async function playEntry(entry: { videoId: string; title: string }) {
+		if (player.currentTrack?.videoId === entry.videoId) {
+			await player.togglePlayPause();
+			return;
+		}
+		// This page has no natural "queue" of its own (it spans the whole
+		// library, not one ordered playlist) — playing a song here just
+		// starts a single-track queue, same as if it were the only result.
+		await player.playQueue([{ videoId: entry.videoId, title: entry.title, durationSeconds: null }], 0);
 	}
 
 	async function handleDownload(videoId: string) {
@@ -331,6 +351,7 @@
 			<Button size="sm" variant="outline" onclick={toggleSelectAll}>
 				{allVisibleSelected ? 'Deselect all' : 'Select all'}
 			</Button>
+			<ViewModeToggle />
 		</div>
 
 		{#if selected.size > 0}
@@ -392,9 +413,103 @@
 
 		{#if filteredEntries.length === 0}
 			<p class="py-8 text-center text-sm text-muted-foreground">No songs match "{searchQuery}".</p>
-		{/if}
-		<ul class="flex flex-col">
-			{#each filteredEntries as entry, index (entry.videoId)}
+		{:else if viewMode.mode === 'grid'}
+			<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+				{#each filteredEntries as entry, index (entry.videoId)}
+					<!-- svelte-ignore a11y_click_events_have_key_events -->
+					<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<div
+						class="group relative flex flex-col gap-2 rounded-xl border border-transparent p-2 transition-colors hover:bg-muted {selected.has(
+							entry.videoId
+						)
+							? 'border-ring/50 bg-muted'
+							: ''}"
+						onclick={(e) => handleRowClick(e, index)}
+					>
+						<div class="relative aspect-square overflow-hidden rounded-lg bg-muted">
+							{#if entry.coverUrl}
+								<img src={entry.coverUrl} alt="" class="size-full object-cover" />
+							{:else}
+								<div class="flex size-full items-center justify-center">
+									<MusicIcon class="size-8 text-muted-foreground" />
+								</div>
+							{/if}
+							{#if cachedVideoIds.has(entry.videoId)}
+								<span
+									class="absolute top-1 left-1 flex items-center gap-0.5 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] text-white backdrop-blur-sm"
+								>
+									<CheckIcon class="size-2.5" />
+									Cached
+								</span>
+							{/if}
+							<button
+								type="button"
+								class="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100"
+								onclick={(e) => {
+									e.stopPropagation();
+									playEntry(entry);
+								}}
+								aria-label={player.currentTrack?.videoId === entry.videoId && player.isPlaying
+									? 'Pause'
+									: 'Play'}
+							>
+								{#if player.currentTrack?.videoId === entry.videoId && player.isPlaying}
+									<PauseIcon class="size-8 text-white" />
+								{:else}
+									<PlayIcon class="size-8 text-white" />
+								{/if}
+							</button>
+							<span class="absolute top-1 right-1" onclick={(e) => e.stopPropagation()}>
+								<DropdownMenu.Root>
+									<DropdownMenu.Trigger>
+										{#snippet child({ props })}
+											<Button
+												{...props}
+												variant="secondary"
+												size="icon-sm"
+												class="opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100"
+											>
+												<MoreHorizontalIcon class="size-4" />
+											</Button>
+										{/snippet}
+									</DropdownMenu.Trigger>
+									<DropdownMenu.Content align="end" class="min-w-52">
+										{#if cachedVideoIds.has(entry.videoId)}
+											<DropdownMenu.Item onclick={() => handleClearCached(entry.videoId)}>
+												<GlobeIcon class="size-4" />
+												Clear from cache
+											</DropdownMenu.Item>
+										{:else}
+											<DropdownMenu.Item onclick={() => handleDownload(entry.videoId)}>
+												<DownloadIcon class="size-4" />
+												Download
+											</DropdownMenu.Item>
+										{/if}
+										{#if data.playlists.length > 0}
+											<DropdownMenu.Item onclick={() => openCopyDialogForSong(entry.videoId)}>
+												<ListMusicIcon class="size-4" />
+												Copy to playlist…
+											</DropdownMenu.Item>
+										{/if}
+										<DropdownMenu.Item variant="destructive" onclick={() => handleDeleteOne(entry.videoId)}>
+											<Trash2Icon class="size-4" />
+											Delete from library
+										</DropdownMenu.Item>
+									</DropdownMenu.Content>
+								</DropdownMenu.Root>
+							</span>
+						</div>
+						<div class="min-w-0">
+							<p class="truncate text-sm">{entry.title}</p>
+							<p class="truncate text-xs text-muted-foreground">{formatBytes(entry.fileSizeBytes)}</p>
+						</div>
+					</div>
+				{/each}
+			</div>
+		{:else}
+			<ul class="flex flex-col">
+				{#each filteredEntries as entry, index (entry.videoId)}
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 				<li
@@ -471,6 +586,7 @@
 				</li>
 			{/each}
 		</ul>
+		{/if}
 	{/if}
 </div>
 

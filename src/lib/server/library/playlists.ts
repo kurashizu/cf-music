@@ -149,6 +149,7 @@ export interface LibrarySongSummary {
 	videoId: string;
 	title: string;
 	fileSizeBytes: number;
+	coverKey: string | null;
 }
 
 /** Every distinct song reachable through any of userId's playlists — the storage management page's song list. */
@@ -157,7 +158,8 @@ export async function listUserLibrarySongs(db: Db, userId: string): Promise<Libr
 		.selectDistinct({
 			videoId: songs.videoId,
 			title: songs.title,
-			fileSizeBytes: songs.fileSizeBytes
+			fileSizeBytes: songs.fileSizeBytes,
+			coverKey: songs.coverKey
 		})
 		.from(playlistSongs)
 		.innerJoin(playlists, eq(playlistSongs.playlistId, playlists.id))

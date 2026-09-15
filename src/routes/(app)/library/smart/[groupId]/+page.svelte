@@ -18,10 +18,21 @@
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import ListPlusIcon from '@lucide/svelte/icons/list-plus';
 	import XIcon from '@lucide/svelte/icons/x';
-	import { downloadSongForOffline } from '$lib/client/offline-cache';
+	import CheckIcon from '@lucide/svelte/icons/check';
+	import { onMount } from 'svelte';
+	import { downloadSongForOffline, listCachedVideoIds } from '$lib/client/offline-cache';
+	import { viewMode } from '$lib/client/view-mode.svelte';
+	import ViewModeToggle from '$lib/components/view-mode-toggle.svelte';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
+
+	let cachedVideoIds = $state<Set<string>>(new Set());
+	onMount(() => {
+		listCachedVideoIds().then((ids) => {
+			cachedVideoIds = new Set(ids);
+		});
+	});
 
 	const isThisGroupPlaying = $derived(
 		player.isPlaying && data.songs.some((s) => s.videoId === player.currentTrack?.videoId)
@@ -123,8 +134,6 @@
 		await player.playQueue(toQueueTracks(), actualIndex);
 	}
 
-	const bannerCoverUrl = $derived(data.songs.find((s) => s.coverUrl)?.coverUrl ?? null);
-
 	async function addToQueue(videoId: string) {
 		const song = data.songs.find((s) => s.videoId === videoId);
 		if (!song) return;
@@ -148,6 +157,7 @@
 		downloadingVideoId = videoId;
 		try {
 			const ok = await downloadSongForOffline(videoId);
+			if (ok) cachedVideoIds = new Set([...cachedVideoIds, videoId]);
 			toast[ok ? 'success' : 'error'](ok ? 'Downloaded for offline playback' : 'Failed to download song');
 		} finally {
 			downloadingVideoId = null;
@@ -158,10 +168,13 @@
 		batchWorking = true;
 		try {
 			let failures = 0;
+			const downloaded = new Set(cachedVideoIds);
 			for (const videoId of selected) {
 				const ok = await downloadSongForOffline(videoId);
-				if (!ok) failures++;
+				if (ok) downloaded.add(videoId);
+				else failures++;
 			}
+			cachedVideoIds = downloaded;
 			toast[failures === 0 ? 'success' : 'error'](
 				failures === 0 ? 'Downloaded for offline playback' : `Failed to download ${failures} song(s)`
 			);
@@ -252,14 +265,7 @@
 	<title>{data.value} · KRSZ Music</title>
 </svelte:head>
 
-{#if bannerCoverUrl}
-	<div class="relative h-40 w-full overflow-hidden md:h-56">
-		<img src={bannerCoverUrl} alt="" class="size-full scale-110 object-cover blur-2xl" aria-hidden="true" />
-		<div class="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-background/10"></div>
-	</div>
-{/if}
-
-<div class="mx-auto max-w-3xl p-4 md:p-8 {bannerCoverUrl ? '-mt-16 md:-mt-24' : ''}">
+<div class="mx-auto max-w-3xl p-4 md:p-8">
 	<div class="mb-6 flex flex-wrap items-center justify-between gap-4">
 		<div class="min-w-0">
 			<p class="text-xs text-muted-foreground capitalize">{data.field}</p>
@@ -300,6 +306,7 @@
 			<Button size="sm" variant="outline" onclick={toggleSelectAll}>
 				{allVisibleSelected ? 'Deselect all' : 'Select all'}
 			</Button>
+			<ViewModeToggle />
 		</div>
 	{/if}
 
@@ -361,6 +368,104 @@
 		</div>
 	{:else if filteredSongs.length === 0}
 		<p class="py-8 text-center text-sm text-muted-foreground">No songs match "{searchQuery}".</p>
+	{:else if viewMode.mode === 'grid'}
+		<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+			{#each filteredSongs as song, index (song.videoId)}
+				<!-- svelte-ignore a11y_click_events_have_key_events -->
+				<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div
+					class="group relative flex flex-col gap-2 rounded-xl border border-transparent p-2 transition-colors hover:bg-muted {selected.has(
+						song.videoId
+					)
+						? 'border-ring/50 bg-muted'
+						: ''}"
+					onclick={(e) => handleRowClick(e, index)}
+				>
+					<div class="relative aspect-square overflow-hidden rounded-lg bg-muted">
+						{#if song.coverUrl}
+							<img src={song.coverUrl} alt="" class="size-full object-cover" />
+						{:else}
+							<div class="flex size-full items-center justify-center">
+								<MusicIcon class="size-8 text-muted-foreground" />
+							</div>
+						{/if}
+						{#if cachedVideoIds.has(song.videoId)}
+							<span
+								class="absolute top-1 left-1 flex items-center gap-0.5 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] text-white backdrop-blur-sm"
+							>
+								<CheckIcon class="size-2.5" />
+								Cached
+							</span>
+						{/if}
+						<button
+							type="button"
+							class="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100"
+							onclick={(e) => {
+								e.stopPropagation();
+								playFrom(index);
+							}}
+							aria-label={player.currentTrack?.videoId === song.videoId && player.isPlaying
+								? 'Pause'
+								: 'Play'}
+						>
+							{#if player.currentTrack?.videoId === song.videoId && player.isPlaying}
+								<PauseIcon class="size-8 text-white" />
+							{:else}
+								<PlayIcon class="size-8 text-white" />
+							{/if}
+						</button>
+						<span class="absolute top-1 right-1" onclick={(e) => e.stopPropagation()}>
+							<DropdownMenu.Root>
+								<DropdownMenu.Trigger>
+									{#snippet child({ props })}
+										<Button
+											{...props}
+											variant="secondary"
+											size="icon-sm"
+											class="opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100"
+										>
+											<MoreHorizontalIcon class="size-4" />
+										</Button>
+									{/snippet}
+								</DropdownMenu.Trigger>
+								<DropdownMenu.Content align="end" class="min-w-52">
+									<DropdownMenu.Item onclick={() => addToQueue(song.videoId)}>
+										<ListPlusIcon class="size-4" />
+										Add to queue
+									</DropdownMenu.Item>
+									{#if data.playlists.length > 0}
+										<DropdownMenu.Item onclick={() => openCopyDialogForSong(song.videoId)}>
+											<ListMusicIcon class="size-4" />
+											Copy to playlist…
+										</DropdownMenu.Item>
+									{/if}
+									<DropdownMenu.Item
+										variant="destructive"
+										onclick={() => (deleteTarget = { videoId: song.videoId, title: song.title })}
+									>
+										<Trash2Icon class="size-4" />
+										Delete from library
+									</DropdownMenu.Item>
+								</DropdownMenu.Content>
+							</DropdownMenu.Root>
+						</span>
+					</div>
+					<div class="min-w-0">
+						<p
+							class="truncate text-sm {player.currentTrack?.videoId === song.videoId
+								? 'text-foreground'
+								: 'text-foreground/90'}"
+						>
+							{song.title}
+						</p>
+						<p class="truncate text-xs text-muted-foreground">
+							{formatDuration(song.durationSeconds)}
+						</p>
+					</div>
+				</div>
+			{/each}
+		</div>
 	{:else}
 		<ul class="flex flex-col">
 			{#each filteredSongs as song, index (song.videoId)}
@@ -411,6 +516,15 @@
 							{song.title}
 						</p>
 					</div>
+
+					{#if cachedVideoIds.has(song.videoId)}
+						<span
+							class="hidden shrink-0 items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground sm:flex"
+						>
+							<CheckIcon class="size-3" />
+							Cached
+						</span>
+					{/if}
 
 					<span
 						class="hidden shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground sm:inline-block"
