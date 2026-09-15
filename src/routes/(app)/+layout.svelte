@@ -7,9 +7,11 @@
 	import LibraryIcon from '@lucide/svelte/icons/library';
 	import UploadIcon from '@lucide/svelte/icons/upload';
 	import SettingsIcon from '@lucide/svelte/icons/settings';
+	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
+	import ListMusicIcon from '@lucide/svelte/icons/list-music';
 	import type { LayoutProps } from './$types';
 
-	let { children }: LayoutProps = $props();
+	let { data, children }: LayoutProps = $props();
 
 	// Settings lives at the bottom of the desktop sidebar, separate from
 	// these — see the <aside> markup below. Mobile has no "bottom of
@@ -25,6 +27,12 @@
 	function isActive(href: string): boolean {
 		return page.url.pathname === href || page.url.pathname.startsWith(href + '/');
 	}
+
+	// Expanded by default whenever a playlist is the active page, so
+	// navigating there (e.g. from a link elsewhere) doesn't hide the
+	// context of which playlist you're in — otherwise defaults open, like
+	// YouTube's own sidebar "Library" section.
+	let playlistsExpanded = $state(true);
 </script>
 
 <Toaster />
@@ -37,19 +45,65 @@
 			<span class="text-sm font-medium">KRSZ Music</span>
 		</div>
 
-		<nav class="flex flex-1 flex-col gap-1" aria-label="Primary">
+		<nav class="flex flex-1 flex-col gap-1 overflow-y-auto" aria-label="Primary">
 			{#each navItems as item (item.href)}
-				<a
-					href={item.href}
-					class="flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground {isActive(
-						item.href
-					)
-						? 'bg-muted text-foreground'
-						: ''}"
-				>
-					<item.icon class="size-4" />
-					{item.label}
-				</a>
+				{#if item.href === '/library'}
+					<div class="flex items-center gap-0.5">
+						<a
+							href={item.href}
+							class="flex flex-1 items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground {isActive(
+								item.href
+							)
+								? 'bg-muted text-foreground'
+								: ''}"
+						>
+							<item.icon class="size-4" />
+							{item.label}
+						</a>
+						{#if data.sidebarPlaylists.length > 0}
+							<button
+								type="button"
+								class="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+								onclick={() => (playlistsExpanded = !playlistsExpanded)}
+								aria-label={playlistsExpanded ? 'Collapse playlists' : 'Expand playlists'}
+								aria-expanded={playlistsExpanded}
+							>
+								<ChevronDownIcon
+									class="size-3.5 transition-transform {playlistsExpanded ? '' : '-rotate-90'}"
+								/>
+							</button>
+						{/if}
+					</div>
+					{#if playlistsExpanded}
+						<div class="flex flex-col gap-0.5 pl-4">
+							{#each data.sidebarPlaylists as playlist (playlist.id)}
+								<a
+									href="/library/{playlist.id}"
+									class="flex items-center gap-2 truncate rounded-lg px-2.5 py-1.5 text-[13px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground {isActive(
+										`/library/${playlist.id}`
+									)
+										? 'bg-muted text-foreground'
+										: ''}"
+								>
+									<ListMusicIcon class="size-3.5 shrink-0" />
+									<span class="truncate">{playlist.name}</span>
+								</a>
+							{/each}
+						</div>
+					{/if}
+				{:else}
+					<a
+						href={item.href}
+						class="flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground {isActive(
+							item.href
+						)
+							? 'bg-muted text-foreground'
+							: ''}"
+					>
+						<item.icon class="size-4" />
+						{item.label}
+					</a>
+				{/if}
 			{/each}
 		</nav>
 
