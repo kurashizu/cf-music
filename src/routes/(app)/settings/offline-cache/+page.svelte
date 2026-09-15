@@ -80,7 +80,11 @@
 	<div class="mb-6 flex items-center gap-2">
 		<Button href="/settings" variant="ghost" size="sm" class="-ml-2">← Settings</Button>
 	</div>
-	<h1 class="mb-6 text-lg font-medium">Offline cache</h1>
+	<h1 class="mb-1 text-lg font-medium">Offline cache</h1>
+	<p class="mb-6 text-sm text-muted-foreground">
+		Pin a song to keep it downloaded for offline playback. Songs you play are cached
+		temporarily either way, but only pinned songs are kept when space is needed for others.
+	</p>
 
 	{#if entries.length === 0}
 		<div class="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border py-16 text-center">

@@ -34,8 +34,8 @@
 		data.quotaBytes > 0 ? Math.min(100, (data.usageBytes / data.quotaBytes) * 100) : 0
 	);
 	const browserUsagePercent = $derived(
-		browserStorage && browserStorage.quotaBytes > 0
-			? Math.min(100, (browserStorage.usageBytes / browserStorage.quotaBytes) * 100)
+		browserStorage && data.quotaBytes > 0
+			? Math.min(100, (browserStorage.usageBytes / data.quotaBytes) * 100)
 			: 0
 	);
 
@@ -94,7 +94,7 @@
 				</span>
 				{#if browserStorage}
 					<span class="text-muted-foreground">
-						{formatBytes(browserStorage.usageBytes)} / {formatBytes(browserStorage.quotaBytes)}
+						{formatBytes(browserStorage.usageBytes)} / {formatBytes(data.quotaBytes)}
 					</span>
 				{/if}
 			</div>
@@ -113,7 +113,7 @@
 			<p class="mt-2 text-xs text-muted-foreground">
 				Space used by this browser for offline playback (all sites sharing this
 				origin's storage, not just pinned songs — browsers don't expose a more
-				specific figure).
+				specific figure), shown against your account storage limit.
 			</p>
 		</Card.Content>
 	</Card.Root>
@@ -122,8 +122,8 @@
 		<Card.Root class="transition-colors hover:border-ring/50">
 			<Card.Content class="flex items-center justify-between gap-3">
 				<div>
-					<p class="text-sm font-medium">Manage offline cache</p>
-					<p class="text-xs text-muted-foreground">Pin songs for offline playback, per song</p>
+					<p class="text-sm font-medium">Offline downloads</p>
+					<p class="text-xs text-muted-foreground">Choose which songs stay available without internet</p>
 				</div>
 				<ChevronRightIcon class="size-4 shrink-0 text-muted-foreground" />
 			</Card.Content>
