@@ -1,6 +1,6 @@
 import { eq, and, isNull, max, inArray } from 'drizzle-orm';
 import type { Db } from '../db';
-import { playlists, playlistSongs, songs, users } from '../db/schema';
+import { playlists, playlistSongs, songs, users, importJobs } from '../db/schema';
 
 export class LibraryError extends Error {
 	constructor(
@@ -187,6 +187,18 @@ export async function deletePlaylist(db: Db, playlistId: string, userId: string)
 		.update(users)
 		.set({ defaultPlaylistId: null })
 		.where(and(eq(users.id, userId), eq(users.defaultPlaylistId, playlistId)));
+
+	// Same story for import_jobs.target_playlist_id: it has no ON DELETE
+	// behavior at all (the column predates any FK action being added), so
+	// deleting a playlist any import job ever targeted would otherwise
+	// fail outright with a foreign key constraint error. The job's own
+	// history (status, counts, failures) is still meaningful without a
+	// live playlist to point at, so this nulls it out rather than blocking
+	// the delete.
+	await db
+		.update(importJobs)
+		.set({ targetPlaylistId: null })
+		.where(eq(importJobs.targetPlaylistId, playlistId));
 
 	// playlist_songs rows cascade-delete; the referenced songs themselves are
 	// left untouched here — eviction/cleanup of orphaned songs is a separate

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { env } from 'cloudflare:test';
 import { getDb } from '../db';
-import { users, songs, playlists, playlistSongs } from '../db/schema';
+import { users, songs, playlists, playlistSongs, importJobs } from '../db/schema';
 import {
 	createPlaylist,
 	listPlaylists,
@@ -40,11 +40,13 @@ async function seedSong(videoId: string, overrides: Partial<typeof songs.$inferI
 }
 
 beforeEach(async () => {
-	// defaultPlaylistId references playlists.id (see schema.ts) — clearing
-	// it first avoids the same foreign key violation deletePlaylist itself
-	// guards against when a user's default playlist is the one being
-	// deleted.
+	// defaultPlaylistId/import_jobs.target_playlist_id both reference
+	// playlists.id (see schema.ts) — clearing/deleting them first avoids
+	// the same foreign key violations deletePlaylist itself guards against
+	// when a user's default playlist, or one an import job targeted, is
+	// the one being deleted.
 	await db.update(users).set({ defaultPlaylistId: null });
+	await db.delete(importJobs);
 	await db.delete(playlistSongs);
 	await db.delete(playlists);
 	await db.delete(songs);
@@ -179,6 +181,23 @@ describe('deletePlaylist', () => {
 
 		const user = await db.query.users.findFirst({ where: (t, { eq }) => eq(t.id, 'u1') });
 		expect(user?.defaultPlaylistId).toBe(defaultId);
+	});
+
+	it('deletes a playlist an import job targeted, nulling out the job\'s reference instead of failing', async () => {
+		await seedUser('u1');
+		const { id } = await createPlaylist(db, { userId: 'u1', name: 'Imports' });
+		await db.insert(importJobs).values({
+			id: 'job1',
+			userId: 'u1',
+			sourceUrl: 'https://youtube.com/watch?v=x',
+			targetPlaylistId: id,
+			status: 'completed'
+		});
+
+		await deletePlaylist(db, id, 'u1');
+
+		const job = await db.query.importJobs.findFirst({ where: (t, { eq }) => eq(t.id, 'job1') });
+		expect(job?.targetPlaylistId).toBeNull();
 	});
 });
 
