@@ -86,10 +86,6 @@ export const songs = sqliteTable('songs', {
 	coverWidth: integer('cover_width'),
 	coverHeight: integer('cover_height'),
 
-	// LFU+LRU blended eviction score inputs
-	playCount: integer('play_count').notNull().default(0),
-	lastPlayedAt: text('last_played_at'),
-
 	importedAt: text('imported_at')
 		.notNull()
 		.default(sql`(current_timestamp)`)
@@ -135,6 +131,28 @@ export const cachePreferences = sqliteTable('cache_preferences', {
 		.notNull()
 		.references(() => songs.videoId, { onDelete: 'cascade' }),
 	cacheType: text('cache_type', { enum: ['lazy', 'pinned'] }).notNull().default('lazy'),
+	updatedAt: text('updated_at')
+		.notNull()
+		.default(sql`(current_timestamp)`)
+}, (t) => [primaryKey({ columns: [t.userId, t.videoId] })]);
+
+// Per-user play history, used as the LFU+LRU blended eviction score input —
+// deliberately scoped to (user_id, video_id) rather than being a global
+// counter on `songs`: since songs are deduplicated and shared across users,
+// a global count let one user's heavy listening make a song look "popular"
+// and eviction-resistant in a completely different user's library, even if
+// that second user had never played it at all. Eviction always operates on
+// one user's own library (see evictSongForUser), so its scoring input needs
+// to be that same user's own history, not everyone's combined.
+export const songPlays = sqliteTable('song_plays', {
+	userId: text('user_id')
+		.notNull()
+		.references(() => users.id, { onDelete: 'cascade' }),
+	videoId: text('video_id')
+		.notNull()
+		.references(() => songs.videoId, { onDelete: 'cascade' }),
+	playCount: integer('play_count').notNull().default(0),
+	lastPlayedAt: text('last_played_at'),
 	updatedAt: text('updated_at')
 		.notNull()
 		.default(sql`(current_timestamp)`)

@@ -49,8 +49,8 @@ export function seedPlaylistWithSongs(userId: string, playlistId: string, playli
 
 	for (const track of tracks) {
 		d1Execute(
-			`INSERT INTO songs (video_id, source_platform, source_url, title, duration_seconds, audio_key, codec, container, bitrate_kbps, sample_rate, file_size_bytes, play_count, imported_at)
-			 VALUES ('${track.videoId}', 'youtube', 'https://example.com/${track.videoId}', '${track.title}', ${track.durationSeconds}, 'audio/${track.videoId}.webm', 'opus', 'webm', 8, 8000, 2000, 0, datetime('now'));`
+			`INSERT INTO songs (video_id, source_platform, source_url, title, duration_seconds, audio_key, codec, container, bitrate_kbps, sample_rate, file_size_bytes, imported_at)
+			 VALUES ('${track.videoId}', 'youtube', 'https://example.com/${track.videoId}', '${track.title}', ${track.durationSeconds}, 'audio/${track.videoId}.webm', 'opus', 'webm', 8, 8000, 2000, datetime('now'));`
 		);
 	}
 

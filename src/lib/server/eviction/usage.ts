@@ -1,6 +1,6 @@
-import { eq, sql } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import type { Db } from '../db';
-import { songs, playlists, playlistSongs, users } from '../db/schema';
+import { songs, playlists, playlistSongs, users, songPlays } from '../db/schema';
 import type { EvictionCandidate } from './score';
 import { recordAuditEvent } from '../audit/log';
 
@@ -63,19 +63,26 @@ export async function setUserQuotaBytes(
 	});
 }
 
-/** Distinct songs in a user's library, annotated for eviction scoring. */
+/**
+ * Distinct songs in a user's library, annotated for eviction scoring —
+ * playCount/lastPlayedAt come from this user's own song_plays row (LEFT
+ * JOIN, since a song can be in the library without this user ever having
+ * played it), not a global count, so one user's listening can't make a
+ * song look falsely popular in someone else's eviction scoring.
+ */
 export async function getUserEvictionCandidates(db: Db, userId: string): Promise<EvictionCandidate[]> {
 	const rows = await db
 		.selectDistinct({
 			videoId: songs.videoId,
-			playCount: songs.playCount,
-			lastPlayedAt: songs.lastPlayedAt,
+			playCount: sql<number>`coalesce(${songPlays.playCount}, 0)`,
+			lastPlayedAt: songPlays.lastPlayedAt,
 			importedAt: songs.importedAt,
 			fileSizeBytes: songs.fileSizeBytes
 		})
 		.from(playlistSongs)
 		.innerJoin(playlists, eq(playlistSongs.playlistId, playlists.id))
 		.innerJoin(songs, eq(playlistSongs.videoId, songs.videoId))
+		.leftJoin(songPlays, and(eq(songPlays.videoId, songs.videoId), eq(songPlays.userId, userId)))
 		.where(eq(playlists.userId, userId));
 
 	return rows.map((r) => ({

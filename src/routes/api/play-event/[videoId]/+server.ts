@@ -1,17 +1,18 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { eq, sql } from 'drizzle-orm';
 import { getDb } from '$lib/server/db';
-import { songs } from '$lib/server/db/schema';
 import { requireSession } from '$lib/server/auth/guard';
 import { isSongInUserLibrary } from '$lib/server/library/playlists';
+import { recordSongPlay } from '$lib/server/library/plays';
 
 /**
  * Records one real play (see src/lib/shared/playback.ts for the client-side
  * "played long enough to count" threshold — this endpoint trusts the caller
  * to have already applied it, and does not re-derive it from a request body,
  * since duration/currentTime are easy to spoof and the cost of an inflated
- * play count here is low for a private, invite-only app).
+ * play count here is low for a private, invite-only app). Scoped to this
+ * user's own play history — see recordSongPlay/song_plays for why this
+ * can't be a global counter on `songs`.
  */
 export const POST: RequestHandler = async (event) => {
 	const session = requireSession(event);
@@ -23,13 +24,7 @@ export const POST: RequestHandler = async (event) => {
 		error(404, 'Song not found in your library');
 	}
 
-	await db
-		.update(songs)
-		.set({
-			playCount: sql`${songs.playCount} + 1`,
-			lastPlayedAt: new Date().toISOString()
-		})
-		.where(eq(songs.videoId, videoId));
+	await recordSongPlay(db, session.userId, videoId);
 
 	return json({ ok: true });
 };

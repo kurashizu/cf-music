@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { env } from 'cloudflare:test';
 import { getDb } from '../db';
-import { users, songs, playlists, playlistSongs, auditLog } from '../db/schema';
+import { users, songs, playlists, playlistSongs, songPlays, auditLog } from '../db/schema';
 import { createPlaylist, addSongToPlaylist } from '../library/playlists';
+import { recordSongPlay } from '../library/plays';
 import {
 	getUserStorageUsageBytes,
 	getUserQuotaBytes,
@@ -42,6 +43,7 @@ beforeEach(async () => {
 	// a previous test violates that foreign key.
 	await db.update(users).set({ defaultPlaylistId: null });
 	await db.delete(auditLog);
+	await db.delete(songPlays);
 	await db.delete(playlistSongs);
 	await db.delete(playlists);
 	await db.delete(songs);
@@ -139,16 +141,52 @@ describe('getUserEvictionCandidates', () => {
 
 	it('annotates each distinct song with its scoring fields', async () => {
 		await seedUser('u1');
-		await seedSong('a', { fileSizeBytes: 500, playCount: 3 });
+		await seedSong('a', { fileSizeBytes: 500 });
 		const { id } = await createPlaylist(db, { userId: 'u1', name: 'Mix' });
 		await addSongToPlaylist(db, id, 'u1', 'a');
+		await recordSongPlay(db, 'u1', 'a');
+		await recordSongPlay(db, 'u1', 'a');
+		await recordSongPlay(db, 'u1', 'a');
 
 		const [candidate] = await getUserEvictionCandidates(db, 'u1');
 
 		expect(candidate.videoId).toBe('a');
 		expect(candidate.fileSizeBytes).toBe(500);
 		expect(candidate.playCount).toBe(3);
-		expect(candidate.lastPlayedAt).toBeNull();
+		expect(candidate.lastPlayedAt).toBeInstanceOf(Date);
 		expect(candidate.importedAt).toBeInstanceOf(Date);
+	});
+
+	it('reports playCount 0 and lastPlayedAt null for a song in the library this user has never played', async () => {
+		await seedUser('u1');
+		await seedSong('a', { fileSizeBytes: 500 });
+		const { id } = await createPlaylist(db, { userId: 'u1', name: 'Mix' });
+		await addSongToPlaylist(db, id, 'u1', 'a');
+
+		const [candidate] = await getUserEvictionCandidates(db, 'u1');
+
+		expect(candidate.playCount).toBe(0);
+		expect(candidate.lastPlayedAt).toBeNull();
+	});
+
+	it('does not let another user\'s plays of a shared song inflate this user\'s eviction score for it', async () => {
+		await seedUser('u1');
+		await seedUser('u2');
+		await seedSong('shared', { fileSizeBytes: 500 });
+		const { id: p1 } = await createPlaylist(db, { userId: 'u1', name: 'Mix' });
+		const { id: p2 } = await createPlaylist(db, { userId: 'u2', name: 'Their Mix' });
+		await addSongToPlaylist(db, p1, 'u1', 'shared');
+		await addSongToPlaylist(db, p2, 'u2', 'shared');
+
+		// u2 listens to it heavily; u1 never has.
+		await recordSongPlay(db, 'u2', 'shared');
+		await recordSongPlay(db, 'u2', 'shared');
+		await recordSongPlay(db, 'u2', 'shared');
+
+		const [u1Candidate] = await getUserEvictionCandidates(db, 'u1');
+		const [u2Candidate] = await getUserEvictionCandidates(db, 'u2');
+
+		expect(u1Candidate.playCount).toBe(0);
+		expect(u2Candidate.playCount).toBe(3);
 	});
 });
