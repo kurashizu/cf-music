@@ -55,9 +55,17 @@ def restore() -> None:
     """Best-effort: a missing/corrupt cache just means a fresh registration
     happens next, same as if this script didn't exist at all."""
     client = s3_client()
-    buffer = io.BytesIO()
     try:
-        client.download_fileobj(MINIO_BUCKET, OBJECT_KEY, buffer)
+        # get_object, not download_fileobj: the latter's managed transfer
+        # issues a HeadObject first to size the download, and this MinIO
+        # deployment's bucket policy allows GetObject but returns 403 on
+        # HeadObject (confirmed directly against it) — that 403 was
+        # silently swallowed by the except below and reported as "no
+        # cached identity", when the cache was actually there the whole
+        # time. That meant every job registered a fresh WARP identity
+        # instead of reusing one, defeating the entire point of this file.
+        response = client.get_object(Bucket=MINIO_BUCKET, Key=OBJECT_KEY)
+        buffer = io.BytesIO(response["Body"].read())
     except ClientError as exc:
         print(f"No cached WARP identity to restore ({exc}); will register fresh", file=sys.stderr)
         return

@@ -40,8 +40,18 @@ jobs:
       # with --target into the workspace (not baked into the image — see
       # docker/import/Dockerfile) so it can be bind-mounted into the
       # container below without needing yt-dlp inside the image at all.
+      #
+      # yt-dlp-ejs alongside it: the youtube extractor's signature/PO
+      # token challenge solver script is not bundled with a pip-installed
+      # yt-dlp (only the official standalone executable ships it), so
+      # without this package yt-dlp falls back to fetching it from GitHub
+      # at runtime by default — refused unless --remote-components is
+      # passed — and without either, signature solving fails outright
+      # ("Signature solving failed: Some formats may be missing").
+      # Installing this package is what the warning itself recommends
+      # over passing --remote-components.
       - name: Install/upgrade yt-dlp on the host
-        run: pip install --upgrade --target "$GITHUB_WORKSPACE/.ytdlp-pkg" yt-dlp
+        run: pip install --upgrade --target "$GITHUB_WORKSPACE/.ytdlp-pkg" yt-dlp yt-dlp-ejs
 
       # save-always was deprecated (GitHub: "does not work as intended"),
       # so saving explicitly here instead — always, not just on a fresh
