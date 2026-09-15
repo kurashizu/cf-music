@@ -149,6 +149,7 @@ export interface LibrarySongSummary {
 	videoId: string;
 	title: string;
 	artist: string | null;
+	genre: string | null;
 	durationSeconds: number | null;
 	fileSizeBytes: number;
 	coverKey: string | null;
@@ -177,6 +178,7 @@ export async function listUserLibrarySongs(db: Db, userId: string): Promise<Libr
 			videoId: songs.videoId,
 			title: songs.title,
 			artist: songs.artist,
+			genre: songs.genre,
 			durationSeconds: songs.durationSeconds,
 			fileSizeBytes: songs.fileSizeBytes,
 			coverKey: songs.coverKey,

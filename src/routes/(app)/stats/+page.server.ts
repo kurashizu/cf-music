@@ -30,6 +30,7 @@ export const load: PageServerLoad = async ({ platform, locals }) => {
 			videoId: s.videoId,
 			title: s.title,
 			artist: s.artist,
+			genre: s.genre,
 			durationSeconds: s.durationSeconds,
 			fileSizeBytes: s.fileSizeBytes,
 			codec: s.codec,
