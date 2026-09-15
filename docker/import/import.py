@@ -183,6 +183,41 @@ def fetch_remaining_quota_bytes() -> int:
     return result["remainingBytes"]
 
 
+def reserve_quota(job_id: str, video_id: str, estimated_bytes: int) -> bool:
+    """Atomically claims estimated_bytes of this user's quota for one song,
+    right before its download starts — the upfront fetch_remaining_quota_bytes
+    check (once per whole batch) only catches "this batch obviously can't
+    fit"; it reads usage once and never re-checks per song, so two
+    concurrent imports for the same user can each pass that check against
+    the same stale figure and, together, exceed quota. This call is what
+    actually prevents that: the Worker's reserveQuota does the check and
+    the write as one atomic statement (see
+    src/lib/server/import/quota-reservations.ts), so it's safe to call
+    from multiple concurrent downloads (this process's own
+    DOWNLOAD_CONCURRENCY as well as a second concurrent import job)
+    without a race."""
+    body = json.dumps(
+        {"userId": USER_ID, "jobId": job_id, "videoId": video_id, "estimatedBytes": estimated_bytes}
+    ).encode()
+    request = urllib.request.Request(
+        f"{WORKER_BASE_URL}/api/import/reserve-quota",
+        data=body,
+        method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "X-Signature-256": f"sha256={sign(body.decode())}",
+            "User-Agent": "cf-music-import-job/1.0",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            result = json.loads(response.read())
+    except urllib.error.HTTPError as exc:
+        print(f"reserve-quota call failed: {exc.code} {exc.read()[:500]!r}", file=sys.stderr)
+        raise
+    return result["reserved"]
+
+
 def download_song(video_id_url: str, workdir: Path) -> dict:
     audio_template = str(workdir / "%(id)s.%(ext)s")
     options = {
@@ -462,13 +497,35 @@ async def run() -> None:
         # nearly-done download) but no new ones start.
         download_semaphore = asyncio.Semaphore(DOWNLOAD_CONCURRENCY)
 
-        async def download_one(entry: dict) -> None:
+        async def download_one(index: int, entry: dict) -> None:
             if cancelled:
                 return
             async with download_semaphore:
                 if cancelled:
                     return
                 try:
+                    # Claims this song's estimated size right before its
+                    # own download starts — see reserve_quota's own
+                    # docstring for why this (not just the one upfront
+                    # fetch_remaining_quota_bytes check above) is what
+                    # actually closes the race between two concurrent
+                    # imports for the same user. A failed reservation is
+                    # reported the same way any other per-song failure is,
+                    # not a fatal_error: the rest of the batch (songs that
+                    # do fit) should still proceed.
+                    reserved = await asyncio.to_thread(reserve_quota, JOB_ID, entry["id"], sizes[index])
+                    if not reserved:
+                        await send_event(
+                            {
+                                "type": "song_failed",
+                                "failure": {
+                                    "videoId": entry["id"],
+                                    "reason": "Storage quota exceeded (concurrent import may have used remaining space)",
+                                },
+                            }
+                        )
+                        return
+
                     # Same reasoning as probe_one above: download/transcode/
                     # upload is synchronous and can run long on a large file
                     # or slow network, so it goes through to_thread rather
@@ -480,7 +537,7 @@ async def run() -> None:
                         {"type": "song_failed", "failure": {"videoId": entry["id"], "reason": str(exc)[:500]}}
                     )
 
-        await asyncio.gather(*(download_one(entry) for entry in pending_entries))
+        await asyncio.gather(*(download_one(i, entry) for i, entry in enumerate(pending_entries)))
         was_cancelled = cancelled
         cancelled = True  # stop the watcher even if no cancel decision ever arrived
         watcher.cancel()

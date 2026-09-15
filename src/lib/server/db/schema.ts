@@ -165,13 +165,47 @@ export const importJobs = sqliteTable('import_jobs', {
 	completedAt: text('completed_at')
 }, (t) => [index('idx_import_jobs_user_id').on(t.userId)]);
 
+// Tracks storage a download has claimed but not yet committed to `songs` —
+// closes the race where two concurrent imports for the same user both pass
+// their own upfront "does this batch fit" check against the same starting
+// usage figure and, together, exceed quota. A reservation is taken right
+// before each song's download starts (not once per batch) and released
+// exactly once, either into real usage (the song lands in `songs`) or back
+// to nothing (the download failed/was cancelled) — see reserveQuota /
+// releaseQuotaReservation in src/lib/server/import/quota-reservations.ts.
+// Rows are scoped to one job so a crashed/killed CI process's abandoned
+// reservations are easy to find and clean up via that job's own lifecycle
+// (completion, cancellation, or the zombie-job auto-fail in the Durable
+// Object) rather than needing to reconcile a drifting counter.
+export const quotaReservations = sqliteTable('quota_reservations', {
+	// (job_id, video_id) is the primary key, not a separate autoincrement
+	// id — the whole point of this table is "at most one reservation per
+	// song per job", enforced structurally rather than by a unique index
+	// alongside an unrelated surrogate key.
+	userId: text('user_id')
+		.notNull()
+		.references(() => users.id, { onDelete: 'cascade' }),
+	jobId: text('job_id')
+		.notNull()
+		.references(() => importJobs.id, { onDelete: 'cascade' }),
+	videoId: text('video_id').notNull(),
+	estimatedBytes: integer('estimated_bytes').notNull(),
+	createdAt: text('created_at')
+		.notNull()
+		.default(sql`(current_timestamp)`)
+}, (t) => [
+	primaryKey({ columns: [t.jobId, t.videoId] }),
+	index('idx_quota_reservations_user_id').on(t.userId)
+]);
+
 // Audit log: storage/auth/admin actions, 30-day retention (cleaned up via a Cron Trigger), admin-only visibility
 export const auditLog = sqliteTable('audit_log', {
 	id: integer('id').primaryKey({ autoIncrement: true }),
 	userId: text('user_id').references(() => users.id, { onDelete: 'set null' }), // the user the event relates to
 	actorId: text('actor_id').references(() => users.id, { onDelete: 'set null' }), // who performed it (differs from userId when an admin acts on another user's behalf)
-	eventType: text('event_type').notNull(), // import / evict / manual_delete / login / login_failed /
-	// password_change / invite_used / invite_created / quota_adjusted / force_logout
+	eventType: text('event_type').notNull(), // import / evict / manual_delete / cover_reference_cleared /
+	// login / login_failed / password_change / invite_used / invite_created / quota_adjusted / force_logout
+	// (see AuditEventType in src/lib/server/audit/log.ts for the authoritative list)
 	targetType: text('target_type'), // song / user / playlist
 	targetId: text('target_id'),
 	detail: text('detail'), // JSON blob with event-specific details

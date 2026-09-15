@@ -4,6 +4,7 @@ import { importJobs, songs } from '../db/schema';
 import { addSongToPlaylist } from '../library/playlists';
 import { chunk } from '../../shared/chunk';
 import { recordAuditEvent } from '../audit/log';
+import { releaseQuotaReservation, releaseAllQuotaReservationsForJob } from './quota-reservations';
 import type {
 	PreviewEntry,
 	SongImportSuccess,
@@ -159,6 +160,9 @@ export async function cancelImportJob(db: Db, jobId: string, userId: string): Pr
 	}
 
 	await db.update(importJobs).set({ status: 'cancelled' }).where(eq(importJobs.id, jobId));
+	// Whatever this job still had reserved (in-flight downloads CI hasn't
+	// reported back on yet) is abandoned along with the job itself.
+	await releaseAllQuotaReservationsForJob(db, jobId);
 
 	await recordAuditEvent(db, {
 		userId,
@@ -212,6 +216,12 @@ export async function recordSongImported(db: Db, jobId: string, userId: string, 
 		.update(importJobs)
 		.set({ completedCount: sql`${importJobs.completedCount} + 1` })
 		.where(eq(importJobs.id, jobId));
+
+	// The song's real size is now committed as actual usage (via the songs
+	// row just inserted/reused above) — the reservation that held its
+	// estimated size no longer needs to count separately, or it would
+	// double-count against quota for as long as the reservation lingered.
+	await releaseQuotaReservation(db, jobId, song.videoId);
 }
 
 /** Records one song that failed to import (per design: skip and continue, report failures at the end). */
@@ -228,6 +238,10 @@ export async function recordSongFailed(db: Db, jobId: string, userId: string, fa
 			failures: JSON.stringify(existingFailures)
 		})
 		.where(eq(importJobs.id, jobId));
+
+	// This song never became real usage — release the bytes it held so a
+	// later song in the same (or a different) job can use them.
+	await releaseQuotaReservation(db, jobId, failure.videoId);
 }
 
 /**
@@ -251,6 +265,10 @@ export async function failImportJob(db: Db, jobId: string, userId: string, reaso
 		.update(importJobs)
 		.set({ status: 'failed', fatalError: truncatedReason, completedAt: new Date().toISOString() })
 		.where(eq(importJobs.id, jobId));
+	// Covers both a normal fatal error and the Durable Object's zombie-job
+	// auto-fail (an unexpected CI disconnect) — either way, whatever this
+	// job still had reserved is abandoned along with it.
+	await releaseAllQuotaReservationsForJob(db, jobId);
 
 	await recordAuditEvent(db, {
 		userId,
@@ -276,6 +294,11 @@ export async function completeImportJob(db: Db, jobId: string, userId: string): 
 		.update(importJobs)
 		.set({ status, completedAt: new Date().toISOString() })
 		.where(eq(importJobs.id, jobId));
+	// Every song's reservation should already be gone by now (released in
+	// recordSongImported/recordSongFailed as each one resolved) — this is
+	// defense-in-depth against a reservation somehow surviving to here
+	// (e.g. an event that got dropped), not the primary release path.
+	await releaseAllQuotaReservationsForJob(db, jobId);
 
 	await recordAuditEvent(db, {
 		userId,

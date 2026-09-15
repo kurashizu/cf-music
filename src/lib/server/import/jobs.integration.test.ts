@@ -18,12 +18,16 @@ import {
 	ImportJobError,
 	type SongImportSuccess
 } from './jobs';
+import { reserveQuota } from './quota-reservations';
 import { getPlaylistWithSongs } from '../library/playlists';
 
 const db = getDb(env.DB);
 
-async function seedUser(id: string) {
-	await db.insert(users).values({ id, username: `user-${id}`, passwordHash: 'x' }).onConflictDoNothing();
+async function seedUser(id: string, quotaBytes = 1_073_741_824) {
+	await db
+		.insert(users)
+		.values({ id, username: `user-${id}`, passwordHash: 'x', storageQuotaBytes: quotaBytes })
+		.onConflictDoNothing();
 }
 
 function makeSong(videoId: string, overrides: Partial<SongImportSuccess> = {}): SongImportSuccess {
@@ -129,6 +133,19 @@ describe('recordSongImported', () => {
 
 		await expect(recordSongImported(db, id, 'u2', makeSong('a'))).rejects.toThrow(ImportJobError);
 	});
+
+	it('releases the song\'s quota reservation once it lands as real usage', async () => {
+		await seedUser('u1', 1_000_000);
+		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x' });
+		await reserveQuota(db, 'u1', id, 'a', 900_000);
+
+		await recordSongImported(db, id, 'u1', makeSong('a', { fileSizeBytes: 900_000 }));
+
+		// The reservation is gone, so a second song's reservation for the
+		// same bytes should now succeed against the same quota.
+		const result = await reserveQuota(db, 'u1', id, 'b', 900_000);
+		expect(result.reserved).toBe(true);
+	});
 });
 
 describe('recordSongFailed', () => {
@@ -145,6 +162,17 @@ describe('recordSongFailed', () => {
 			{ videoId: 'bad1', reason: 'video unavailable' },
 			{ videoId: 'bad2', reason: 'no audio track' }
 		]);
+	});
+
+	it('releases the failed song\'s quota reservation', async () => {
+		await seedUser('u1', 1_000_000);
+		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x' });
+		await reserveQuota(db, 'u1', id, 'a', 900_000);
+
+		await recordSongFailed(db, id, 'u1', { videoId: 'a', reason: 'download failed' });
+
+		const result = await reserveQuota(db, 'u1', id, 'b', 900_000);
+		expect(result.reserved).toBe(true);
 	});
 });
 
@@ -232,6 +260,18 @@ describe('failImportJob', () => {
 		expect(entry.eventType).toBe('import');
 		expect(entry.targetType).toBe('import_job');
 		expect(JSON.parse(entry.detail!)).toMatchObject({ status: 'failed', reason: 'network unreachable' });
+	});
+
+	it('releases every reservation the job was still holding — an abandoned reservation must not linger', async () => {
+		await seedUser('u1', 1_000_000);
+		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x' });
+		await reserveQuota(db, 'u1', id, 'a', 900_000);
+
+		await failImportJob(db, id, 'u1', 'CI process disconnected unexpectedly');
+
+		const secondJob = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://y' });
+		const result = await reserveQuota(db, 'u1', secondJob.id, 'b', 900_000);
+		expect(result.reserved).toBe(true);
 	});
 });
 
@@ -359,6 +399,19 @@ describe('cancelImportJob', () => {
 		expect(entry.eventType).toBe('import');
 		expect(entry.targetType).toBe('import_job');
 		expect(JSON.parse(entry.detail!)).toMatchObject({ status: 'cancelled' });
+	});
+
+	it('releases every reservation held by an in-flight download the user cancelled', async () => {
+		await seedUser('u1', 1_000_000);
+		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x' });
+		await startImportJob(db, id, 2);
+		await reserveQuota(db, 'u1', id, 'a', 900_000);
+
+		await cancelImportJob(db, id, 'u1');
+
+		const secondJob = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://y' });
+		const result = await reserveQuota(db, 'u1', secondJob.id, 'b', 900_000);
+		expect(result.reserved).toBe(true);
 	});
 });
 
