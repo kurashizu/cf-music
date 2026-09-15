@@ -31,6 +31,7 @@
 		type StorageEstimate
 	} from '$lib/client/offline-cache';
 	import InfiniteScrollSentinel from '$lib/components/infinite-scroll-sentinel.svelte';
+	import ThrottledImage from '$lib/components/throttled-image.svelte';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -58,19 +59,54 @@
 		copyDialogOpen = true;
 	}
 
-	type SortOption = 'size-desc' | 'title-asc' | 'cached-first';
+	type SortOption =
+		| 'size-desc'
+		| 'title-asc'
+		| 'cached-first'
+		| 'imported-desc'
+		| 'play-count-desc'
+		| 'last-played-desc';
 	let sortOption = $state<SortOption>('size-desc');
 	const sortOptionLabels: Record<SortOption, string> = {
 		'size-desc': 'Largest first',
 		'title-asc': 'Title (A–Z)',
-		'cached-first': 'Downloaded first'
+		'cached-first': 'Downloaded first',
+		'imported-desc': 'Recently imported',
+		'play-count-desc': 'Most played',
+		'last-played-desc': 'Recently played'
 	};
 
+	let cachedOnly = $state(false);
+	let artistFilter = $state<string>('all');
+	const artistOptions = $derived(
+		[...new Set(entries.map((e) => e.artist).filter((a): a is string => a !== null))].sort((a, b) =>
+			a.localeCompare(b)
+		)
+	);
+
+	// Nulls sort last regardless of direction — an unplayed/undated song
+	// isn't "older" than every dated one, it's simply not comparable, so it
+	// belongs at the end whichever sort is active rather than wherever a
+	// null-as-0 comparison would accidentally place it.
+	function compareNullableDatesDesc(a: string | null, b: string | null): number {
+		if (a === null && b === null) return 0;
+		if (a === null) return 1;
+		if (b === null) return -1;
+		return b.localeCompare(a);
+	}
+
 	const filteredEntries = $derived.by(() => {
-		const matching =
+		let matching =
 			searchQuery.trim().length === 0
 				? entries
 				: entries.filter((e) => e.title.toLowerCase().includes(searchQuery.trim().toLowerCase()));
+
+		if (cachedOnly) {
+			matching = matching.filter((e) => cachedVideoIds.has(e.videoId));
+		}
+		if (artistFilter !== 'all') {
+			matching = matching.filter((e) => e.artist === artistFilter);
+		}
 
 		// A plain [...array].sort() is stable in every modern JS engine
 		// (ES2019+), so ties (e.g. two cached songs) keep their original
@@ -84,6 +120,12 @@
 				return [...matching].sort(
 					(a, b) => Number(cachedVideoIds.has(b.videoId)) - Number(cachedVideoIds.has(a.videoId))
 				);
+			case 'imported-desc':
+				return [...matching].sort((a, b) => b.importedAt.localeCompare(a.importedAt));
+			case 'play-count-desc':
+				return [...matching].sort((a, b) => b.playCount - a.playCount);
+			case 'last-played-desc':
+				return [...matching].sort((a, b) => compareNullableDatesDesc(a.lastPlayedAt, b.lastPlayedAt));
 		}
 	});
 
@@ -383,14 +425,34 @@
 			<p class="text-sm text-muted-foreground">No songs in your library yet.</p>
 		</div>
 	{:else}
-		<div class="mb-3 flex items-center gap-2">
-			<div class="relative flex-1">
+		<div class="mb-3 flex flex-wrap items-center gap-2">
+			<div class="relative min-w-48 flex-1">
 				<SearchIcon class="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
 				<Input placeholder="Search songs…" bind:value={searchQuery} class="pl-9" />
 			</div>
 			<Button size="sm" variant="outline" onclick={toggleSelectAll}>
 				{allVisibleSelected ? 'Deselect all' : 'Select all'}
 			</Button>
+			<Button
+				size="sm"
+				variant={cachedOnly ? 'default' : 'outline'}
+				onclick={() => (cachedOnly = !cachedOnly)}
+			>
+				Cached only
+			</Button>
+			{#if artistOptions.length > 0}
+				<Select.Root type="single" bind:value={artistFilter}>
+					<Select.Trigger class="w-40">
+						{artistFilter === 'all' ? 'All artists' : artistFilter}
+					</Select.Trigger>
+					<Select.Content>
+						<Select.Item value="all" label="All artists">All artists</Select.Item>
+						{#each artistOptions as artist (artist)}
+							<Select.Item value={artist} label={artist}>{artist}</Select.Item>
+						{/each}
+					</Select.Content>
+				</Select.Root>
+			{/if}
 			<Select.Root type="single" bind:value={sortOption}>
 				<Select.Trigger class="w-40">
 					{sortOptionLabels[sortOption]}
@@ -399,6 +461,9 @@
 					<Select.Item value="size-desc" label="Largest first">Largest first</Select.Item>
 					<Select.Item value="title-asc" label="Title (A–Z)">Title (A–Z)</Select.Item>
 					<Select.Item value="cached-first" label="Downloaded first">Downloaded first</Select.Item>
+					<Select.Item value="imported-desc" label="Recently imported">Recently imported</Select.Item>
+					<Select.Item value="play-count-desc" label="Most played">Most played</Select.Item>
+					<Select.Item value="last-played-desc" label="Recently played">Recently played</Select.Item>
 				</Select.Content>
 			</Select.Root>
 			<ViewModeToggle />
@@ -479,7 +544,7 @@
 					>
 						<div class="relative aspect-square overflow-hidden rounded-lg bg-muted">
 							{#if entry.coverUrl}
-								<img src={entry.coverUrl} alt="" class="size-full object-cover" />
+								<ThrottledImage src={entry.coverUrl} class="size-full object-cover" />
 							{:else}
 								<div class="flex size-full items-center justify-center">
 									<MusicIcon class="size-8 text-muted-foreground" />
@@ -573,6 +638,13 @@
 						: ''}"
 					onclick={(e) => handleRowClick(e, index)}
 				>
+					<div class="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
+						{#if entry.coverUrl}
+							<ThrottledImage src={entry.coverUrl} class="size-8 object-cover" />
+						{:else}
+							<MusicIcon class="size-3.5 text-muted-foreground" />
+						{/if}
+					</div>
 					<div class="min-w-0 flex-1">
 						<p class="truncate text-sm">{entry.title}</p>
 						<p class="text-xs text-muted-foreground">

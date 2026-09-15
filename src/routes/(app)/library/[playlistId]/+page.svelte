@@ -24,6 +24,7 @@
 	import { viewMode } from '$lib/client/view-mode.svelte';
 	import ViewModeToggle from '$lib/components/view-mode-toggle.svelte';
 	import InfiniteScrollSentinel from '$lib/components/infinite-scroll-sentinel.svelte';
+	import ThrottledImage from '$lib/components/throttled-image.svelte';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import type { PageProps } from './$types';
 
@@ -576,7 +577,7 @@
 				>
 					<div class="relative aspect-square overflow-hidden rounded-lg bg-muted">
 						{#if song.coverUrl}
-							<img src={song.coverUrl} alt="" class="size-full object-cover" />
+							<ThrottledImage src={song.coverUrl} class="size-full object-cover" />
 						{:else}
 							<div class="flex size-full items-center justify-center">
 								<MusicIcon class="size-8 text-muted-foreground" />
@@ -733,7 +734,7 @@
 
 					<div class="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
 						{#if song.coverUrl}
-							<img src={song.coverUrl} alt="" class="size-8 object-cover" />
+							<ThrottledImage src={song.coverUrl} class="size-8 object-cover" />
 						{:else}
 							<MusicIcon class="size-3.5 text-muted-foreground" />
 						{/if}
