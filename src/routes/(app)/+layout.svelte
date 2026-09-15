@@ -37,7 +37,7 @@
 
 <Toaster />
 
-<div class="flex min-h-svh bg-background">
+<div class="flex h-svh bg-background">
 	<!-- Desktop sidebar -->
 	<aside class="hidden w-56 shrink-0 flex-col border-r border-border p-4 md:flex">
 		<div class="mb-6 flex items-center gap-2 px-2">
@@ -45,7 +45,7 @@
 			<span class="text-sm font-medium">KRSZ Music</span>
 		</div>
 
-		<nav class="flex flex-1 flex-col gap-1 overflow-y-auto" aria-label="Primary">
+		<nav class="flex min-h-0 flex-1 flex-col gap-1" aria-label="Primary">
 			{#each navItems as item (item.href)}
 				{#if item.href === '/library'}
 					<div class="flex items-center gap-0.5">
