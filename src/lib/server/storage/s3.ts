@@ -46,11 +46,22 @@ export class S3ObjectStorage implements ObjectStorage {
 	}
 
 	async presignGetUrl(key: string): Promise<string> {
+		// X-Amz-Expires belongs in the query string, not `headers` — aws4fetch's
+		// signQuery mode writes it into url.searchParams itself (defaulting to
+		// 86400s if absent), so setting it via `headers` here doesn't just fail
+		// to override that default: it makes aws4fetch treat "X-Amz-Expires" as
+		// a signable HTTP header and add it to SignedHeaders, even though no
+		// such header is ever actually sent with a GET request. MinIO then sees
+		// a SignedHeaders list that includes a header the request doesn't have
+		// and rejects the whole request with 400 AccessDenied ("headers present
+		// ... which were not signed") — confirmed by reproducing both the
+		// broken (headers-based) and working (query-based) URL forms directly
+		// against MinIO.
 		const url = new URL(`${this.baseUrl}/${encodeObjectKey(key)}`);
+		url.searchParams.set('X-Amz-Expires', String(PRESIGNED_URL_EXPIRY_SECONDS));
 		const signed = await this.client.sign(url, {
 			method: 'GET',
-			aws: { signQuery: true },
-			headers: { 'X-Amz-Expires': String(PRESIGNED_URL_EXPIRY_SECONDS) }
+			aws: { signQuery: true }
 		});
 		return signed.url;
 	}
