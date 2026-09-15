@@ -169,7 +169,9 @@
 							{...props}
 							variant="ghost"
 							size="icon-sm"
-							class={player.shuffleEnabled ? 'text-foreground' : 'text-muted-foreground'}
+							class={player.shuffleEnabled
+								? 'bg-muted text-foreground'
+								: 'text-muted-foreground'}
 							disabled={!player.currentTrack}
 							onclick={() => player.toggleShuffle()}
 							aria-label="Toggle shuffle"
@@ -249,7 +251,9 @@
 							{...props}
 							variant="ghost"
 							size="icon-sm"
-							class={player.repeatMode !== 'off' ? 'text-foreground' : 'text-muted-foreground'}
+							class={player.repeatMode !== 'off'
+								? 'bg-muted text-foreground'
+								: 'text-muted-foreground'}
 							disabled={!player.currentTrack}
 							onclick={() => player.cycleRepeatMode()}
 							aria-label="Toggle repeat"

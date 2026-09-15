@@ -7,6 +7,7 @@
 	import BuildInfo from '$lib/components/build-info.svelte';
 	import LibraryIcon from '@lucide/svelte/icons/library';
 	import UploadIcon from '@lucide/svelte/icons/upload';
+	import ChartColumnIcon from '@lucide/svelte/icons/chart-column';
 	import SettingsIcon from '@lucide/svelte/icons/settings';
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import ListMusicIcon from '@lucide/svelte/icons/list-music';
@@ -24,7 +25,8 @@
 	// together).
 	const navItems = $derived([
 		{ href: '/library', label: 'Library', icon: LibraryIcon },
-		{ href: '/import', label: 'Import', icon: UploadIcon }
+		{ href: '/import', label: 'Import', icon: UploadIcon },
+		{ href: '/stats', label: 'Stats', icon: ChartColumnIcon }
 	]);
 	const settingsItem = { href: '/settings', label: 'Settings', icon: SettingsIcon };
 

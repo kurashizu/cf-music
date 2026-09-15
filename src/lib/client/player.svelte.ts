@@ -166,6 +166,16 @@ class PlayerStore {
 			// real GET play() triggers is unaffected, since GetObject does
 			// work.
 			this.audio.preload = 'none';
+			// Without this, createMediaElementSource's node is CORS-tainted
+			// for a cross-origin src (the presigned MinIO URL is a different
+			// origin than the app) — audio still plays completely normally
+			// through the graph, but any node reading actual sample data
+			// downstream (the spectrum visualizer's AnalyserNode) silently
+			// gets all-zero data forever, no error, no exception. MinIO's
+			// response already sends a matching Access-Control-Allow-Origin
+			// (confirmed separately), so anonymous mode succeeds — this was
+			// the missing half of actually using that CORS grant.
+			this.audio.crossOrigin = 'anonymous';
 			this.audio.addEventListener('timeupdate', () => {
 				this.currentTimeSeconds = this.audio!.currentTime;
 				this.maybeRecordPlay();

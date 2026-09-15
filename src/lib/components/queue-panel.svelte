@@ -13,15 +13,23 @@
 	// queue-trigger-button.svelte) rather than a hardcoded viewport offset —
 	// the player bar isn't a fixed height (it wraps its content), so a
 	// guessed bottom-N class drifted out of sync with where the button
-	// actually sits across breakpoints. 8px gap above the button.
+	// actually sits across breakpoints. Positioned from `top` (the
+	// button's own top edge, minus a gap) with translateY(-100%) to flip
+	// upward from that point, rather than computing where the panel's
+	// bottom edge should land relative to the viewport's bottom edge —
+	// the latter only holds if the button is flush against the viewport's
+	// bottom, which isn't guaranteed (e.g. the mobile bottom nav sits
+	// below the player bar), so it could open a full nav-bar's-height too
+	// high floating detached above the button instead of sitting right
+	// next to it.
 	const PANEL_WIDTH = 320;
 	const GAP_PX = 8;
 	const style = $derived.by(() => {
 		const rect = queuePanelState.anchorRect;
 		if (!rect) return '';
 		const right = Math.max(12, window.innerWidth - rect.right);
-		const bottom = window.innerHeight - rect.top + GAP_PX;
-		return `right: ${right}px; bottom: ${bottom}px; width: min(${PANEL_WIDTH}px, calc(100vw - 24px));`;
+		const top = rect.top - GAP_PX;
+		return `right: ${right}px; top: ${top}px; transform: translateY(-100%); width: min(${PANEL_WIDTH}px, calc(100vw - 24px));`;
 	});
 
 	function formatTime(seconds: number): string {
