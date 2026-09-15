@@ -43,11 +43,12 @@ export const POST: RequestHandler = async (event) => {
 	const env = event.platform!.env;
 	const db = getDb(env.DB);
 
-	// Every song has to end up reachable through some playlist — there's
-	// no "just import it, don't file it anywhere" option — so an import
-	// with no explicit target falls back to the user's default playlist
-	// (created on first use) rather than leaving the song's only trace in
-	// the global songs table.
+	// Every imported song always lands in the user's default playlist
+	// regardless (see linkImportedSongToLibrary in import/jobs.ts) — this
+	// targetPlaylistId is only "also add it here too" when the user picked
+	// something else. Falling back to the default playlist itself when
+	// nothing was picked just makes that a no-op double-add rather than a
+	// meaningfully different job record.
 	const targetPlaylistId =
 		explicitTargetPlaylistId ?? (await ensureDefaultPlaylist(db, session.userId)).id;
 

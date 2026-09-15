@@ -54,6 +54,19 @@
 	let deleteTarget = $state<{ videoId: string; title: string } | null>(null);
 	let deleteSubmitting = $state(false);
 	let downloadingVideoId = $state<string | null>(null);
+	let copyTarget = $state<string | null>(null); // videoId, or null when copying the current selection
+	let copyDialogOpen = $state(false);
+	let copySubmitting = $state(false);
+
+	function openCopyDialogForSong(videoId: string) {
+		copyTarget = videoId;
+		copyDialogOpen = true;
+	}
+
+	function openCopyDialogForSelection() {
+		copyTarget = null;
+		copyDialogOpen = true;
+	}
 
 	let selected = $state<Set<string>>(new Set());
 	let batchWorking = $state(false);
@@ -195,6 +208,39 @@
 		}
 	}
 
+	// copyTarget === null means "copy the current selection"; otherwise
+	// it's a single song's videoId (from a row's own dropdown menu).
+	async function handleCopy(toPlaylistId: string) {
+		const isBatchCopy = copyTarget === null;
+		const videoIds = isBatchCopy ? [...selected] : [copyTarget];
+		if (videoIds.length === 0) return;
+		copySubmitting = true;
+		try {
+			const results = await Promise.all(
+				videoIds.map((videoId) =>
+					fetch(`/api/playlists/${data.playlist.id}/songs/${videoId}`, {
+						method: 'PUT',
+						headers: { 'content-type': 'application/json' },
+						body: JSON.stringify({ toPlaylistId })
+					})
+				)
+			);
+			const failures = results.filter((r) => !r.ok).length;
+			toast[failures === 0 ? 'success' : 'error'](
+				failures === 0
+					? videoIds.length === 1
+						? 'Copied to playlist'
+						: `Copied ${videoIds.length} songs`
+					: `Failed to copy ${failures} song(s)`
+			);
+			copyDialogOpen = false;
+			copyTarget = null;
+			if (isBatchCopy) clearSelection();
+		} finally {
+			copySubmitting = false;
+		}
+	}
+
 	async function handleDownload(videoId: string) {
 		downloadingVideoId = videoId;
 		try {
@@ -315,7 +361,10 @@
 	<div class="mb-6 flex flex-wrap items-center justify-between gap-4">
 		<div class="min-w-0">
 			<h1 class="truncate text-lg font-medium">{data.playlist.name}</h1>
-			<p class="text-sm text-muted-foreground">{songs.length} {songs.length === 1 ? 'song' : 'songs'}</p>
+			<p class="text-sm text-muted-foreground">
+				{songs.length} {songs.length === 1 ? 'song' : 'songs'}
+				{data.isDefaultPlaylist ? '· Your whole library' : ''}
+			</p>
 		</div>
 		<div class="flex items-center gap-2">
 			<Button size="sm" class="gap-1.5" disabled={songs.length === 0} onclick={() => playAll()}>
@@ -368,16 +417,30 @@
 					<DownloadIcon class="size-3.5" />
 					Download
 				</Button>
-				<Button
-					size="sm"
-					variant="outline"
-					class="gap-1.5"
-					disabled={batchWorking}
-					onclick={() => (batchRemoveConfirm = true)}
-				>
-					<ListMusicIcon class="size-3.5" />
-					Remove
-				</Button>
+				{#if data.otherPlaylists.length > 0}
+					<Button
+						size="sm"
+						variant="outline"
+						class="gap-1.5"
+						disabled={batchWorking}
+						onclick={openCopyDialogForSelection}
+					>
+						<ListMusicIcon class="size-3.5" />
+						Copy to…
+					</Button>
+				{/if}
+				{#if !data.isDefaultPlaylist}
+					<Button
+						size="sm"
+						variant="outline"
+						class="gap-1.5"
+						disabled={batchWorking}
+						onclick={() => (batchRemoveConfirm = true)}
+					>
+						<ListMusicIcon class="size-3.5" />
+						Remove
+					</Button>
+				{/if}
 				<Button
 					size="sm"
 					variant="destructive"
@@ -510,12 +573,20 @@
 								{/snippet}
 							</DropdownMenu.Trigger>
 						<DropdownMenu.Content align="end" class="min-w-52">
-							<DropdownMenu.Item
-								onclick={() => (removeTarget = { videoId: song.videoId, title: song.title })}
-							>
-								<ListMusicIcon class="size-4" />
-								Remove from playlist
-							</DropdownMenu.Item>
+							{#if data.otherPlaylists.length > 0}
+								<DropdownMenu.Item onclick={() => openCopyDialogForSong(song.videoId)}>
+									<ListMusicIcon class="size-4" />
+									Copy to playlist…
+								</DropdownMenu.Item>
+							{/if}
+							{#if !data.isDefaultPlaylist}
+								<DropdownMenu.Item
+									onclick={() => (removeTarget = { videoId: song.videoId, title: song.title })}
+								>
+									<ListMusicIcon class="size-4" />
+									Remove from playlist
+								</DropdownMenu.Item>
+							{/if}
 							<DropdownMenu.Item
 								variant="destructive"
 								onclick={() => (deleteTarget = { videoId: song.videoId, title: song.title })}
@@ -531,6 +602,41 @@
 		</ul>
 	{/if}
 </div>
+
+<Dialog.Root
+	open={copyDialogOpen}
+	onOpenChange={(open) => {
+		copyDialogOpen = open;
+		if (!open) copyTarget = null;
+	}}
+>
+	<Dialog.Content class="sm:max-w-sm">
+		<Dialog.Header>
+			<Dialog.Title>Copy to playlist</Dialog.Title>
+			<Dialog.Description>
+				{copyTarget !== null ? 'This song' : `${selected.size} song(s)`} will also be added to the
+				playlist you pick — it stays here too.
+			</Dialog.Description>
+		</Dialog.Header>
+		<ul class="flex max-h-64 flex-col gap-1 overflow-y-auto">
+			{#each data.otherPlaylists as playlist (playlist.id)}
+				<li>
+					<Button
+						variant="outline"
+						class="w-full justify-start"
+						disabled={copySubmitting}
+						onclick={() => handleCopy(playlist.id)}
+					>
+						{playlist.name}
+					</Button>
+				</li>
+			{/each}
+		</ul>
+		<Dialog.Footer>
+			<Button variant="outline" onclick={() => (copyDialogOpen = false)}>Cancel</Button>
+		</Dialog.Footer>
+	</Dialog.Content>
+</Dialog.Root>
 
 <Dialog.Root open={removeTarget !== null} onOpenChange={(open) => !open && (removeTarget = null)}>
 	<Dialog.Content class="sm:max-w-sm">

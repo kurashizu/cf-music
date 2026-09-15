@@ -22,7 +22,7 @@ import {
 	type SongImportSuccess
 } from './jobs';
 import { reserveQuota } from './quota-reservations';
-import { getPlaylistWithSongs, createPlaylist } from '../library/playlists';
+import { getPlaylistWithSongs, createPlaylist, ensureDefaultPlaylist } from '../library/playlists';
 
 const db = getDb(env.DB);
 
@@ -115,6 +115,35 @@ describe('recordSongImported', () => {
 		expect(playlist.songs.map((s) => s.videoId)).toEqual(['a']);
 	});
 
+	it('always links the song into the default playlist too, even with a different explicit target', async () => {
+		await seedUser('u1');
+		const { id: defaultPlaylistId } = await ensureDefaultPlaylist(db, 'u1');
+		await db.insert(playlists).values({ id: 'p1', userId: 'u1', name: 'Imported' });
+		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x', targetPlaylistId: 'p1' });
+
+		await recordSongImported(db, id, 'u1', makeSong('a'));
+
+		const targetPlaylist = await getPlaylistWithSongs(db, 'p1', 'u1');
+		const defaultPlaylist = await getPlaylistWithSongs(db, defaultPlaylistId, 'u1');
+		expect(targetPlaylist.songs.map((s) => s.videoId)).toEqual(['a']);
+		expect(defaultPlaylist.songs.map((s) => s.videoId)).toEqual(['a']);
+	});
+
+	it('does not double-link when the explicit target is already the default playlist', async () => {
+		await seedUser('u1');
+		const { id: defaultPlaylistId } = await ensureDefaultPlaylist(db, 'u1');
+		const { id } = await createImportJob(db, {
+			userId: 'u1',
+			sourceUrl: 'https://x',
+			targetPlaylistId: defaultPlaylistId
+		});
+
+		await recordSongImported(db, id, 'u1', makeSong('a'));
+
+		const defaultPlaylist = await getPlaylistWithSongs(db, defaultPlaylistId, 'u1');
+		expect(defaultPlaylist.songs.map((s) => s.videoId)).toEqual(['a']);
+	});
+
 	it('does not fail when the video_id was already imported by someone else (dedup reuse)', async () => {
 		await seedUser('u1');
 		await seedUser('u2');
@@ -138,14 +167,19 @@ describe('recordSongImported', () => {
 	});
 
 	it('releases the song\'s quota reservation once it lands as real usage', async () => {
-		await seedUser('u1', 1_000_000);
+		await seedUser('u1', 2_000_000);
 		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x' });
 		await reserveQuota(db, 'u1', id, 'a', 900_000);
 
 		await recordSongImported(db, id, 'u1', makeSong('a', { fileSizeBytes: 900_000 }));
 
-		// The reservation is gone, so a second song's reservation for the
-		// same bytes should now succeed against the same quota.
+		// The reservation itself is gone (it's real usage now, not a
+		// reservation) — a second song's reservation for the same bytes
+		// should succeed as long as it still fits the quota alongside the
+		// first song's now-real 900_000 bytes of usage. (The first song is
+		// always linked into the user's default playlist regardless of
+		// this job's own target — see linkImportedSongToLibrary — so it
+		// counts as real usage, unlike before that link existed.)
 		const result = await reserveQuota(db, 'u1', id, 'b', 900_000);
 		expect(result.reserved).toBe(true);
 	});

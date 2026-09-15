@@ -43,7 +43,10 @@ export const DELETE: RequestHandler = async (event) => {
 	try {
 		await deletePlaylist(db, event.params.playlistId, session.userId);
 	} catch (err) {
-		if (err instanceof LibraryError) error(404, err.message);
+		if (err instanceof LibraryError) {
+			if (err.code === 'default_playlist_protected') error(400, err.message);
+			error(404, err.message);
+		}
 		throw err;
 	}
 

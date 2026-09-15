@@ -1,6 +1,6 @@
 import { redirect } from '@sveltejs/kit';
 import { getDb } from '$lib/server/db';
-import { listPlaylists } from '$lib/server/library/playlists';
+import { listPlaylists, ensureDefaultPlaylist } from '$lib/server/library/playlists';
 import { listSmartPlaylists } from '$lib/server/library/smart-playlists';
 import { getObjectStorage } from '$lib/server/storage/factory';
 import type { PageServerLoad } from './$types';
@@ -17,9 +17,10 @@ export const load: PageServerLoad = async ({ platform, locals }) => {
 	}
 
 	const db = getDb(platform!.env.DB);
-	const [playlists, smartPlaylists] = await Promise.all([
+	const [playlists, smartPlaylists, { id: defaultPlaylistId }] = await Promise.all([
 		listPlaylists(db, locals.session.userId),
-		listSmartPlaylists(db, locals.session.userId)
+		listSmartPlaylists(db, locals.session.userId),
+		ensureDefaultPlaylist(db, locals.session.userId)
 	]);
 
 	// Playlists/smart playlists carry a member song's raw coverKey (see
@@ -42,5 +43,5 @@ export const load: PageServerLoad = async ({ platform, locals }) => {
 		)
 	]);
 
-	return { playlists: playlistsWithCovers, smartPlaylists: smartPlaylistsWithCovers };
+	return { playlists: playlistsWithCovers, smartPlaylists: smartPlaylistsWithCovers, defaultPlaylistId };
 };

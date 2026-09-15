@@ -5,7 +5,7 @@ import { playlists, playlistSongs, songs, users, importJobs } from '../db/schema
 export class LibraryError extends Error {
 	constructor(
 		message: string,
-		public readonly code: 'not_found' | 'forbidden' | 'song_not_in_library'
+		public readonly code: 'not_found' | 'forbidden' | 'song_not_in_library' | 'default_playlist_protected'
 	) {
 		super(message);
 		this.name = 'LibraryError';
@@ -63,6 +63,12 @@ export async function ensureDefaultPlaylist(db: Db, userId: string): Promise<{ i
 
 	const resolved = await db.query.users.findFirst({ where: eq(users.id, userId) });
 	return { id: resolved!.defaultPlaylistId! };
+}
+
+/** The user's default playlist id, or null if they've never imported anything yet (no auto-create, unlike ensureDefaultPlaylist). */
+async function getDefaultPlaylistId(db: Db, userId: string): Promise<string | null> {
+	const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
+	return user?.defaultPlaylistId ?? null;
 }
 
 export interface PlaylistSummary {
@@ -177,16 +183,15 @@ export async function renamePlaylist(db: Db, playlistId: string, userId: string,
 export async function deletePlaylist(db: Db, playlistId: string, userId: string): Promise<void> {
 	await getOwnedPlaylist(db, playlistId, userId);
 
-	// The schema declares defaultPlaylistId's FK as ON DELETE SET NULL, but
-	// SQLite's ALTER TABLE ADD COLUMN can't actually attach that behavior
-	// (only CREATE TABLE can) — so without clearing it explicitly here
-	// first, deleting a user's own default playlist would fail outright
-	// with a foreign key constraint error instead of the intended
-	// "next import without a target just creates a new one" behavior.
-	await db
-		.update(users)
-		.set({ defaultPlaylistId: null })
-		.where(and(eq(users.id, userId), eq(users.defaultPlaylistId, playlistId)));
+	// The default playlist is the one place a user's whole library is
+	// guaranteed reachable from (every import links into it — see
+	// linkImportedSongToLibrary in import/jobs.ts) — deleting it would
+	// either orphan every song still only reachable through it, or force
+	// picking an arbitrary replacement. Neither is a real "delete this
+	// playlist" the user asked for, so it's simply not allowed.
+	if (playlistId === (await getDefaultPlaylistId(db, userId))) {
+		throw new LibraryError('The default library playlist cannot be deleted', 'default_playlist_protected');
+	}
 
 	// Same story for import_jobs.target_playlist_id: it has no ON DELETE
 	// behavior at all (the column predates any FK action being added), so
@@ -231,10 +236,24 @@ export async function removeSongFromPlaylist(
 	videoId: string
 ): Promise<void> {
 	await getOwnedPlaylist(db, playlistId, userId);
+
+	// The default playlist has to contain every song the user's ever
+	// imported (see linkImportedSongToLibrary) — removing one from just
+	// this one playlist would break that guarantee. Deleting the song from
+	// the whole library (see evictSongForUser) is the only way to make it
+	// disappear from here.
+	if (playlistId === (await getDefaultPlaylistId(db, userId))) {
+		throw new LibraryError(
+			'Cannot remove a song from the default library playlist — delete it from your library instead',
+			'default_playlist_protected'
+		);
+	}
+
 	await db
 		.delete(playlistSongs)
 		.where(and(eq(playlistSongs.playlistId, playlistId), eq(playlistSongs.videoId, videoId)));
 }
+
 
 /**
  * Reorders a playlist to exactly match `orderedVideoIds`. Every video id

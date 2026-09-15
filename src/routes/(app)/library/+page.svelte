@@ -186,6 +186,9 @@
 						</div>
 						<div class="min-w-0">
 							<p class="truncate text-sm font-medium">{playlist.name}</p>
+							{#if playlist.id === data.defaultPlaylistId}
+								<p class="truncate text-xs text-muted-foreground">Your whole library</p>
+							{/if}
 						</div>
 					</a>
 					<DropdownMenu.Root>
@@ -206,13 +209,15 @@
 								<PencilIcon class="size-4" />
 								Rename
 							</DropdownMenu.Item>
-							<DropdownMenu.Item
-								variant="destructive"
-								onclick={() => (deleteTarget = playlist)}
-							>
-								<Trash2Icon class="size-4" />
-								Delete
-							</DropdownMenu.Item>
+							{#if playlist.id !== data.defaultPlaylistId}
+								<DropdownMenu.Item
+									variant="destructive"
+									onclick={() => (deleteTarget = playlist)}
+								>
+									<Trash2Icon class="size-4" />
+									Delete
+								</DropdownMenu.Item>
+							{/if}
 						</DropdownMenu.Content>
 					</DropdownMenu.Root>
 				</Card.Root>

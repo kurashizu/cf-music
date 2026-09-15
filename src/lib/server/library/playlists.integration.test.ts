@@ -162,14 +162,14 @@ describe('deletePlaylist', () => {
 		await expect(deletePlaylist(db, id, 'u2')).rejects.toThrow(LibraryError);
 	});
 
-	it('clears defaultPlaylistId when deleting the playlist that was the default', async () => {
+	it('rejects deleting the default playlist', async () => {
 		await seedUser('u1');
 		const { id } = await ensureDefaultPlaylist(db, 'u1');
 
-		await deletePlaylist(db, id, 'u1');
+		await expect(deletePlaylist(db, id, 'u1')).rejects.toThrow(LibraryError);
 
 		const user = await db.query.users.findFirst({ where: (t, { eq }) => eq(t.id, 'u1') });
-		expect(user?.defaultPlaylistId).toBeNull();
+		expect(user?.defaultPlaylistId).toBe(id);
 	});
 
 	it('does not clear defaultPlaylistId when deleting an unrelated playlist', async () => {
@@ -222,18 +222,6 @@ describe('ensureDefaultPlaylist', () => {
 		expect(second).toBe(first);
 		const playlists = await listPlaylists(db, 'u1');
 		expect(playlists).toHaveLength(1);
-	});
-
-	it('creates a new default after the previous one was deleted', async () => {
-		await seedUser('u1');
-		const { id: first } = await ensureDefaultPlaylist(db, 'u1');
-		await deletePlaylist(db, first, 'u1');
-
-		const { id: second } = await ensureDefaultPlaylist(db, 'u1');
-
-		expect(second).not.toBe(first);
-		const user = await db.query.users.findFirst({ where: (t, { eq }) => eq(t.id, 'u1') });
-		expect(user?.defaultPlaylistId).toBe(second);
 	});
 
 	it('converges on the same playlist id when called concurrently for a user with no default yet', async () => {
@@ -316,6 +304,18 @@ describe('removeSongFromPlaylist', () => {
 		const b = await getPlaylistWithSongs(db, playlistB, 'u1');
 		expect(a.songs).toHaveLength(0);
 		expect(b.songs).toHaveLength(1);
+	});
+
+	it('rejects removing a song from the default playlist', async () => {
+		await seedUser('u1');
+		await seedSong('a');
+		const { id } = await ensureDefaultPlaylist(db, 'u1');
+		await addSongToPlaylist(db, id, 'u1', 'a');
+
+		await expect(removeSongFromPlaylist(db, id, 'u1', 'a')).rejects.toThrow(LibraryError);
+
+		const playlist = await getPlaylistWithSongs(db, id, 'u1');
+		expect(playlist.songs).toHaveLength(1);
 	});
 });
 

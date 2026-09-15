@@ -1,7 +1,7 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { Db } from '../db';
 import { importJobs, songs } from '../db/schema';
-import { addSongToPlaylist } from '../library/playlists';
+import { addSongToPlaylist, ensureDefaultPlaylist } from '../library/playlists';
 import { chunk } from '../../shared/chunk';
 import { recordAuditEvent } from '../audit/log';
 import { releaseQuotaReservation, releaseAllQuotaReservationsForJob } from './quota-reservations';
@@ -223,10 +223,29 @@ export async function cancelImportJob(db: Db, jobId: string, userId: string): Pr
 }
 
 /**
+ * Every imported song is always linked into the user's default playlist —
+ * it's the one place the whole library is guaranteed reachable from (see
+ * its own delete/remove protections in library/playlists.ts) — in addition
+ * to whatever explicit target playlist the import named, if different.
+ */
+async function linkImportedSongToLibrary(
+	db: Db,
+	userId: string,
+	targetPlaylistId: string | null,
+	videoId: string
+): Promise<void> {
+	const { id: defaultPlaylistId } = await ensureDefaultPlaylist(db, userId);
+	await addSongToPlaylist(db, defaultPlaylistId, userId, videoId);
+	if (targetPlaylistId && targetPlaylistId !== defaultPlaylistId) {
+		await addSongToPlaylist(db, targetPlaylistId, userId, videoId);
+	}
+}
+
+/**
  * Records one successfully imported song: writes (or reuses, if this
  * video_id was already imported by someone else) the `songs` row, links it
- * into the job's target playlist if one was given, and bumps the job's
- * completed count.
+ * into the user's default playlist and the job's target playlist if
+ * different, and bumps the job's completed count.
  */
 export async function recordSongImported(db: Db, jobId: string, userId: string, song: SongImportSuccess): Promise<void> {
 	const job = await getOwnedJob(db, jobId, userId);
@@ -256,9 +275,7 @@ export async function recordSongImported(db: Db, jobId: string, userId: string, 
 		})
 		.onConflictDoNothing(); // video_id already imported (by this or another user) — reuse the existing row
 
-	if (job.targetPlaylistId) {
-		await addSongToPlaylist(db, job.targetPlaylistId, userId, song.videoId);
-	}
+	await linkImportedSongToLibrary(db, userId, job.targetPlaylistId, song.videoId);
 
 	await db
 		.update(importJobs)
@@ -287,9 +304,7 @@ export async function recordSongImported(db: Db, jobId: string, userId: string, 
 export async function recordKnownSongLinked(db: Db, jobId: string, userId: string, videoId: string): Promise<void> {
 	const job = await getOwnedJob(db, jobId, userId);
 
-	if (job.targetPlaylistId) {
-		await addSongToPlaylist(db, job.targetPlaylistId, userId, videoId);
-	}
+	await linkImportedSongToLibrary(db, userId, job.targetPlaylistId, videoId);
 
 	await db
 		.update(importJobs)
