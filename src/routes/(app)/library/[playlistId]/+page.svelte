@@ -330,6 +330,13 @@
 	}
 
 	async function handleDownload(videoId: string) {
+		// Already cached — re-downloading would just re-presign a stream
+		// URL and round-trip to the service worker only to have it find
+		// its own cache.match already satisfied, for no benefit.
+		if (cachedVideoIds.has(videoId)) {
+			toast.success('Already downloaded for offline playback');
+			return;
+		}
 		downloadingVideoId = videoId;
 		try {
 			const ok = await downloadSongForOffline(videoId);
@@ -366,8 +373,19 @@
 	}
 
 	async function handleBatchDownload() {
+		// Skip anything already cached rather than re-requesting a fresh
+		// stream URL and round-tripping to the service worker for a
+		// cache.match it would just satisfy immediately anyway — with a
+		// large selection that's a lot of pointless API calls, and it
+		// also kept the progress count ("Downloading N/M") including
+		// songs that were never actually going to download anything.
+		const videoIds = [...selected].filter((id) => !cachedVideoIds.has(id));
+		if (videoIds.length === 0) {
+			toast.success('Already downloaded for offline playback');
+			clearSelection();
+			return;
+		}
 		batchWorking = true;
-		const videoIds = [...selected];
 		batchDownloadProgress = { completed: 0, total: videoIds.length };
 		try {
 			let failures = 0;
