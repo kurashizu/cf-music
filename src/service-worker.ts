@@ -30,6 +30,15 @@ sw.addEventListener('install', (event) => {
 		(async () => {
 			const cache = await caches.open(APP_CACHE);
 			await cache.addAll([...build, ...files]);
+			// Without this, a new service worker sits in "waiting" until every
+			// tab running the old one closes — so a deploy's old APP_CACHE
+			// (and the old JS chunk hashes its HTML still references) stays
+			// live indefinitely across repeated deploys in one browsing
+			// session, and a client can end up requesting an old entry chunk
+			// that the new deploy's static assets no longer have at that
+			// hash at all (a real incident: `Failed to fetch dynamically
+			// imported module`). skipWaiting activates immediately instead.
+			await sw.skipWaiting();
 		})()
 	);
 });
@@ -46,6 +55,10 @@ sw.addEventListener('activate', (event) => {
 					await caches.delete(key);
 				}
 			}
+			// Pairs with skipWaiting above: takes control of already-open
+			// tabs immediately rather than only ones opened after this
+			// activation, so they stop requesting old-deploy asset URLs too.
+			await sw.clients.claim();
 		})()
 	);
 });
