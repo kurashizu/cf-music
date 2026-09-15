@@ -90,6 +90,28 @@ describe('listSmartPlaylists', () => {
 		const groups = await listSmartPlaylists(db, 'u1');
 		expect(groups.find((g) => g.id === 'artist:Radiohead')?.songCount).toBe(1);
 	});
+
+	it('collects up to 4 member songs\' coverKeys, skipping songs with none', async () => {
+		await seedUser('u1');
+		await seedSong('a', { artist: 'Radiohead', coverKey: 'covers/a.avif' });
+		await seedSong('b', { artist: 'Radiohead', coverKey: null });
+		await seedSong('c', { artist: 'Radiohead', coverKey: 'covers/c.avif' });
+		await seedSong('d', { artist: 'Radiohead', coverKey: 'covers/d.avif' });
+		await seedSong('e', { artist: 'Radiohead', coverKey: 'covers/e.avif' });
+		await seedSong('f', { artist: 'Radiohead', coverKey: 'covers/f.avif' });
+		const { id: p1 } = await createPlaylist(db, { userId: 'u1', name: 'Mix' });
+		for (const videoId of ['a', 'b', 'c', 'd', 'e', 'f']) {
+			await addSongToPlaylist(db, p1, 'u1', videoId);
+		}
+
+		const groups = await listSmartPlaylists(db, 'u1');
+		expect(groups.find((g) => g.id === 'artist:Radiohead')?.coverKeys).toEqual([
+			'covers/a.avif',
+			'covers/c.avif',
+			'covers/d.avif',
+			'covers/e.avif'
+		]);
+	});
 });
 
 describe('parseSmartPlaylistId', () => {

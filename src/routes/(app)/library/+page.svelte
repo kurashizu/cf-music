@@ -15,6 +15,7 @@
 	import UserIcon from '@lucide/svelte/icons/user';
 	import TagIcon from '@lucide/svelte/icons/tag';
 	import SearchIcon from '@lucide/svelte/icons/search';
+	import PlaylistCover from '$lib/components/playlist-cover.svelte';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -124,6 +125,13 @@
 </svelte:head>
 
 <div class="mx-auto max-w-5xl p-4 md:p-8">
+	{#if data.playlists.length > 0 || data.smartPlaylists.length > 0}
+		<div class="relative mb-6">
+			<SearchIcon class="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+			<Input placeholder="Search playlists…" bind:value={searchQuery} class="pl-9" />
+		</div>
+	{/if}
+
 	<div class="mb-6 flex items-center justify-between gap-4">
 		<h1 class="text-lg font-medium">Your playlists</h1>
 		<Dialog.Root bind:open={createOpen}>
@@ -155,13 +163,6 @@
 		</Dialog.Root>
 	</div>
 
-	{#if data.playlists.length > 0 || data.smartPlaylists.length > 0}
-		<div class="relative mb-6">
-			<SearchIcon class="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-			<Input placeholder="Search playlists…" bind:value={searchQuery} class="max-w-sm pl-9" />
-		</div>
-	{/if}
-
 	{#if data.playlists.length === 0}
 		<div class="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border py-16 text-center">
 			<ListMusicIcon class="size-8 text-muted-foreground" />
@@ -178,11 +179,11 @@
 						<div
 							class="flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-muted transition-transform duration-200 group-hover:scale-[1.02]"
 						>
-							{#if playlist.coverUrl}
-								<img src={playlist.coverUrl} alt="" class="size-full object-cover" />
-							{:else}
-								<ListMusicIcon class="size-8 text-muted-foreground" />
-							{/if}
+							<PlaylistCover coverUrls={playlist.coverUrls}>
+								{#snippet fallback()}
+									<ListMusicIcon class="size-8 text-muted-foreground" />
+								{/snippet}
+							</PlaylistCover>
 						</div>
 						<div class="min-w-0">
 							<p class="truncate text-sm font-medium">{playlist.name}</p>
@@ -238,13 +239,15 @@
 						<div
 							class="flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-muted transition-transform duration-200 group-hover:scale-[1.02]"
 						>
-							{#if group.coverUrl}
-								<img src={group.coverUrl} alt="" class="size-full object-cover" />
-							{:else if group.field === 'artist'}
-								<UserIcon class="size-8 text-muted-foreground" />
-							{:else}
-								<TagIcon class="size-8 text-muted-foreground" />
-							{/if}
+							<PlaylistCover coverUrls={group.coverUrls}>
+								{#snippet fallback()}
+									{#if group.field === 'artist'}
+										<UserIcon class="size-8 text-muted-foreground" />
+									{:else}
+										<TagIcon class="size-8 text-muted-foreground" />
+									{/if}
+								{/snippet}
+							</PlaylistCover>
 						</div>
 						<div class="min-w-0">
 							<p class="truncate text-sm font-medium">{group.value}</p>

@@ -23,22 +23,22 @@ export const load: PageServerLoad = async ({ platform, locals }) => {
 		ensureDefaultPlaylist(db, locals.session.userId)
 	]);
 
-	// Playlists/smart playlists carry a member song's raw coverKey (see
-	// listPlaylists/listSmartPlaylists) as their auto-generated thumbnail —
+	// Playlists/smart playlists carry up to 4 member songs' raw coverKeys
+	// (see listPlaylists/listSmartPlaylists) for a 2x2 mosaic thumbnail —
 	// same presign-on-the-server pattern as the playlist detail page, since
-	// only the server has the storage credentials to sign it.
+	// only the server has the storage credentials to sign them.
 	const storage = getObjectStorage(platform!.env);
 	const [playlistsWithCovers, smartPlaylistsWithCovers] = await Promise.all([
 		Promise.all(
 			playlists.map(async (playlist) => ({
 				...playlist,
-				coverUrl: playlist.coverKey ? await storage.presignGetUrl(playlist.coverKey) : null
+				coverUrls: await Promise.all(playlist.coverKeys.map((key) => storage.presignGetUrl(key)))
 			}))
 		),
 		Promise.all(
 			smartPlaylists.map(async (group) => ({
 				...group,
-				coverUrl: group.coverKey ? await storage.presignGetUrl(group.coverKey) : null
+				coverUrls: await Promise.all(group.coverKeys.map((key) => storage.presignGetUrl(key)))
 			}))
 		)
 	]);

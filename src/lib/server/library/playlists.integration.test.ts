@@ -89,6 +89,31 @@ describe('createPlaylist / listPlaylists', () => {
 		const list = await listPlaylists(db, 'u1');
 		expect(list[0].sourceUrl).toBeNull();
 	});
+
+	it('returns up to 4 member songs\' coverKeys in playlist order, skipping songs with none', async () => {
+		await seedUser('u1');
+		await seedSong('a', { coverKey: 'covers/a.avif' });
+		await seedSong('b', { coverKey: null });
+		await seedSong('c', { coverKey: 'covers/c.avif' });
+		await seedSong('d', { coverKey: 'covers/d.avif' });
+		await seedSong('e', { coverKey: 'covers/e.avif' });
+		await seedSong('f', { coverKey: 'covers/f.avif' });
+		const { id } = await createPlaylist(db, { userId: 'u1', name: 'Mix' });
+		for (const videoId of ['a', 'b', 'c', 'd', 'e', 'f']) {
+			await addSongToPlaylist(db, id, 'u1', videoId);
+		}
+
+		const list = await listPlaylists(db, 'u1');
+		expect(list[0].coverKeys).toEqual(['covers/a.avif', 'covers/c.avif', 'covers/d.avif', 'covers/e.avif']);
+	});
+
+	it('returns an empty coverKeys array for a playlist with no songs (or none with a cover)', async () => {
+		await seedUser('u1');
+		await createPlaylist(db, { userId: 'u1', name: 'Empty' });
+
+		const list = await listPlaylists(db, 'u1');
+		expect(list[0].coverKeys).toEqual([]);
+	});
 });
 
 describe('getPlaylistWithSongs', () => {

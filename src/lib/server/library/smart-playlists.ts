@@ -1,6 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import type { Db } from '../db';
 import { playlists, playlistSongs, songs } from '../db/schema';
+import { PLAYLIST_MOSAIC_COVER_COUNT } from './playlists';
 
 export type SmartPlaylistField = 'artist' | 'genre';
 
@@ -10,8 +11,8 @@ export interface SmartPlaylistSummary {
 	field: SmartPlaylistField;
 	value: string;
 	songCount: number;
-	/** One member song's coverKey, or null if none have one — used as an auto-generated thumbnail, same idea as playlists' own cover. */
-	coverKey: string | null;
+	/** Up to PLAYLIST_MOSAIC_COVER_COUNT member songs' coverKeys, for a 2x2 mosaic thumbnail — same idea as playlists' own cover. */
+	coverKeys: string[];
 }
 
 /**
@@ -45,9 +46,11 @@ export async function listSmartPlaylists(db: Db, userId: string): Promise<SmartP
 		const existing = counts.get(id);
 		if (existing) {
 			existing.songCount += 1;
-			if (!existing.coverKey && coverKey) existing.coverKey = coverKey;
+			if (coverKey && existing.coverKeys.length < PLAYLIST_MOSAIC_COVER_COUNT) {
+				existing.coverKeys.push(coverKey);
+			}
 		} else {
-			counts.set(id, { id, field, value, songCount: 1, coverKey });
+			counts.set(id, { id, field, value, songCount: 1, coverKeys: coverKey ? [coverKey] : [] });
 		}
 	}
 

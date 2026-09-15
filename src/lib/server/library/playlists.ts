@@ -71,14 +71,16 @@ async function getDefaultPlaylistId(db: Db, userId: string): Promise<string | nu
 	return user?.defaultPlaylistId ?? null;
 }
 
+export const PLAYLIST_MOSAIC_COVER_COUNT = 4;
+
 export interface PlaylistSummary {
 	id: string;
 	userId: string;
 	name: string;
 	sourceUrl: string | null;
 	createdAt: string;
-	/** First song's coverKey in playlist order, or null if empty/no covers — the playlist's auto-generated thumbnail. */
-	coverKey: string | null;
+	/** Up to PLAYLIST_MOSAIC_COVER_COUNT songs' coverKeys, in playlist order, for a 2x2 mosaic thumbnail — empty if the playlist has no songs with covers. */
+	coverKeys: string[];
 }
 
 export async function listPlaylists(db: Db, userId: string): Promise<PlaylistSummary[]> {
@@ -88,9 +90,11 @@ export async function listPlaylists(db: Db, userId: string): Promise<PlaylistSum
 	});
 	if (rows.length === 0) return [];
 
-	// One song per playlist (lowest position, i.e. first in play order) to
-	// use as an auto-generated thumbnail — playlists have no cover of their
-	// own, only songs do.
+	// Every song+position in these playlists, not just the first — a 2x2
+	// mosaic thumbnail needs up to PLAYLIST_MOSAIC_COVER_COUNT, unlike the
+	// old single-cover thumbnail. Sorted client-side (in JS below) rather
+	// than with an SQL ORDER BY, since this needs to be grouped by
+	// playlist first anyway.
 	const coverRows = await db
 		.select({
 			playlistId: playlistSongs.playlistId,
@@ -101,17 +105,26 @@ export async function listPlaylists(db: Db, userId: string): Promise<PlaylistSum
 		.innerJoin(songs, eq(playlistSongs.videoId, songs.videoId))
 		.where(inArray(playlistSongs.playlistId, rows.map((p) => p.id)));
 
-	const firstCoverByPlaylist = new Map<string, { coverKey: string | null; position: number }>();
+	const rowsByPlaylist = new Map<string, { coverKey: string | null; position: number }[]>();
 	for (const row of coverRows) {
-		const existing = firstCoverByPlaylist.get(row.playlistId);
-		if (!existing || row.position < existing.position) {
-			firstCoverByPlaylist.set(row.playlistId, { coverKey: row.coverKey, position: row.position });
-		}
+		const existing = rowsByPlaylist.get(row.playlistId);
+		if (existing) existing.push(row);
+		else rowsByPlaylist.set(row.playlistId, [row]);
+	}
+
+	const coverKeysByPlaylist = new Map<string, string[]>();
+	for (const [playlistId, songRows] of rowsByPlaylist) {
+		const coverKeys = songRows
+			.sort((a, b) => a.position - b.position)
+			.map((r) => r.coverKey)
+			.filter((k): k is string => k !== null)
+			.slice(0, PLAYLIST_MOSAIC_COVER_COUNT);
+		coverKeysByPlaylist.set(playlistId, coverKeys);
 	}
 
 	return rows.map((playlist) => ({
 		...playlist,
-		coverKey: firstCoverByPlaylist.get(playlist.id)?.coverKey ?? null
+		coverKeys: coverKeysByPlaylist.get(playlist.id) ?? []
 	}));
 }
 
