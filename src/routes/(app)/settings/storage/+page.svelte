@@ -18,6 +18,7 @@
 	import MoreHorizontalIcon from '@lucide/svelte/icons/more-horizontal';
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
+	import * as Select from '$lib/components/ui/select/index.js';
 	import { player } from '$lib/client/player.svelte';
 	import { viewMode } from '$lib/client/view-mode.svelte';
 	import ViewModeToggle from '$lib/components/view-mode-toggle.svelte';
@@ -56,11 +57,34 @@
 		copyDialogOpen = true;
 	}
 
-	const filteredEntries = $derived(
-		searchQuery.trim().length === 0
-			? entries
-			: entries.filter((e) => e.title.toLowerCase().includes(searchQuery.trim().toLowerCase()))
-	);
+	type SortOption = 'size-desc' | 'title-asc' | 'cached-first';
+	let sortOption = $state<SortOption>('size-desc');
+	const sortOptionLabels: Record<SortOption, string> = {
+		'size-desc': 'Largest first',
+		'title-asc': 'Title (A–Z)',
+		'cached-first': 'Downloaded first'
+	};
+
+	const filteredEntries = $derived.by(() => {
+		const matching =
+			searchQuery.trim().length === 0
+				? entries
+				: entries.filter((e) => e.title.toLowerCase().includes(searchQuery.trim().toLowerCase()));
+
+		// A plain [...array].sort() is stable in every modern JS engine
+		// (ES2019+), so ties (e.g. two cached songs) keep their original
+		// relative order instead of being shuffled arbitrarily.
+		switch (sortOption) {
+			case 'size-desc':
+				return [...matching].sort((a, b) => b.fileSizeBytes - a.fileSizeBytes);
+			case 'title-asc':
+				return [...matching].sort((a, b) => a.title.localeCompare(b.title));
+			case 'cached-first':
+				return [...matching].sort(
+					(a, b) => Number(cachedVideoIds.has(b.videoId)) - Number(cachedVideoIds.has(a.videoId))
+				);
+		}
+	});
 
 	const usagePercent = $derived(
 		data.quotaBytes > 0 ? Math.min(100, (data.usageBytes / data.quotaBytes) * 100) : 0
@@ -351,6 +375,16 @@
 			<Button size="sm" variant="outline" onclick={toggleSelectAll}>
 				{allVisibleSelected ? 'Deselect all' : 'Select all'}
 			</Button>
+			<Select.Root type="single" bind:value={sortOption}>
+				<Select.Trigger class="w-40">
+					{sortOptionLabels[sortOption]}
+				</Select.Trigger>
+				<Select.Content>
+					<Select.Item value="size-desc" label="Largest first">Largest first</Select.Item>
+					<Select.Item value="title-asc" label="Title (A–Z)">Title (A–Z)</Select.Item>
+					<Select.Item value="cached-first" label="Downloaded first">Downloaded first</Select.Item>
+				</Select.Content>
+			</Select.Root>
 			<ViewModeToggle />
 		</div>
 
