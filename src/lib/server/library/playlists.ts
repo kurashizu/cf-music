@@ -1,4 +1,4 @@
-import { eq, and, isNull, max } from 'drizzle-orm';
+import { eq, and, isNull, max, inArray } from 'drizzle-orm';
 import type { Db } from '../db';
 import { playlists, playlistSongs, songs, users } from '../db/schema';
 
@@ -65,11 +65,48 @@ export async function ensureDefaultPlaylist(db: Db, userId: string): Promise<{ i
 	return { id: resolved!.defaultPlaylistId! };
 }
 
-export async function listPlaylists(db: Db, userId: string) {
-	return db.query.playlists.findMany({
+export interface PlaylistSummary {
+	id: string;
+	userId: string;
+	name: string;
+	sourceUrl: string | null;
+	createdAt: string;
+	/** First song's coverKey in playlist order, or null if empty/no covers — the playlist's auto-generated thumbnail. */
+	coverKey: string | null;
+}
+
+export async function listPlaylists(db: Db, userId: string): Promise<PlaylistSummary[]> {
+	const rows = await db.query.playlists.findMany({
 		where: eq(playlists.userId, userId),
 		orderBy: (t, { desc }) => desc(t.createdAt)
 	});
+	if (rows.length === 0) return [];
+
+	// One song per playlist (lowest position, i.e. first in play order) to
+	// use as an auto-generated thumbnail — playlists have no cover of their
+	// own, only songs do.
+	const coverRows = await db
+		.select({
+			playlistId: playlistSongs.playlistId,
+			coverKey: songs.coverKey,
+			position: playlistSongs.position
+		})
+		.from(playlistSongs)
+		.innerJoin(songs, eq(playlistSongs.videoId, songs.videoId))
+		.where(inArray(playlistSongs.playlistId, rows.map((p) => p.id)));
+
+	const firstCoverByPlaylist = new Map<string, { coverKey: string | null; position: number }>();
+	for (const row of coverRows) {
+		const existing = firstCoverByPlaylist.get(row.playlistId);
+		if (!existing || row.position < existing.position) {
+			firstCoverByPlaylist.set(row.playlistId, { coverKey: row.coverKey, position: row.position });
+		}
+	}
+
+	return rows.map((playlist) => ({
+		...playlist,
+		coverKey: firstCoverByPlaylist.get(playlist.id)?.coverKey ?? null
+	}));
 }
 
 /**

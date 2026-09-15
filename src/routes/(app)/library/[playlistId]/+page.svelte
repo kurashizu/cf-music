@@ -74,6 +74,8 @@
 					.map(([, i]) => i)
 	);
 
+	let lastSelectedIndex = $state<number | null>(null);
+
 	function toggleSelected(videoId: string) {
 		const next = new Set(selected);
 		if (next.has(videoId)) next.delete(videoId);
@@ -83,6 +85,32 @@
 
 	function clearSelection() {
 		selected = new Set();
+		lastSelectedIndex = null;
+	}
+
+	// File-manager-style row selection: plain click selects only this row,
+	// ctrl/cmd-click toggles it into/out of the existing selection, and
+	// shift-click extends the selection from the last click to here — all
+	// against `visibleIndices` (the filtered/rendered order), since a range
+	// select while searching should span what's on screen, not the full
+	// underlying playlist.
+	function handleRowClick(event: MouseEvent, index: number) {
+		const videoId = songs[index].videoId;
+		if (event.shiftKey && lastSelectedIndex !== null) {
+			const [from, to] = [lastSelectedIndex, index].sort((a, b) => a - b);
+			const range = visibleIndices.filter((i) => i >= from && i <= to);
+			const next = new Set(selected);
+			for (const i of range) next.add(songs[i].videoId);
+			selected = next;
+			return;
+		}
+		if (event.metaKey || event.ctrlKey) {
+			toggleSelected(videoId);
+			lastSelectedIndex = index;
+			return;
+		}
+		selected = selected.size === 1 && selected.has(videoId) ? new Set() : new Set([videoId]);
+		lastSelectedIndex = index;
 	}
 
 	const isThisPlaylistPlaying = $derived(
@@ -376,16 +404,22 @@
 			{#each visibleIndices as index (songs[index].videoId)}
 				{@const song = songs[index]}
 				{@const draggable = searchQuery.trim().length === 0}
+				<!-- svelte-ignore a11y_click_events_have_key_events -->
+				<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 				<li
-					class="group flex items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-muted {player
-						.currentTrack?.videoId === song.videoId
-						? 'bg-muted'
-						: ''} {draggingIndex === index ? 'opacity-50' : ''}"
+					class="group flex items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-muted {selected.has(
+						song.videoId
+					)
+						? 'bg-muted ring-1 ring-inset ring-ring/50'
+						: player.currentTrack?.videoId === song.videoId
+							? 'bg-muted'
+							: ''} {draggingIndex === index ? 'opacity-50' : ''}"
 					style="order: {visualOrder(index)}"
 					draggable={draggable}
 					ondragstart={() => draggable && handleDragStart(index)}
 					ondragover={(e) => draggable && handleDragOver(e, index)}
 					ondragend={() => draggable && handleDragEnd()}
+					onclick={(e) => handleRowClick(e, index)}
 				>
 					<button
 						type="button"
@@ -394,22 +428,18 @@
 							: 'invisible'}"
 						aria-label="Drag to reorder"
 						tabindex={draggable ? 0 : -1}
+						onclick={(e) => e.stopPropagation()}
 					>
 						<GripVerticalIcon class="size-4" />
 					</button>
 
-					<input
-						type="checkbox"
-						class="size-4 shrink-0 accent-foreground"
-						checked={selected.has(song.videoId)}
-						onchange={() => toggleSelected(song.videoId)}
-						aria-label="Select {song.title}"
-					/>
-
 					<button
 						type="button"
 						class="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
-						onclick={() => playFrom(index)}
+						onclick={(e) => {
+							e.stopPropagation();
+							playFrom(index);
+						}}
 						aria-label={player.currentTrack?.videoId === song.videoId && player.isPlaying
 							? 'Pause'
 							: 'Play'}
@@ -455,25 +485,30 @@
 						size="icon-sm"
 						class="opacity-0 transition-opacity group-hover:opacity-100"
 						disabled={downloadingVideoId === song.videoId}
-						onclick={() => handleDownload(song.videoId)}
+						onclick={(e) => {
+							e.stopPropagation();
+							handleDownload(song.videoId);
+						}}
 						aria-label="Download for offline playback"
 					>
 						<DownloadIcon class="size-4" />
 					</Button>
 
-					<DropdownMenu.Root>
-						<DropdownMenu.Trigger>
-							{#snippet child({ props })}
-								<Button
-									{...props}
-									variant="ghost"
-									size="icon-sm"
-									class="opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100"
-								>
-									<MoreHorizontalIcon class="size-4" />
-								</Button>
-							{/snippet}
-						</DropdownMenu.Trigger>
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<span onclick={(e) => e.stopPropagation()}>
+						<DropdownMenu.Root>
+							<DropdownMenu.Trigger>
+								{#snippet child({ props })}
+									<Button
+										{...props}
+										variant="ghost"
+										size="icon-sm"
+										class="opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100"
+									>
+										<MoreHorizontalIcon class="size-4" />
+									</Button>
+								{/snippet}
+							</DropdownMenu.Trigger>
 						<DropdownMenu.Content align="end" class="min-w-52">
 							<DropdownMenu.Item
 								onclick={() => (removeTarget = { videoId: song.videoId, title: song.title })}
@@ -489,7 +524,8 @@
 								Delete from library
 							</DropdownMenu.Item>
 						</DropdownMenu.Content>
-					</DropdownMenu.Root>
+						</DropdownMenu.Root>
+					</span>
 				</li>
 			{/each}
 		</ul>

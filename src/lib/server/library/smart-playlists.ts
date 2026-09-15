@@ -10,6 +10,8 @@ export interface SmartPlaylistSummary {
 	field: SmartPlaylistField;
 	value: string;
 	songCount: number;
+	/** One member song's coverKey, or null if none have one — used as an auto-generated thumbnail, same idea as playlists' own cover. */
+	coverKey: string | null;
 }
 
 /**
@@ -27,7 +29,8 @@ export async function listSmartPlaylists(db: Db, userId: string): Promise<SmartP
 		.selectDistinct({
 			videoId: songs.videoId,
 			artist: songs.artist,
-			genre: songs.genre
+			genre: songs.genre,
+			coverKey: songs.coverKey
 		})
 		.from(playlistSongs)
 		.innerJoin(playlists, eq(playlistSongs.playlistId, playlists.id))
@@ -36,20 +39,21 @@ export async function listSmartPlaylists(db: Db, userId: string): Promise<SmartP
 
 	const counts = new Map<string, SmartPlaylistSummary>();
 
-	function record(field: SmartPlaylistField, value: string | null) {
+	function record(field: SmartPlaylistField, value: string | null, coverKey: string | null) {
 		if (!value) return;
 		const id = `${field}:${value}`;
 		const existing = counts.get(id);
 		if (existing) {
 			existing.songCount += 1;
+			if (!existing.coverKey && coverKey) existing.coverKey = coverKey;
 		} else {
-			counts.set(id, { id, field, value, songCount: 1 });
+			counts.set(id, { id, field, value, songCount: 1, coverKey });
 		}
 	}
 
 	for (const song of librarySongs) {
-		record('artist', song.artist);
-		record('genre', song.genre);
+		record('artist', song.artist, song.coverKey);
+		record('genre', song.genre, song.coverKey);
 	}
 
 	return [...counts.values()].sort((a, b) => b.songCount - a.songCount || a.value.localeCompare(b.value));
@@ -71,6 +75,9 @@ export interface SmartPlaylistSong {
 	videoId: string;
 	title: string;
 	durationSeconds: number | null;
+	codec: string;
+	bitrateKbps: number | null;
+	coverKey: string | null;
 }
 
 /** Fetches every song in `userId`'s library matching one artist/genre value — the smart-playlist equivalent of getPlaylistWithSongs. */
@@ -86,7 +93,10 @@ export async function getSmartPlaylistSongs(
 		.selectDistinct({
 			videoId: songs.videoId,
 			title: songs.title,
-			durationSeconds: songs.durationSeconds
+			durationSeconds: songs.durationSeconds,
+			codec: songs.codec,
+			bitrateKbps: songs.bitrateKbps,
+			coverKey: songs.coverKey
 		})
 		.from(playlistSongs)
 		.innerJoin(playlists, eq(playlistSongs.playlistId, playlists.id))

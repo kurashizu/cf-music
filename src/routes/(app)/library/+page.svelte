@@ -14,6 +14,7 @@
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import UserIcon from '@lucide/svelte/icons/user';
 	import TagIcon from '@lucide/svelte/icons/tag';
+	import SearchIcon from '@lucide/svelte/icons/search';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -21,6 +22,21 @@
 	let createOpen = $state(false);
 	let createName = $state('');
 	let createSubmitting = $state(false);
+
+	let searchQuery = $state('');
+
+	const filteredPlaylists = $derived(
+		searchQuery.trim().length === 0
+			? data.playlists
+			: data.playlists.filter((p) => p.name.toLowerCase().includes(searchQuery.trim().toLowerCase()))
+	);
+	const filteredSmartPlaylists = $derived(
+		searchQuery.trim().length === 0
+			? data.smartPlaylists
+			: data.smartPlaylists.filter((g) =>
+					g.value.toLowerCase().includes(searchQuery.trim().toLowerCase())
+				)
+	);
 
 	let renameTarget = $state<{ id: string; name: string } | null>(null);
 	let renameValue = $state('');
@@ -139,23 +155,34 @@
 		</Dialog.Root>
 	</div>
 
+	{#if data.playlists.length > 0 || data.smartPlaylists.length > 0}
+		<div class="relative mb-6">
+			<SearchIcon class="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+			<Input placeholder="Search playlists…" bind:value={searchQuery} class="max-w-sm pl-9" />
+		</div>
+	{/if}
+
 	{#if data.playlists.length === 0}
 		<div class="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border py-16 text-center">
 			<ListMusicIcon class="size-8 text-muted-foreground" />
 			<p class="text-sm text-muted-foreground">No playlists yet. Create one, or import from a link.</p>
 			<Button size="sm" variant="outline" onclick={() => (createOpen = true)}>New playlist</Button>
 		</div>
-	{:else}
+	{:else if filteredPlaylists.length > 0}
 		<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-			{#each data.playlists as playlist (playlist.id)}
+			{#each filteredPlaylists as playlist (playlist.id)}
 				<Card.Root
 					class="group relative overflow-hidden py-0 transition-colors hover:border-ring/50"
 				>
 					<a href="/library/{playlist.id}" class="flex flex-col gap-3 p-4">
 						<div
-							class="flex aspect-square items-center justify-center rounded-lg bg-muted transition-transform duration-200 group-hover:scale-[1.02]"
+							class="flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-muted transition-transform duration-200 group-hover:scale-[1.02]"
 						>
-							<ListMusicIcon class="size-8 text-muted-foreground" />
+							{#if playlist.coverUrl}
+								<img src={playlist.coverUrl} alt="" class="size-full object-cover" />
+							{:else}
+								<ListMusicIcon class="size-8 text-muted-foreground" />
+							{/if}
 						</div>
 						<div class="min-w-0">
 							<p class="truncate text-sm font-medium">{playlist.name}</p>
@@ -193,16 +220,22 @@
 		</div>
 	{/if}
 
-	{#if data.smartPlaylists.length > 0}
+	{#if searchQuery.trim().length > 0 && filteredPlaylists.length === 0 && filteredSmartPlaylists.length === 0}
+		<p class="py-8 text-center text-sm text-muted-foreground">No playlists match "{searchQuery}".</p>
+	{/if}
+
+	{#if filteredSmartPlaylists.length > 0}
 		<h2 class="mt-10 mb-4 text-sm font-medium text-muted-foreground">Auto-categorized</h2>
 		<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-			{#each data.smartPlaylists as group (group.id)}
+			{#each filteredSmartPlaylists as group (group.id)}
 				<Card.Root class="group relative overflow-hidden py-0 transition-colors hover:border-ring/50">
 					<a href="/library/smart/{encodeURIComponent(group.id)}" class="flex flex-col gap-3 p-4">
 						<div
-							class="flex aspect-square items-center justify-center rounded-lg bg-muted transition-transform duration-200 group-hover:scale-[1.02]"
+							class="flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-muted transition-transform duration-200 group-hover:scale-[1.02]"
 						>
-							{#if group.field === 'artist'}
+							{#if group.coverUrl}
+								<img src={group.coverUrl} alt="" class="size-full object-cover" />
+							{:else if group.field === 'artist'}
 								<UserIcon class="size-8 text-muted-foreground" />
 							{:else}
 								<TagIcon class="size-8 text-muted-foreground" />

@@ -6,6 +6,7 @@
 	import ShuffleIcon from '@lucide/svelte/icons/shuffle';
 	import ListMusicIcon from '@lucide/svelte/icons/list-music';
 	import ClockIcon from '@lucide/svelte/icons/clock';
+	import MusicIcon from '@lucide/svelte/icons/music';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -27,6 +28,10 @@
 		const m = Math.floor(seconds / 60);
 		const s = Math.floor(seconds % 60);
 		return `${m}:${s.toString().padStart(2, '0')}`;
+	}
+
+	function formatAudioSpec(codec: string, bitrateKbps: number | null): string {
+		return bitrateKbps ? `${codec} · ${bitrateKbps}kbps` : codec;
 	}
 
 	async function playAll(shuffle = false) {
@@ -108,6 +113,14 @@
 						{/if}
 					</button>
 
+					<div class="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
+						{#if song.coverUrl}
+							<img src={song.coverUrl} alt="" class="size-8 object-cover" />
+						{:else}
+							<MusicIcon class="size-3.5 text-muted-foreground" />
+						{/if}
+					</div>
+
 					<div class="min-w-0 flex-1">
 						<p
 							class="truncate text-sm {player.currentTrack?.videoId === song.videoId
@@ -117,6 +130,12 @@
 							{song.title}
 						</p>
 					</div>
+
+					<span
+						class="hidden shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground sm:inline-block"
+					>
+						{formatAudioSpec(song.codec, song.bitrateKbps)}
+					</span>
 
 					<span class="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
 						<ClockIcon class="size-3" />

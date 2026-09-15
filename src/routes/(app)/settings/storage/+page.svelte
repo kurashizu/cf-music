@@ -87,6 +87,8 @@
 		});
 	});
 
+	let lastSelectedIndex = $state<number | null>(null);
+
 	function toggleSelected(videoId: string) {
 		const next = new Set(selected);
 		if (next.has(videoId)) next.delete(videoId);
@@ -96,6 +98,29 @@
 
 	function clearSelection() {
 		selected = new Set();
+		lastSelectedIndex = null;
+	}
+
+	// Same file-manager-style click selection as the playlist detail page:
+	// plain click selects only this row, ctrl/cmd-click toggles it, and
+	// shift-click extends from the last click — against filteredEntries,
+	// the order actually on screen.
+	function handleRowClick(event: MouseEvent, index: number) {
+		const videoId = filteredEntries[index].videoId;
+		if (event.shiftKey && lastSelectedIndex !== null) {
+			const [from, to] = [lastSelectedIndex, index].sort((a, b) => a - b);
+			const next = new Set(selected);
+			for (let i = from; i <= to; i++) next.add(filteredEntries[i].videoId);
+			selected = next;
+			return;
+		}
+		if (event.metaKey || event.ctrlKey) {
+			toggleSelected(videoId);
+			lastSelectedIndex = index;
+			return;
+		}
+		selected = selected.size === 1 && selected.has(videoId) ? new Set() : new Set([videoId]);
+		lastSelectedIndex = index;
 	}
 
 	async function togglePin(videoId: string, currentlyPinned: boolean) {
@@ -333,15 +358,17 @@
 			<p class="py-8 text-center text-sm text-muted-foreground">No songs match "{searchQuery}".</p>
 		{/if}
 		<ul class="flex flex-col">
-			{#each filteredEntries as entry (entry.videoId)}
-				<li class="flex items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-muted">
-					<input
-						type="checkbox"
-						class="size-4 shrink-0 accent-foreground"
-						checked={selected.has(entry.videoId)}
-						onchange={() => toggleSelected(entry.videoId)}
-						aria-label="Select {entry.title}"
-					/>
+			{#each filteredEntries as entry, index (entry.videoId)}
+				<!-- svelte-ignore a11y_click_events_have_key_events -->
+				<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+				<li
+					class="flex items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-muted {selected.has(
+						entry.videoId
+					)
+						? 'bg-muted ring-1 ring-inset ring-ring/50'
+						: ''}"
+					onclick={(e) => handleRowClick(e, index)}
+				>
 					<div class="min-w-0 flex-1">
 						<p class="truncate text-sm">{entry.title}</p>
 						<p class="text-xs text-muted-foreground">
@@ -355,7 +382,10 @@
 							variant="ghost"
 							class="gap-1.5 text-muted-foreground"
 							disabled={workingVideoId === entry.videoId}
-							onclick={() => handleClearCached(entry.videoId)}
+							onclick={(e) => {
+								e.stopPropagation();
+								handleClearCached(entry.videoId);
+							}}
 						>
 							<GlobeIcon class="size-3.5" />
 							Clear
@@ -366,7 +396,10 @@
 							variant="ghost"
 							class="gap-1.5 text-muted-foreground"
 							disabled={workingVideoId === entry.videoId}
-							onclick={() => handleDownload(entry.videoId)}
+							onclick={(e) => {
+								e.stopPropagation();
+								handleDownload(entry.videoId);
+							}}
 						>
 							<DownloadIcon class="size-3.5" />
 							Download
@@ -377,7 +410,10 @@
 						variant={entry.cacheType === 'pinned' ? 'default' : 'outline'}
 						class="gap-1.5"
 						disabled={pendingVideoId === entry.videoId}
-						onclick={() => togglePin(entry.videoId, entry.cacheType === 'pinned')}
+						onclick={(e) => {
+							e.stopPropagation();
+							togglePin(entry.videoId, entry.cacheType === 'pinned');
+						}}
 					>
 						<PinIcon class="size-3.5" />
 						{entry.cacheType === 'pinned' ? 'Pinned' : 'Pin'}
@@ -387,7 +423,10 @@
 						variant="ghost"
 						class="text-muted-foreground hover:text-destructive"
 						disabled={workingVideoId === entry.videoId}
-						onclick={() => handleDeleteOne(entry.videoId)}
+						onclick={(e) => {
+							e.stopPropagation();
+							handleDeleteOne(entry.videoId);
+						}}
 						aria-label="Delete {entry.title} from library"
 					>
 						<Trash2Icon class="size-3.5" />

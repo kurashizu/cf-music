@@ -2,6 +2,7 @@ import { redirect } from '@sveltejs/kit';
 import { getDb } from '$lib/server/db';
 import { listPlaylists } from '$lib/server/library/playlists';
 import { listSmartPlaylists } from '$lib/server/library/smart-playlists';
+import { getObjectStorage } from '$lib/server/storage/factory';
 import type { PageServerLoad } from './$types';
 
 // Sibling `load` functions in a route's layout chain run in parallel, not
@@ -21,5 +22,25 @@ export const load: PageServerLoad = async ({ platform, locals }) => {
 		listSmartPlaylists(db, locals.session.userId)
 	]);
 
-	return { playlists, smartPlaylists };
+	// Playlists/smart playlists carry a member song's raw coverKey (see
+	// listPlaylists/listSmartPlaylists) as their auto-generated thumbnail —
+	// same presign-on-the-server pattern as the playlist detail page, since
+	// only the server has the storage credentials to sign it.
+	const storage = getObjectStorage(platform!.env);
+	const [playlistsWithCovers, smartPlaylistsWithCovers] = await Promise.all([
+		Promise.all(
+			playlists.map(async (playlist) => ({
+				...playlist,
+				coverUrl: playlist.coverKey ? await storage.presignGetUrl(playlist.coverKey) : null
+			}))
+		),
+		Promise.all(
+			smartPlaylists.map(async (group) => ({
+				...group,
+				coverUrl: group.coverKey ? await storage.presignGetUrl(group.coverKey) : null
+			}))
+		)
+	]);
+
+	return { playlists: playlistsWithCovers, smartPlaylists: smartPlaylistsWithCovers };
 };
