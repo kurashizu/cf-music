@@ -3,7 +3,13 @@
 	// weeks, intensity = play count that day. Deliberately calendar-shaped
 	// (not a bar chart) since the point is spotting streaks/gaps at a
 	// glance, which a bar chart of the same data doesn't convey as well.
-	let { counts, weeks = 18 }: { counts: Map<string, number>; weeks?: number } = $props();
+	//
+	// weeks defaults higher than GitHub's own ~52 would suggest for a
+	// personal library's play history, and the cell size below is
+	// deliberately larger than GitHub's tiny squares — at GitHub's own
+	// density this grid renders far narrower than the card it sits in,
+	// leaving a big dead strip of empty card to its right.
+	let { counts, weeks = 26 }: { counts: Map<string, number>; weeks?: number } = $props();
 
 	interface Day {
 		date: string;
@@ -65,12 +71,12 @@
 	}
 </script>
 
-<div class="flex gap-[3px] overflow-x-auto pb-1">
+<div class="flex justify-between gap-1.5 overflow-x-auto pb-1 sm:gap-2">
 	{#each columns as column, i (i)}
-		<div class="flex flex-col gap-[3px]">
+		<div class="flex flex-1 flex-col gap-1.5 sm:gap-2">
 			{#each column as day (day.date)}
 				<div
-					class="group relative size-2.5 rounded-sm {intensityClass(day.count)} transition-transform hover:scale-125"
+					class="group relative aspect-square w-full min-w-3 rounded-sm {intensityClass(day.count)} transition-transform hover:scale-125"
 					role="presentation"
 				>
 					<div

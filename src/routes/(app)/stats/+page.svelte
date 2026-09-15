@@ -257,19 +257,23 @@
 					<span class="text-2xl font-medium">{formatBytes(totalBytes)}</span>
 					<div class="mt-1 h-1 overflow-hidden rounded-full bg-muted">
 						<div
-							class="h-full rounded-full bg-foreground transition-all duration-500"
+							class="h-full rounded-full transition-all duration-500 {usagePercent > 90
+								? 'bg-amber-400'
+								: 'bg-sky-400'}"
 							style="width: {usagePercent}%"
 						></div>
 					</div>
 				</Card.Content>
 			</Card.Root>
-			<Card.Root class="transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-md">
+			<Card.Root
+				class="transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-md"
+			>
 				<Card.Content class="flex flex-col gap-1">
-					<span class="flex items-center gap-1.5 text-xs text-muted-foreground">
+					<span class="flex items-center gap-1.5 text-xs text-sky-400/80">
 						<TrendingUpIcon class="size-3.5" />
 						Total plays
 					</span>
-					<span class="text-2xl font-medium">{totalPlays}</span>
+					<span class="text-2xl font-medium text-sky-400">{totalPlays}</span>
 				</Card.Content>
 			</Card.Root>
 		</div>
@@ -295,13 +299,15 @@
 
 		<div class="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
 			<Card.Root class="lg:col-span-2">
-				<Card.Content>
+				<Card.Content class="flex h-full flex-col">
 					<div class="mb-3 flex items-center gap-1.5">
 						<FlameIcon class="size-3.5 text-muted-foreground" />
 						<h2 class="text-sm font-medium">Recently played</h2>
 						<span class="text-xs text-muted-foreground">— by last-played date</span>
 					</div>
-					<ActivityHeatmap counts={lastPlayedCounts} />
+					<div class="flex flex-1 flex-col justify-center">
+						<ActivityHeatmap counts={lastPlayedCounts} />
+					</div>
 				</Card.Content>
 			</Card.Root>
 
