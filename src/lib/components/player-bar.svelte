@@ -14,6 +14,7 @@
 	import SpectrumVisualizer from '$lib/components/spectrum-visualizer.svelte';
 	import QueuePanel from '$lib/components/queue-panel.svelte';
 	import QueueTriggerButton from '$lib/components/queue-trigger-button.svelte';
+	import OutputDeviceMenu from '$lib/components/output-device-menu.svelte';
 
 	function formatAudioSpec(spec: typeof player.audioSpec): string {
 		if (!spec) return '';
@@ -157,6 +158,8 @@
 		</div>
 
 		<VolumeControl />
+
+		<OutputDeviceMenu />
 
 		<div class="hidden items-center gap-1 sm:flex">
 			<Tooltip.Root>
