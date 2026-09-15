@@ -254,6 +254,23 @@ export async function removeSongFromPlaylist(
 		.where(and(eq(playlistSongs.playlistId, playlistId), eq(playlistSongs.videoId, videoId)));
 }
 
+/**
+ * Moves a song from one playlist to another, both owned by the same
+ * user — adds it to the target first (so a failure partway through leaves
+ * the song still reachable rather than vanishing from both), then removes
+ * it from the source via removeSongFromPlaylist, which is what actually
+ * rejects moving *out of* the default playlist (see its own guard).
+ */
+export async function moveSongToPlaylist(
+	db: Db,
+	userId: string,
+	fromPlaylistId: string,
+	toPlaylistId: string,
+	videoId: string
+): Promise<void> {
+	await addSongToPlaylist(db, toPlaylistId, userId, videoId);
+	await removeSongFromPlaylist(db, fromPlaylistId, userId, videoId);
+}
 
 /**
  * Reorders a playlist to exactly match `orderedVideoIds`. Every video id

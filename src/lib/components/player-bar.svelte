@@ -17,14 +17,57 @@
 		return `${m}:${s.toString().padStart(2, '0')}`;
 	}
 
-	function handleSeek(event: Event) {
-		const value = Number((event.target as HTMLInputElement).value);
-		player.seekTo(value);
+	let seekTrack: HTMLDivElement | undefined = $state();
+	let dragging = $state(false);
+	let dragPercent = $state(0);
+
+	function percentFromPointer(clientX: number): number {
+		if (!seekTrack) return 0;
+		const rect = seekTrack.getBoundingClientRect();
+		return Math.min(100, Math.max(0, ((clientX - rect.left) / rect.width) * 100));
 	}
 
-	const progressPercent = $derived(
+	function seekToPercent(percent: number) {
+		if (player.durationSeconds <= 0) return;
+		player.seekTo((percent / 100) * player.durationSeconds);
+	}
+
+	function handlePointerDown(event: PointerEvent) {
+		if (player.durationSeconds <= 0) return;
+		dragging = true;
+		dragPercent = percentFromPointer(event.clientX);
+		(event.target as HTMLElement).setPointerCapture(event.pointerId);
+	}
+
+	function handlePointerMove(event: PointerEvent) {
+		if (!dragging) return;
+		dragPercent = percentFromPointer(event.clientX);
+	}
+
+	function handlePointerUp(event: PointerEvent) {
+		if (!dragging) return;
+		dragging = false;
+		seekToPercent(percentFromPointer(event.clientX));
+		(event.target as HTMLElement).releasePointerCapture(event.pointerId);
+	}
+
+	function handleTrackKeydown(event: KeyboardEvent) {
+		if (player.durationSeconds <= 0) return;
+		const stepSeconds = event.shiftKey ? 10 : 5;
+		if (event.key === 'ArrowRight') {
+			player.seekTo(Math.min(player.durationSeconds, player.currentTimeSeconds + stepSeconds));
+		} else if (event.key === 'ArrowLeft') {
+			player.seekTo(Math.max(0, player.currentTimeSeconds - stepSeconds));
+		} else {
+			return;
+		}
+		event.preventDefault();
+	}
+
+	const actualPercent = $derived(
 		player.durationSeconds > 0 ? (player.currentTimeSeconds / player.durationSeconds) * 100 : 0
 	);
+	const progressPercent = $derived(dragging ? dragPercent : actualPercent);
 </script>
 
 {#if player.currentTrack}
@@ -32,17 +75,38 @@
 	     whatever's otherwise at the bottom of the viewport; not needed on
 	     desktop, where that nav doesn't exist. -->
 	<div class="mb-14 shrink-0 border-t border-border bg-card/95 backdrop-blur-sm md:mb-0">
-		<!-- Seek bar spans the full width, as a subtle top edge of the player -->
-		<input
-			type="range"
-			min="0"
-			max={player.durationSeconds || 0}
-			value={player.currentTimeSeconds}
-			oninput={handleSeek}
-			class="h-1 w-full cursor-pointer appearance-none bg-transparent accent-foreground [&::-webkit-slider-runnable-track]:h-1 [&::-webkit-slider-runnable-track]:bg-muted [&::-webkit-slider-thumb]:size-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-foreground"
-			style="background: linear-gradient(to right, var(--color-foreground) {progressPercent}%, var(--color-muted) {progressPercent}%)"
+		<!-- Custom seek track (not a native <input type="range">, whose
+		     browser-default styling looked out of place against the rest of
+		     the app's own progress-bar visual language elsewhere — e.g. the
+		     storage usage bars). A group of nested divs plus pointer events
+		     instead, matching that same h-1.5/rounded-full/bg-muted look. -->
+		<div
+			bind:this={seekTrack}
+			role="slider"
+			tabindex="0"
 			aria-label="Seek"
-		/>
+			aria-valuemin={0}
+			aria-valuemax={Math.round(player.durationSeconds)}
+			aria-valuenow={Math.round(player.currentTimeSeconds)}
+			class="group/seek relative h-3 w-full cursor-pointer touch-none px-3 md:px-4"
+			onpointerdown={handlePointerDown}
+			onpointermove={handlePointerMove}
+			onpointerup={handlePointerUp}
+			onkeydown={handleTrackKeydown}
+		>
+			<div class="absolute inset-x-3 top-1/2 h-1 -translate-y-1/2 overflow-hidden rounded-full bg-muted md:inset-x-4">
+				<div
+					class="h-full rounded-full bg-foreground {dragging ? '' : 'transition-[width] duration-150'}"
+					style="width: {progressPercent}%"
+				></div>
+			</div>
+			<div
+				class="absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-foreground opacity-0 shadow-sm transition-opacity group-hover/seek:opacity-100 {dragging
+					? 'opacity-100'
+					: ''}"
+				style="left: calc(0.75rem + (100% - 1.5rem) * {progressPercent / 100})"
+			></div>
+		</div>
 
 		<div class="flex items-center gap-3 px-3 py-2 md:px-4">
 			<div class="flex size-10 shrink-0 items-center justify-center rounded-md bg-muted">

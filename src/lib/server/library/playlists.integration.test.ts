@@ -10,6 +10,7 @@ import {
 	deletePlaylist,
 	addSongToPlaylist,
 	removeSongFromPlaylist,
+	moveSongToPlaylist,
 	reorderPlaylist,
 	isSongInUserLibrary,
 	ensureDefaultPlaylist,
@@ -316,6 +317,45 @@ describe('removeSongFromPlaylist', () => {
 
 		const playlist = await getPlaylistWithSongs(db, id, 'u1');
 		expect(playlist.songs).toHaveLength(1);
+	});
+});
+
+describe('moveSongToPlaylist', () => {
+	it('adds the song to the target and removes it from the source', async () => {
+		await seedUser('u1');
+		await seedSong('a');
+		const { id: from } = await createPlaylist(db, { userId: 'u1', name: 'From' });
+		const { id: to } = await createPlaylist(db, { userId: 'u1', name: 'To' });
+		await addSongToPlaylist(db, from, 'u1', 'a');
+
+		await moveSongToPlaylist(db, 'u1', from, to, 'a');
+
+		const fromPlaylist = await getPlaylistWithSongs(db, from, 'u1');
+		const toPlaylist = await getPlaylistWithSongs(db, to, 'u1');
+		expect(fromPlaylist.songs).toHaveLength(0);
+		expect(toPlaylist.songs.map((s) => s.videoId)).toEqual(['a']);
+	});
+
+	it('rejects moving a song out of the default playlist, leaving both playlists untouched', async () => {
+		await seedUser('u1');
+		await seedSong('a');
+		const { id: defaultPlaylistId } = await ensureDefaultPlaylist(db, 'u1');
+		const { id: to } = await createPlaylist(db, { userId: 'u1', name: 'To' });
+		await addSongToPlaylist(db, defaultPlaylistId, 'u1', 'a');
+
+		await expect(moveSongToPlaylist(db, 'u1', defaultPlaylistId, to, 'a')).rejects.toThrow(LibraryError);
+
+		const defaultPlaylist = await getPlaylistWithSongs(db, defaultPlaylistId, 'u1');
+		const toPlaylist = await getPlaylistWithSongs(db, to, 'u1');
+		expect(defaultPlaylist.songs.map((s) => s.videoId)).toEqual(['a']);
+		// addSongToPlaylist ran (into `to`) before the removal from the
+		// default playlist was rejected — the song ends up copied into
+		// `to` as a side effect, not "nothing happened at all". That's
+		// consistent with moveSongToPlaylist's own doc comment: the add
+		// happens first specifically so a failure partway through never
+		// loses the song, even though here it means the "move" partially
+		// succeeded as a copy.
+		expect(toPlaylist.songs.map((s) => s.videoId)).toEqual(['a']);
 	});
 });
 

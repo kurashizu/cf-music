@@ -54,17 +54,20 @@
 	let deleteTarget = $state<{ videoId: string; title: string } | null>(null);
 	let deleteSubmitting = $state(false);
 	let downloadingVideoId = $state<string | null>(null);
-	let copyTarget = $state<string | null>(null); // videoId, or null when copying the current selection
+	let copyTarget = $state<string | null>(null); // videoId, or null when copying/moving the current selection
 	let copyDialogOpen = $state(false);
+	let copyDialogMode = $state<'copy' | 'move'>('copy');
 	let copySubmitting = $state(false);
 
-	function openCopyDialogForSong(videoId: string) {
+	function openCopyDialogForSong(videoId: string, mode: 'copy' | 'move') {
 		copyTarget = videoId;
+		copyDialogMode = mode;
 		copyDialogOpen = true;
 	}
 
-	function openCopyDialogForSelection() {
+	function openCopyDialogForSelection(mode: 'copy' | 'move') {
 		copyTarget = null;
+		copyDialogMode = mode;
 		copyDialogOpen = true;
 	}
 
@@ -88,6 +91,22 @@
 	);
 
 	let lastSelectedIndex = $state<number | null>(null);
+
+	// "Select all" only ever targets what's actually visible (the filtered/
+	// searched view) — selecting rows hidden by a search would be
+	// surprising, since the toolbar's count wouldn't match what's on screen.
+	const allVisibleSelected = $derived(
+		visibleIndices.length > 0 && visibleIndices.every((i) => selected.has(songs[i].videoId))
+	);
+
+	function toggleSelectAll() {
+		if (allVisibleSelected) {
+			clearSelection();
+			return;
+		}
+		selected = new Set(visibleIndices.map((i) => songs[i].videoId));
+		lastSelectedIndex = visibleIndices[visibleIndices.length - 1] ?? null;
+	}
 
 	function toggleSelected(videoId: string) {
 		const next = new Set(selected);
@@ -208,12 +227,15 @@
 		}
 	}
 
-	// copyTarget === null means "copy the current selection"; otherwise
-	// it's a single song's videoId (from a row's own dropdown menu).
-	async function handleCopy(toPlaylistId: string) {
-		const isBatchCopy = copyTarget === null;
-		const videoIds = isBatchCopy ? [...selected] : [copyTarget];
+	// copyTarget === null means "act on the current selection"; otherwise
+	// it's a single song's videoId (from a row's own dropdown menu). Shared
+	// by both Copy To and Move To — copyDialogMode decides which the
+	// server actually does (see the PUT route's own mode handling).
+	async function handleCopyOrMove(toPlaylistId: string) {
+		const isBatch = copyTarget === null;
+		const videoIds = isBatch ? [...selected] : [copyTarget];
 		if (videoIds.length === 0) return;
+		const mode = copyDialogMode;
 		copySubmitting = true;
 		try {
 			const results = await Promise.all(
@@ -221,21 +243,23 @@
 					fetch(`/api/playlists/${data.playlist.id}/songs/${videoId}`, {
 						method: 'PUT',
 						headers: { 'content-type': 'application/json' },
-						body: JSON.stringify({ toPlaylistId })
+						body: JSON.stringify({ toPlaylistId, mode })
 					})
 				)
 			);
 			const failures = results.filter((r) => !r.ok).length;
+			const verb = mode === 'move' ? 'Moved' : 'Copied';
 			toast[failures === 0 ? 'success' : 'error'](
 				failures === 0
 					? videoIds.length === 1
-						? 'Copied to playlist'
-						: `Copied ${videoIds.length} songs`
-					: `Failed to copy ${failures} song(s)`
+						? `${verb} to playlist`
+						: `${verb} ${videoIds.length} songs`
+					: `Failed to ${mode} ${failures} song(s)`
 			);
 			copyDialogOpen = false;
 			copyTarget = null;
-			if (isBatchCopy) clearSelection();
+			if (mode === 'move' || isBatch) await invalidateAll();
+			if (isBatch) clearSelection();
 		} finally {
 			copySubmitting = false;
 		}
@@ -390,9 +414,14 @@
 	</div>
 
 	{#if songs.length > 0}
-		<div class="relative mb-3">
-			<SearchIcon class="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-			<Input placeholder="Search songs…" bind:value={searchQuery} class="pl-9" />
+		<div class="mb-3 flex items-center gap-2">
+			<div class="relative flex-1">
+				<SearchIcon class="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+				<Input placeholder="Search songs…" bind:value={searchQuery} class="pl-9" />
+			</div>
+			<Button size="sm" variant="outline" onclick={toggleSelectAll}>
+				{allVisibleSelected ? 'Deselect all' : 'Select all'}
+			</Button>
 		</div>
 	{/if}
 
@@ -423,11 +452,23 @@
 						variant="outline"
 						class="gap-1.5"
 						disabled={batchWorking}
-						onclick={openCopyDialogForSelection}
+						onclick={() => openCopyDialogForSelection('copy')}
 					>
 						<ListMusicIcon class="size-3.5" />
 						Copy to…
 					</Button>
+					{#if !data.isDefaultPlaylist}
+						<Button
+							size="sm"
+							variant="outline"
+							class="gap-1.5"
+							disabled={batchWorking}
+							onclick={() => openCopyDialogForSelection('move')}
+						>
+							<ListMusicIcon class="size-3.5" />
+							Move to…
+						</Button>
+					{/if}
 				{/if}
 				{#if !data.isDefaultPlaylist}
 					<Button
@@ -574,10 +615,16 @@
 							</DropdownMenu.Trigger>
 						<DropdownMenu.Content align="end" class="min-w-52">
 							{#if data.otherPlaylists.length > 0}
-								<DropdownMenu.Item onclick={() => openCopyDialogForSong(song.videoId)}>
+								<DropdownMenu.Item onclick={() => openCopyDialogForSong(song.videoId, 'copy')}>
 									<ListMusicIcon class="size-4" />
 									Copy to playlist…
 								</DropdownMenu.Item>
+								{#if !data.isDefaultPlaylist}
+									<DropdownMenu.Item onclick={() => openCopyDialogForSong(song.videoId, 'move')}>
+										<ListMusicIcon class="size-4" />
+										Move to playlist…
+									</DropdownMenu.Item>
+								{/if}
 							{/if}
 							{#if !data.isDefaultPlaylist}
 								<DropdownMenu.Item
@@ -612,10 +659,12 @@
 >
 	<Dialog.Content class="sm:max-w-sm">
 		<Dialog.Header>
-			<Dialog.Title>Copy to playlist</Dialog.Title>
+			<Dialog.Title>{copyDialogMode === 'move' ? 'Move' : 'Copy'} to playlist</Dialog.Title>
 			<Dialog.Description>
-				{copyTarget !== null ? 'This song' : `${selected.size} song(s)`} will also be added to the
-				playlist you pick — it stays here too.
+				{copyTarget !== null ? 'This song' : `${selected.size} song(s)`}
+				{copyDialogMode === 'move'
+					? 'will be moved to the playlist you pick, removed from here.'
+					: 'will also be added to the playlist you pick — it stays here too.'}
 			</Dialog.Description>
 		</Dialog.Header>
 		<ul class="flex max-h-64 flex-col gap-1 overflow-y-auto">
@@ -625,7 +674,7 @@
 						variant="outline"
 						class="w-full justify-start"
 						disabled={copySubmitting}
-						onclick={() => handleCopy(playlist.id)}
+						onclick={() => handleCopyOrMove(playlist.id)}
 					>
 						{playlist.name}
 					</Button>

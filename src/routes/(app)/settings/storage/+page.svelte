@@ -11,6 +11,7 @@
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import XIcon from '@lucide/svelte/icons/x';
 	import SearchIcon from '@lucide/svelte/icons/search';
+	import ListMusicIcon from '@lucide/svelte/icons/list-music';
 	import {
 		reconcileAudioCache,
 		listCachedVideoIds,
@@ -32,6 +33,19 @@
 	let batchWorking = $state(false);
 	let batchDeleteConfirm = $state(false);
 	let searchQuery = $state('');
+	let copyTarget = $state<string | null>(null); // videoId, or null when copying the current selection
+	let copyDialogOpen = $state(false);
+	let copySubmitting = $state(false);
+
+	function openCopyDialogForSong(videoId: string) {
+		copyTarget = videoId;
+		copyDialogOpen = true;
+	}
+
+	function openCopyDialogForSelection() {
+		copyTarget = null;
+		copyDialogOpen = true;
+	}
 
 	const filteredEntries = $derived(
 		searchQuery.trim().length === 0
@@ -77,6 +91,19 @@
 	});
 
 	let lastSelectedIndex = $state<number | null>(null);
+
+	const allVisibleSelected = $derived(
+		filteredEntries.length > 0 && filteredEntries.every((e) => selected.has(e.videoId))
+	);
+
+	function toggleSelectAll() {
+		if (allVisibleSelected) {
+			clearSelection();
+			return;
+		}
+		selected = new Set(filteredEntries.map((e) => e.videoId));
+		lastSelectedIndex = filteredEntries.length - 1;
+	}
 
 	function toggleSelected(videoId: string) {
 		const next = new Set(selected);
@@ -182,6 +209,42 @@
 		}
 	}
 
+	// copyTarget === null means "copy the current selection"; otherwise
+	// it's a single song's videoId (from a row's own actions). Always adds
+	// (never removes from anywhere) — this page spans the whole library,
+	// not one playlist, so there's no single "source" a move could remove
+	// the song from.
+	async function handleCopy(toPlaylistId: string) {
+		const isBatchCopy = copyTarget === null;
+		const videoIds = isBatchCopy ? [...selected] : [copyTarget];
+		if (videoIds.length === 0) return;
+		copySubmitting = true;
+		try {
+			const results = await Promise.all(
+				videoIds.map((videoId) =>
+					fetch(`/api/playlists/${toPlaylistId}/songs`, {
+						method: 'POST',
+						headers: { 'content-type': 'application/json' },
+						body: JSON.stringify({ videoId })
+					})
+				)
+			);
+			const failures = results.filter((r) => !r.ok).length;
+			toast[failures === 0 ? 'success' : 'error'](
+				failures === 0
+					? videoIds.length === 1
+						? 'Copied to playlist'
+						: `Copied ${videoIds.length} songs`
+					: `Failed to copy ${failures} song(s)`
+			);
+			copyDialogOpen = false;
+			copyTarget = null;
+			if (isBatchCopy) clearSelection();
+		} finally {
+			copySubmitting = false;
+		}
+	}
+
 	async function handleBatchDelete() {
 		batchWorking = true;
 		try {
@@ -260,9 +323,14 @@
 			<p class="text-sm text-muted-foreground">No songs in your library yet.</p>
 		</div>
 	{:else}
-		<div class="relative mb-3">
-			<SearchIcon class="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-			<Input placeholder="Search songs…" bind:value={searchQuery} class="pl-9" />
+		<div class="mb-3 flex items-center gap-2">
+			<div class="relative flex-1">
+				<SearchIcon class="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+				<Input placeholder="Search songs…" bind:value={searchQuery} class="pl-9" />
+			</div>
+			<Button size="sm" variant="outline" onclick={toggleSelectAll}>
+				{allVisibleSelected ? 'Deselect all' : 'Select all'}
+			</Button>
 		</div>
 
 		{#if selected.size > 0}
@@ -296,6 +364,18 @@
 						<GlobeIcon class="size-3.5" />
 						Clear cache
 					</Button>
+					{#if data.playlists.length > 0}
+						<Button
+							size="sm"
+							variant="outline"
+							class="gap-1.5"
+							disabled={batchWorking}
+							onclick={openCopyDialogForSelection}
+						>
+							<ListMusicIcon class="size-3.5" />
+							Copy to…
+						</Button>
+					{/if}
 					<Button
 						size="sm"
 						variant="destructive"
@@ -361,6 +441,20 @@
 							Download
 						</Button>
 					{/if}
+					{#if data.playlists.length > 0}
+						<Button
+							size="sm"
+							variant="ghost"
+							class="text-muted-foreground"
+							onclick={(e) => {
+								e.stopPropagation();
+								openCopyDialogForSong(entry.videoId);
+							}}
+							aria-label="Copy {entry.title} to playlist"
+						>
+							<ListMusicIcon class="size-3.5" />
+						</Button>
+					{/if}
 					<Button
 						size="sm"
 						variant="ghost"
@@ -379,6 +473,41 @@
 		</ul>
 	{/if}
 </div>
+
+<Dialog.Root
+	open={copyDialogOpen}
+	onOpenChange={(open) => {
+		copyDialogOpen = open;
+		if (!open) copyTarget = null;
+	}}
+>
+	<Dialog.Content class="sm:max-w-sm">
+		<Dialog.Header>
+			<Dialog.Title>Copy to playlist</Dialog.Title>
+			<Dialog.Description>
+				{copyTarget !== null ? 'This song' : `${selected.size} song(s)`} will be added to the playlist
+				you pick.
+			</Dialog.Description>
+		</Dialog.Header>
+		<ul class="flex max-h-64 flex-col gap-1 overflow-y-auto">
+			{#each data.playlists as playlist (playlist.id)}
+				<li>
+					<Button
+						variant="outline"
+						class="w-full justify-start"
+						disabled={copySubmitting}
+						onclick={() => handleCopy(playlist.id)}
+					>
+						{playlist.name}
+					</Button>
+				</li>
+			{/each}
+		</ul>
+		<Dialog.Footer>
+			<Button variant="outline" onclick={() => (copyDialogOpen = false)}>Cancel</Button>
+		</Dialog.Footer>
+	</Dialog.Content>
+</Dialog.Root>
 
 <Dialog.Root open={batchDeleteConfirm} onOpenChange={(open) => !open && (batchDeleteConfirm = false)}>
 	<Dialog.Content class="sm:max-w-sm">
