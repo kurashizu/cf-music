@@ -119,14 +119,6 @@ export const playlistSongs = sqliteTable('playlist_songs', {
 // library (see evictSongForUser), so its scoring input needs to be that
 // same user's own history, not everyone's combined.
 //
-// cache_type distinguishes lazy (evictable) caching from pinned
-// (user-requested, never auto-cleared) — this only records "the user's
-// caching intent"; actual IndexedDB contents are the browser's own source
-// of truth and don't sync across devices. Unlike the old standalone
-// cache_preferences table, unpinning no longer deletes the row once it
-// might also be carrying play history — it resets cache_type back to
-// 'lazy' instead (see setCachePreference). A missing row now means "never
-// played and never pinned", not "currently lazy".
 export const userSongs = sqliteTable('user_songs', {
 	userId: text('user_id')
 		.notNull()
@@ -136,7 +128,6 @@ export const userSongs = sqliteTable('user_songs', {
 		.references(() => songs.videoId, { onDelete: 'cascade' }),
 	playCount: integer('play_count').notNull().default(0),
 	lastPlayedAt: text('last_played_at'),
-	cacheType: text('cache_type', { enum: ['lazy', 'pinned'] }).notNull().default('lazy'),
 	updatedAt: text('updated_at')
 		.notNull()
 		.default(sql`(current_timestamp)`)

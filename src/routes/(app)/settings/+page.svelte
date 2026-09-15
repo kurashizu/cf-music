@@ -97,7 +97,7 @@
 					</div>
 				{/if}
 				<p class="mt-2 text-xs text-muted-foreground">
-					Manage which songs are stored in the cloud and pinned for offline playback.
+					Manage which songs are stored in the cloud and downloaded for offline playback.
 				</p>
 			</Card.Content>
 		</Card.Root>

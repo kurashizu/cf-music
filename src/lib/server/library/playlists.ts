@@ -126,6 +126,26 @@ export async function isSongInUserLibrary(db: Db, userId: string, videoId: strin
 	return row !== undefined;
 }
 
+export interface LibrarySongSummary {
+	videoId: string;
+	title: string;
+	fileSizeBytes: number;
+}
+
+/** Every distinct song reachable through any of userId's playlists — the storage management page's song list. */
+export async function listUserLibrarySongs(db: Db, userId: string): Promise<LibrarySongSummary[]> {
+	return db
+		.selectDistinct({
+			videoId: songs.videoId,
+			title: songs.title,
+			fileSizeBytes: songs.fileSizeBytes
+		})
+		.from(playlistSongs)
+		.innerJoin(playlists, eq(playlistSongs.playlistId, playlists.id))
+		.innerJoin(songs, eq(playlistSongs.videoId, songs.videoId))
+		.where(eq(playlists.userId, userId));
+}
+
 /** Fetches a playlist owned by the given user, or throws if missing/not owned. */
 async function getOwnedPlaylist(db: Db, playlistId: string, userId: string) {
 	const playlist = await db.query.playlists.findFirst({

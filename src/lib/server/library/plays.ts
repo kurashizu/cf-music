@@ -14,9 +14,7 @@ import { userSongs } from '../db/schema';
  * user/song racing each other (e.g. a flaky connection causing a client
  * retry) both need to land as +1 each, not clobber one another — the
  * conflict clause's `+ 1` runs against the already-serialized row, not a
- * value read earlier in application code. Only touches the play-related
- * columns — cache_type (see setCachePreference in cache/preferences.ts)
- * is a separate concern sharing this same row and is left untouched here.
+ * value read earlier in application code.
  */
 export async function recordSongPlay(db: Db, userId: string, videoId: string): Promise<void> {
 	const now = new Date().toISOString();

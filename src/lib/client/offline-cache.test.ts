@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { reconcileAudioCache, precachePinnedSongs, estimateBrowserStorage } from './offline-cache';
+import { reconcileAudioCache, downloadSongForOffline, estimateBrowserStorage } from './offline-cache';
 
 /**
  * Minimal fake of the one thing these functions actually touch on
@@ -90,58 +90,38 @@ describe('reconcileAudioCache', () => {
 	});
 });
 
-describe('precachePinnedSongs', () => {
-	it('does nothing when serviceWorker is not supported', async () => {
+describe('downloadSongForOffline', () => {
+	it('returns false when serviceWorker is not supported', async () => {
 		vi.stubGlobal('navigator', {});
-		await precachePinnedSongs(['a']);
+		expect(await downloadSongForOffline('a')).toBe(false);
 		expect(fetch).not.toHaveBeenCalled();
 	});
 
-	it('does nothing for an empty list', async () => {
-		installFakeServiceWorker();
-		await precachePinnedSongs([]);
-		expect(fetch).not.toHaveBeenCalled();
-	});
-
-	it('fetches a stream URL and forwards PRECACHE_AUDIO for each pinned song', async () => {
+	it('fetches a stream URL and forwards PRECACHE_AUDIO, returning true on success', async () => {
 		const { sentMessages } = installFakeServiceWorker();
 		vi.mocked(fetch).mockResolvedValue({
 			ok: true,
 			json: async () => ({ audioUrl: 'https://signed.example/a' })
 		} as Response);
 
-		await precachePinnedSongs(['a']);
+		expect(await downloadSongForOffline('a')).toBe(true);
 
 		expect(fetch).toHaveBeenCalledWith('/api/stream-url/a');
 		expect(sentMessages).toEqual([{ type: 'PRECACHE_AUDIO', videoId: 'a', audioUrl: 'https://signed.example/a' }]);
 	});
 
-	it('skips a song whose stream-url fetch responds non-ok, without stopping the rest', async () => {
-		const { sentMessages } = installFakeServiceWorker();
-		vi.mocked(fetch)
-			.mockResolvedValueOnce({ ok: false } as Response)
-			.mockResolvedValueOnce({
-				ok: true,
-				json: async () => ({ audioUrl: 'https://signed.example/b' })
-			} as Response);
+	it('returns false when the stream-url fetch responds non-ok', async () => {
+		installFakeServiceWorker();
+		vi.mocked(fetch).mockResolvedValue({ ok: false } as Response);
 
-		await precachePinnedSongs(['a', 'b']);
-
-		expect(sentMessages).toEqual([{ type: 'PRECACHE_AUDIO', videoId: 'b', audioUrl: 'https://signed.example/b' }]);
+		expect(await downloadSongForOffline('a')).toBe(false);
 	});
 
-	it('continues past a fetch that throws, without stopping the rest', async () => {
-		const { sentMessages } = installFakeServiceWorker();
-		vi.mocked(fetch)
-			.mockRejectedValueOnce(new Error('network error'))
-			.mockResolvedValueOnce({
-				ok: true,
-				json: async () => ({ audioUrl: 'https://signed.example/b' })
-			} as Response);
+	it('returns false when the fetch throws', async () => {
+		installFakeServiceWorker();
+		vi.mocked(fetch).mockRejectedValue(new Error('network error'));
 
-		await precachePinnedSongs(['a', 'b']);
-
-		expect(sentMessages).toEqual([{ type: 'PRECACHE_AUDIO', videoId: 'b', audioUrl: 'https://signed.example/b' }]);
+		expect(await downloadSongForOffline('a')).toBe(false);
 	});
 });
 

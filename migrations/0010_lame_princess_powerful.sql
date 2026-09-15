@@ -1,0 +1,1 @@
+ALTER TABLE `user_songs` DROP COLUMN `cache_type`;

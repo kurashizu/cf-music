@@ -7,13 +7,11 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import HardDriveIcon from '@lucide/svelte/icons/hard-drive';
 	import GlobeIcon from '@lucide/svelte/icons/globe';
-	import PinIcon from '@lucide/svelte/icons/pin';
 	import DownloadIcon from '@lucide/svelte/icons/download';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import XIcon from '@lucide/svelte/icons/x';
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import {
-		precachePinnedSongs,
 		reconcileAudioCache,
 		listCachedVideoIds,
 		clearCachedAudio,
@@ -25,11 +23,7 @@
 
 	let { data }: PageProps = $props();
 
-	// Seeded once from the server-loaded list, then updated locally via
-	// togglePin's optimistic write — see the playlist detail page for the
-	// same pattern (and why untrack, not a $derived, is the right tool here).
 	let entries = $state(untrack(() => data.entries));
-	let pendingVideoId = $state<string | null>(null);
 	let cachedVideoIds = $state<Set<string>>(new Set());
 	let workingVideoId = $state<string | null>(null);
 	let browserStorage = $state<StorageEstimate | null>(null);
@@ -71,15 +65,10 @@
 			browserStorage = estimate;
 		});
 
-		// Best-effort background warm-up — not awaited, since there's
-		// nothing on this page that needs to block on it finishing.
-		const pinnedVideoIds = entries.filter((e) => e.cacheType === 'pinned').map((e) => e.videoId);
-		precachePinnedSongs(pinnedVideoIds);
-
 		// Reconciles the service worker's audio cache against this page's
 		// own account-storage view of the library — see reconcileAudioCache
-		// for why a song removed from the library entirely (not just
-		// unpinned) can otherwise leave its cached bytes behind forever.
+		// for why a song removed from the library entirely can otherwise
+		// leave its cached bytes behind forever.
 		reconcileAudioCache(entries.map((e) => e.videoId));
 
 		listCachedVideoIds().then((ids) => {
@@ -101,10 +90,9 @@
 		lastSelectedIndex = null;
 	}
 
-	// Same file-manager-style click selection as the playlist detail page:
-	// plain click selects only this row, ctrl/cmd-click toggles it, and
-	// shift-click extends from the last click — against filteredEntries,
-	// the order actually on screen.
+	// File-manager-style click selection: plain click selects only this
+	// row, ctrl/cmd-click toggles it, and shift-click extends from the
+	// last click — against filteredEntries, the order actually on screen.
 	function handleRowClick(event: MouseEvent, index: number) {
 		const videoId = filteredEntries[index].videoId;
 		if (event.shiftKey && lastSelectedIndex !== null) {
@@ -121,38 +109,6 @@
 		}
 		selected = selected.size === 1 && selected.has(videoId) ? new Set() : new Set([videoId]);
 		lastSelectedIndex = index;
-	}
-
-	async function togglePin(videoId: string, currentlyPinned: boolean) {
-		pendingVideoId = videoId;
-		try {
-			const response = await fetch(`/api/cache/${videoId}`, {
-				method: 'PUT',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ cacheType: currentlyPinned ? 'lazy' : 'pinned' })
-			});
-			if (!response.ok) {
-				toast.error('Failed to update cache preference');
-				return;
-			}
-			entries = entries.map((entry) =>
-				entry.videoId === videoId
-					? { ...entry, cacheType: currentlyPinned ? 'lazy' : 'pinned' }
-					: entry
-			);
-			if (!currentlyPinned) {
-				// Pinning triggers an immediate offline warm-up rather than
-				// waiting for the next page load; unpinning doesn't evict —
-				// the song stays lazily cached until something else reclaims
-				// the space (see reconcileAudioCache).
-				await downloadSongForOffline(videoId);
-				cachedVideoIds = new Set([...cachedVideoIds, videoId]);
-			}
-		} catch {
-			toast.error('Failed to update cache preference');
-		} finally {
-			pendingVideoId = null;
-		}
 	}
 
 	async function handleDownload(videoId: string) {
@@ -293,8 +249,8 @@
 			<p class="text-xs text-muted-foreground">Not available in this browser.</p>
 		{/if}
 		<p class="mt-2 text-xs text-muted-foreground">
-			Pin a song to keep it downloaded for offline playback. Songs you play are cached
-			temporarily either way, but only pinned songs are kept when space is needed for others.
+			Download a song to keep it available for offline playback. Downloaded songs stay cached
+			until you clear them here.
 		</p>
 	</div>
 
@@ -405,19 +361,6 @@
 							Download
 						</Button>
 					{/if}
-					<Button
-						size="sm"
-						variant={entry.cacheType === 'pinned' ? 'default' : 'outline'}
-						class="gap-1.5"
-						disabled={pendingVideoId === entry.videoId}
-						onclick={(e) => {
-							e.stopPropagation();
-							togglePin(entry.videoId, entry.cacheType === 'pinned');
-						}}
-					>
-						<PinIcon class="size-3.5" />
-						{entry.cacheType === 'pinned' ? 'Pinned' : 'Pin'}
-					</Button>
 					<Button
 						size="sm"
 						variant="ghost"

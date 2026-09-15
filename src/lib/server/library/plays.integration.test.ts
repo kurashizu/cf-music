@@ -4,7 +4,6 @@ import { eq, and } from 'drizzle-orm';
 import { getDb } from '../db';
 import { users, songs, userSongs } from '../db/schema';
 import { recordSongPlay } from './plays';
-import { setCachePreference } from '../cache/preferences';
 
 const db = getDb(env.DB);
 
@@ -85,17 +84,5 @@ describe('recordSongPlay', () => {
 
 		const row = await db.query.userSongs.findFirst({ where: and(eq(userSongs.userId, 'u1'), eq(userSongs.videoId, 'a')) });
 		expect(row?.playCount).toBe(2);
-	});
-
-	it('does not clobber an existing cache_type when recording a play on an already-pinned song', async () => {
-		await seedUser('u1');
-		await seedSong('a');
-		await setCachePreference(db, 'u1', 'a', 'pinned');
-
-		await recordSongPlay(db, 'u1', 'a');
-
-		const row = await db.query.userSongs.findFirst({ where: and(eq(userSongs.userId, 'u1'), eq(userSongs.videoId, 'a')) });
-		expect(row?.playCount).toBe(1);
-		expect(row?.cacheType).toBe('pinned');
 	});
 });

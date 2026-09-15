@@ -29,8 +29,8 @@ sw.addEventListener('activate', (event) => {
 		(async () => {
 			// Drop every cache from a previous deploy except the audio one —
 			// that's keyed by videoId, not by deploy version, and clearing it
-			// on every deploy would defeat the entire point of pinning songs
-			// for offline use.
+			// on every deploy would defeat the entire point of downloading
+			// songs for offline use.
 			for (const key of await caches.keys()) {
 				if (key !== APP_CACHE && key !== AUDIO_CACHE) {
 					await caches.delete(key);
@@ -70,8 +70,8 @@ sw.addEventListener('fetch', (event) => {
 });
 
 /**
- * Explicitly warms the audio cache for a song — used to pre-fetch pinned
- * songs (see cache-preferences.ts) rather than waiting for the user to
+ * Explicitly warms the audio cache for a song — used by the app's
+ * "download for offline" actions rather than waiting for the user to
  * actually play one before it's available offline. Takes the real
  * (presigned) URL to fetch from, since the service worker itself has no
  * way to mint one — that's a signed, authenticated call only the page
@@ -97,11 +97,11 @@ sw.addEventListener('message', (event) => {
 		return;
 	}
 
-	// Reconciliation with account storage (see settings/+page.svelte):
-	// the page knows the user's actual library/pin state, the service
-	// worker only knows what videoIds it happens to have cached — neither
-	// side alone can tell a stale entry (song unpinned, removed from every
-	// playlist, or evicted) from a still-valid one.
+	// Reconciliation with account storage (see settings/storage/+page.svelte):
+	// the page knows the user's actual library, the service worker only
+	// knows what videoIds it happens to have cached — neither side alone
+	// can tell a stale entry (song removed from every playlist, or
+	// evicted) from a still-valid one.
 	if (data?.type === 'LIST_CACHED_AUDIO') {
 		const port = event.ports[0];
 		event.waitUntil(
