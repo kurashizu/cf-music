@@ -17,6 +17,7 @@
 	import DownloadIcon from '@lucide/svelte/icons/download';
 	import XIcon from '@lucide/svelte/icons/x';
 	import SearchIcon from '@lucide/svelte/icons/search';
+	import ListPlusIcon from '@lucide/svelte/icons/list-plus';
 	import { untrack } from 'svelte';
 	import { downloadSongForOffline } from '$lib/client/offline-cache';
 	import { Input } from '$lib/components/ui/input/index.js';
@@ -179,6 +180,24 @@
 			return;
 		}
 		await player.playQueue(toQueueTracks(), index);
+	}
+
+	async function addToQueue(index: number) {
+		const song = songs[index];
+		await player.addToQueue([
+			{ videoId: song.videoId, title: song.title, durationSeconds: song.durationSeconds }
+		]);
+		toast.success('Added to queue');
+	}
+
+	async function addSelectionToQueue() {
+		const tracks = songs
+			.filter((s) => selected.has(s.videoId))
+			.map((s) => ({ videoId: s.videoId, title: s.title, durationSeconds: s.durationSeconds }));
+		if (tracks.length === 0) return;
+		await player.addToQueue(tracks);
+		toast.success(`Added ${tracks.length} song(s) to queue`);
+		clearSelection();
 	}
 
 	async function handleRemove() {
@@ -436,6 +455,10 @@
 				<span class="text-sm text-muted-foreground">{selected.size} selected</span>
 			</div>
 			<div class="flex items-center gap-2">
+				<Button size="sm" variant="outline" class="gap-1.5" onclick={addSelectionToQueue}>
+					<ListPlusIcon class="size-3.5" />
+					Add to queue
+				</Button>
 				<Button
 					size="sm"
 					variant="outline"
@@ -614,6 +637,10 @@
 								{/snippet}
 							</DropdownMenu.Trigger>
 						<DropdownMenu.Content align="end" class="min-w-52">
+							<DropdownMenu.Item onclick={() => addToQueue(index)}>
+								<ListPlusIcon class="size-4" />
+								Add to queue
+							</DropdownMenu.Item>
 							{#if data.otherPlaylists.length > 0}
 								<DropdownMenu.Item onclick={() => openCopyDialogForSong(song.videoId, 'copy')}>
 									<ListMusicIcon class="size-4" />

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { player } from '$lib/client/player.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import PlayIcon from '@lucide/svelte/icons/play';
 	import PauseIcon from '@lucide/svelte/icons/pause';
 	import SkipBackIcon from '@lucide/svelte/icons/skip-back';
@@ -9,6 +10,8 @@
 	import RepeatIcon from '@lucide/svelte/icons/repeat';
 	import Repeat1Icon from '@lucide/svelte/icons/repeat-1';
 	import MusicIcon from '@lucide/svelte/icons/music';
+	import ListMusicIcon from '@lucide/svelte/icons/list-music';
+	import XIcon from '@lucide/svelte/icons/x';
 
 	function formatTime(seconds: number): string {
 		if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
@@ -70,123 +73,178 @@
 	const progressPercent = $derived(dragging ? dragPercent : actualPercent);
 </script>
 
-{#if player.currentTrack}
-	<!-- mb-14 clears the mobile bottom nav, which is fixed and overlays
-	     whatever's otherwise at the bottom of the viewport; not needed on
-	     desktop, where that nav doesn't exist. -->
-	<div class="mb-14 shrink-0 border-t border-border bg-card/95 backdrop-blur-sm md:mb-0">
-		<!-- Custom seek track (not a native <input type="range">, whose
-		     browser-default styling looked out of place against the rest of
-		     the app's own progress-bar visual language elsewhere — e.g. the
-		     storage usage bars). A group of nested divs plus pointer events
-		     instead, matching that same h-1.5/rounded-full/bg-muted look. -->
-		<div
-			bind:this={seekTrack}
-			role="slider"
-			tabindex="0"
-			aria-label="Seek"
-			aria-valuemin={0}
-			aria-valuemax={Math.round(player.durationSeconds)}
-			aria-valuenow={Math.round(player.currentTimeSeconds)}
-			class="group/seek relative h-3 w-full cursor-pointer touch-none px-3 md:px-4"
-			onpointerdown={handlePointerDown}
-			onpointermove={handlePointerMove}
-			onpointerup={handlePointerUp}
-			onkeydown={handleTrackKeydown}
-		>
-			<div class="absolute inset-x-3 top-1/2 h-1 -translate-y-1/2 overflow-hidden rounded-full bg-muted md:inset-x-4">
-				<div
-					class="h-full rounded-full bg-foreground {dragging ? '' : 'transition-[width] duration-150'}"
-					style="width: {progressPercent}%"
-				></div>
-			</div>
+<!-- mb-14 clears the mobile bottom nav, which is fixed and overlays
+     whatever's otherwise at the bottom of the viewport; not needed on
+     desktop, where that nav doesn't exist. Always rendered (not gated on
+     currentTrack) so the queue is reachable — e.g. to start playback from
+     songs added to it — even before anything's actually playing yet. -->
+<div class="mb-14 shrink-0 border-t border-border bg-card/95 backdrop-blur-sm md:mb-0">
+	<!-- Custom seek track (not a native <input type="range">, whose
+	     browser-default styling looked out of place against the rest of
+	     the app's own progress-bar visual language elsewhere — e.g. the
+	     storage usage bars). A group of nested divs plus pointer events
+	     instead, matching that same h-1.5/rounded-full/bg-muted look. -->
+	<div
+		bind:this={seekTrack}
+		role="slider"
+		tabindex="0"
+		aria-label="Seek"
+		aria-valuemin={0}
+		aria-valuemax={Math.round(player.durationSeconds)}
+		aria-valuenow={Math.round(player.currentTimeSeconds)}
+		class="group/seek relative h-3 w-full touch-none px-3 md:px-4 {player.currentTrack
+			? 'cursor-pointer'
+			: 'pointer-events-none'}"
+		onpointerdown={handlePointerDown}
+		onpointermove={handlePointerMove}
+		onpointerup={handlePointerUp}
+		onkeydown={handleTrackKeydown}
+	>
+		<div class="absolute inset-x-3 top-1/2 h-1 -translate-y-1/2 overflow-hidden rounded-full bg-muted md:inset-x-4">
 			<div
-				class="absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-foreground opacity-0 shadow-sm transition-opacity group-hover/seek:opacity-100 {dragging
-					? 'opacity-100'
-					: ''}"
-				style="left: calc(0.75rem + (100% - 1.5rem) * {progressPercent / 100})"
+				class="h-full rounded-full bg-foreground {dragging ? '' : 'transition-[width] duration-150'}"
+				style="width: {progressPercent}%"
 			></div>
 		</div>
-
-		<div class="flex items-center gap-3 px-3 py-2 md:px-4">
-			<div class="flex size-10 shrink-0 items-center justify-center rounded-md bg-muted">
-				{#if player.coverUrl}
-					<img src={player.coverUrl} alt="" class="size-10 rounded-md object-cover" />
-				{:else}
-					<MusicIcon class="size-4 text-muted-foreground" />
-				{/if}
-			</div>
-
-			<div class="min-w-0 flex-1">
-				<p class="truncate text-sm font-medium">{player.currentTrack.title}</p>
-				<p class="text-xs text-muted-foreground">
-					{formatTime(player.currentTimeSeconds)} / {formatTime(player.durationSeconds)}
-				</p>
-			</div>
-
-			<div class="hidden items-center gap-1 sm:flex">
-				<Button
-					variant="ghost"
-					size="icon-sm"
-					class={player.shuffleEnabled ? 'text-foreground' : 'text-muted-foreground'}
-					onclick={() => player.toggleShuffle()}
-					aria-label="Toggle shuffle"
-					aria-pressed={player.shuffleEnabled}
-				>
-					<ShuffleIcon class="size-4" />
-				</Button>
-			</div>
-
-			<Button
-				variant="ghost"
-				size="icon-sm"
-				disabled={!player.hasPrevious}
-				onclick={() => player.previous()}
-				aria-label="Previous"
-			>
-				<SkipBackIcon class="size-4" />
-			</Button>
-
-			<Button
-				size="icon-sm"
-				class="rounded-full"
-				disabled={player.isLoading}
-				onclick={() => player.togglePlayPause()}
-				aria-label={player.isPlaying ? 'Pause' : 'Play'}
-			>
-				{#if player.isPlaying}
-					<PauseIcon class="size-4" />
-				{:else}
-					<PlayIcon class="size-4" />
-				{/if}
-			</Button>
-
-			<Button
-				variant="ghost"
-				size="icon-sm"
-				disabled={!player.hasNext}
-				onclick={() => player.next()}
-				aria-label="Next"
-			>
-				<SkipForwardIcon class="size-4" />
-			</Button>
-
-			<div class="hidden items-center gap-1 sm:flex">
-				<Button
-					variant="ghost"
-					size="icon-sm"
-					class={player.repeatMode !== 'off' ? 'text-foreground' : 'text-muted-foreground'}
-					onclick={() => player.cycleRepeatMode()}
-					aria-label="Toggle repeat"
-					aria-pressed={player.repeatMode !== 'off'}
-				>
-					{#if player.repeatMode === 'one'}
-						<Repeat1Icon class="size-4" />
-					{:else}
-						<RepeatIcon class="size-4" />
-					{/if}
-				</Button>
-			</div>
-		</div>
+		<div
+			class="absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-foreground opacity-0 shadow-sm transition-opacity group-hover/seek:opacity-100 {dragging
+				? 'opacity-100'
+				: ''}"
+			style="left: calc(0.75rem + (100% - 1.5rem) * {progressPercent / 100})"
+		></div>
 	</div>
-{/if}
+
+	<div class="flex items-center gap-3 px-3 py-2 md:px-4">
+		<div class="flex size-10 shrink-0 items-center justify-center rounded-md bg-muted">
+			{#if player.coverUrl}
+				<img src={player.coverUrl} alt="" class="size-10 rounded-md object-cover" />
+			{:else}
+				<MusicIcon class="size-4 text-muted-foreground" />
+			{/if}
+		</div>
+
+		<div class="min-w-0 flex-1">
+			<p class="truncate text-sm font-medium">
+				{player.currentTrack?.title ?? 'Nothing playing'}
+			</p>
+			<p class="text-xs text-muted-foreground">
+				{#if player.currentTrack}
+					{formatTime(player.currentTimeSeconds)} / {formatTime(player.durationSeconds)}
+				{:else}
+					Pick a song to get started
+				{/if}
+			</p>
+		</div>
+
+		<div class="hidden items-center gap-1 sm:flex">
+			<Button
+				variant="ghost"
+				size="icon-sm"
+				class={player.shuffleEnabled ? 'text-foreground' : 'text-muted-foreground'}
+				disabled={!player.currentTrack}
+				onclick={() => player.toggleShuffle()}
+				aria-label="Toggle shuffle"
+				aria-pressed={player.shuffleEnabled}
+			>
+				<ShuffleIcon class="size-4" />
+			</Button>
+		</div>
+
+		<Button
+			variant="ghost"
+			size="icon-sm"
+			disabled={!player.hasPrevious}
+			onclick={() => player.previous()}
+			aria-label="Previous"
+		>
+			<SkipBackIcon class="size-4" />
+		</Button>
+
+		<Button
+			size="icon-sm"
+			class="rounded-full"
+			disabled={!player.currentTrack || player.isLoading}
+			onclick={() => player.togglePlayPause()}
+			aria-label={player.isPlaying ? 'Pause' : 'Play'}
+		>
+			{#if player.isPlaying}
+				<PauseIcon class="size-4" />
+			{:else}
+				<PlayIcon class="size-4" />
+			{/if}
+		</Button>
+
+		<Button
+			variant="ghost"
+			size="icon-sm"
+			disabled={!player.hasNext}
+			onclick={() => player.next()}
+			aria-label="Next"
+		>
+			<SkipForwardIcon class="size-4" />
+		</Button>
+
+		<div class="hidden items-center gap-1 sm:flex">
+			<Button
+				variant="ghost"
+				size="icon-sm"
+				class={player.repeatMode !== 'off' ? 'text-foreground' : 'text-muted-foreground'}
+				disabled={!player.currentTrack}
+				onclick={() => player.cycleRepeatMode()}
+				aria-label="Toggle repeat"
+				aria-pressed={player.repeatMode !== 'off'}
+			>
+				{#if player.repeatMode === 'one'}
+					<Repeat1Icon class="size-4" />
+				{:else}
+					<RepeatIcon class="size-4" />
+				{/if}
+			</Button>
+		</div>
+
+		<DropdownMenu.Root>
+			<DropdownMenu.Trigger>
+				{#snippet child({ props })}
+					<Button
+						{...props}
+						variant="ghost"
+						size="icon-sm"
+						class={player.upcoming.length > 0 ? 'text-foreground' : 'text-muted-foreground'}
+						aria-label="Queue"
+					>
+						<ListMusicIcon class="size-4" />
+					</Button>
+				{/snippet}
+			</DropdownMenu.Trigger>
+			<DropdownMenu.Content align="end" class="w-72">
+				{#if player.upcoming.length === 0}
+					<p class="px-2 py-3 text-center text-xs text-muted-foreground">
+						Nothing queued up next.
+					</p>
+				{:else}
+					<div class="flex max-h-80 flex-col overflow-y-auto">
+						{#each player.upcoming as { track, queueArrayIndex } (queueArrayIndex)}
+							<div class="group flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-muted">
+								<button
+									type="button"
+									class="min-w-0 flex-1 truncate text-left text-sm"
+									onclick={() => player.playFromQueue(queueArrayIndex)}
+								>
+									{track.title}
+								</button>
+								<button
+									type="button"
+									class="shrink-0 rounded p-1 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground"
+									onclick={() => player.removeFromQueue(queueArrayIndex)}
+									aria-label="Remove {track.title} from queue"
+								>
+									<XIcon class="size-3.5" />
+								</button>
+							</div>
+						{/each}
+					</div>
+				{/if}
+			</DropdownMenu.Content>
+		</DropdownMenu.Root>
+	</div>
+</div>

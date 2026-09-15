@@ -89,6 +89,33 @@ class PlayerStore {
 		await this.loadCurrent(true);
 	}
 
+	/**
+	 * Appends tracks to the end of the queue without interrupting whatever's
+	 * currently playing — unlike playQueue, which replaces the queue
+	 * outright. If nothing is playing yet (empty queue), this starts
+	 * playback at the first appended track instead of just queuing it
+	 * silently, since there'd otherwise be no way to know it needs a
+	 * separate play() to actually start.
+	 */
+	async addToQueue(tracks: QueueTrack[]): Promise<void> {
+		if (tracks.length === 0) return;
+		const wasEmpty = this.queue.length === 0;
+		// Shuffle order only covers indices that existed when it was last
+		// generated — appended tracks need their own new indices added to
+		// it (at the end, same relative position as in `queue`) so they're
+		// still reachable via next()/previous() while shuffled, not just
+		// physically present in the array.
+		const appendedIndices = tracks.map((_, i) => this.queue.length + i);
+		this.queue = [...this.queue, ...tracks];
+		if (this.shuffleEnabled) {
+			this.shuffleIndices = [...this.shuffleIndices, ...appendedIndices];
+		}
+		if (wasEmpty) {
+			this.queueIndex = this.shuffleEnabled ? this.shuffleIndices.indexOf(0) : 0;
+			await this.loadCurrent(true);
+		}
+	}
+
 	async togglePlayPause(): Promise<void> {
 		if (!this.currentTrack) return;
 		if (this.isPlaying) {
@@ -173,6 +200,36 @@ class PlayerStore {
 
 	private currentActualIndex(): number {
 		return this.shuffleEnabled ? this.shuffleIndices[this.queueIndex] : this.queueIndex;
+	}
+
+	/**
+	 * The tracks still ahead in play order (not including the current
+	 * one), each paired with its real index into `queue` — that index is
+	 * what removeFromQueue/playFromQueue need, since play order and array
+	 * order diverge once shuffle is on.
+	 */
+	upcoming = $derived<{ track: QueueTrack; queueArrayIndex: number }[]>(
+		(this.shuffleEnabled ? this.shuffleIndices : this.queue.map((_, i) => i))
+			.slice(this.queueIndex + 1)
+			.map((queueArrayIndex) => ({ track: this.queue[queueArrayIndex], queueArrayIndex }))
+	);
+
+	/** Removes one track from the queue by its real array index — only ever called on an *upcoming* one, never the current or a past track. */
+	removeFromQueue(queueArrayIndex: number): void {
+		this.queue = this.queue.filter((_, i) => i !== queueArrayIndex);
+		if (this.shuffleEnabled) {
+			this.shuffleIndices = this.shuffleIndices
+				.filter((i) => i !== queueArrayIndex)
+				.map((i) => (i > queueArrayIndex ? i - 1 : i));
+		} else if (queueArrayIndex < this.queueIndex) {
+			this.queueIndex -= 1;
+		}
+	}
+
+	/** Jumps playback straight to an upcoming track by its real array index. */
+	async playFromQueue(queueArrayIndex: number): Promise<void> {
+		this.queueIndex = this.shuffleEnabled ? this.shuffleIndices.indexOf(queueArrayIndex) : queueArrayIndex;
+		await this.loadCurrent(true);
 	}
 
 	private advanceIndex(direction: 1 | -1): boolean {
