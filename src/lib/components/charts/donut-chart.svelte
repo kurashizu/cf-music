@@ -41,6 +41,15 @@
 
 	let hoverLabel: string | null = $state(null);
 
+	// Touch delivers pointerenter/pointerleave inconsistently (often just
+	// a synthetic single-tap-hover that never cleanly "leaves"), so a tap
+	// sets hoverLabel explicitly instead of relying solely on enter/leave
+	// — tapping the same slice again clears it, same as moving the mouse
+	// away does on desktop.
+	function toggleLabel(label: string): void {
+		hoverLabel = hoverLabel === label ? null : label;
+	}
+
 	// Same draw-in trick as bar-list: render every arc's dasharray as
 	// "0 circumference" (nothing drawn) for one frame, then transition the
 	// drawn length up to its real value — a CSS transition can't animate
@@ -112,6 +121,7 @@
 							: ''}"
 						onpointerenter={() => (hoverLabel = arc.label)}
 						onpointerleave={() => (hoverLabel = null)}
+						onclick={() => toggleLabel(arc.label)}
 						role="presentation"
 					/>
 				{/each}
@@ -128,18 +138,19 @@
 
 		<div class="flex min-w-0 flex-1 flex-col gap-1.5">
 			{#each arcs as arc (arc.label)}
-				<div
-					class="flex items-center gap-2 text-xs transition-opacity duration-150 {hoverLabel && hoverLabel !== arc.label
+				<button
+					type="button"
+					class="flex items-center gap-2 text-left text-xs transition-opacity duration-150 {hoverLabel && hoverLabel !== arc.label
 						? 'opacity-40'
 						: ''}"
 					onpointerenter={() => (hoverLabel = arc.label)}
 					onpointerleave={() => (hoverLabel = null)}
-					role="presentation"
+					onclick={() => toggleLabel(arc.label)}
 				>
 					<span class="size-2 shrink-0 rounded-full {arc.dotClass}"></span>
 					<span class="min-w-0 flex-1 truncate">{arc.label}</span>
 					<span class="shrink-0 text-muted-foreground">{Math.round(arc.fraction * 100)}%</span>
-				</div>
+				</button>
 			{/each}
 		</div>
 	</div>

@@ -93,6 +93,7 @@
 			role="img"
 			aria-label="Chart"
 			onpointermove={(e) => handleMove(e, e.currentTarget as SVGSVGElement)}
+			onpointerdown={(e) => handleMove(e, e.currentTarget as SVGSVGElement)}
 			onpointerleave={() => (hoverIndex = null)}
 		>
 			<defs>

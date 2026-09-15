@@ -69,6 +69,12 @@
 		if (columnIndex > totalColumns - 3) return 'right-0 left-auto translate-x-0';
 		return 'left-1/2 -translate-x-1/2';
 	}
+
+	// Touch has no hover at all, so a cell's tooltip needed a tap
+	// equivalent — tracks which date (if any) was last tapped, shown
+	// alongside (not instead of) the existing hover-only CSS reveal so
+	// desktop behavior is unchanged.
+	let tappedDate: string | null = $state(null);
 </script>
 
 <div class="overflow-x-auto overflow-y-hidden py-2">
@@ -76,19 +82,21 @@
 		{#each columns as column, i (i)}
 			<div class="flex flex-1 flex-col gap-1.5 sm:gap-2">
 				{#each column as day (day.date)}
-					<div
+					<button
+						type="button"
 						class="group relative aspect-square w-full min-w-3 rounded-sm {intensityClass(day.count)} transition-transform hover:scale-125"
-						role="presentation"
+						onclick={() => (tappedDate = tappedDate === day.date ? null : day.date)}
+						aria-label="{day.count} {day.count === 1 ? 'play' : 'plays'} on {formatDate(day.date)}"
 					>
 						<div
-							class="pointer-events-none absolute bottom-full z-10 mb-1 rounded-md border border-border bg-popover px-1.5 py-0.5 text-[10px] whitespace-nowrap opacity-0 shadow-md transition-opacity group-hover:opacity-100 {tooltipAlignClass(
+							class="pointer-events-none absolute bottom-full z-10 mb-1 rounded-md border border-border bg-popover px-1.5 py-0.5 text-[10px] whitespace-nowrap shadow-md transition-opacity group-hover:opacity-100 {tooltipAlignClass(
 								i,
 								columns.length
-							)}"
+							)} {tappedDate === day.date ? 'opacity-100' : 'opacity-0'}"
 						>
 							{day.count} {day.count === 1 ? 'play' : 'plays'} · {formatDate(day.date)}
 						</div>
-					</div>
+					</button>
 				{/each}
 			</div>
 		{/each}

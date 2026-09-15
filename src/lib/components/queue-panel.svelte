@@ -52,7 +52,7 @@
 			<p class="text-sm font-medium">Queue</p>
 			<button
 				type="button"
-				class="rounded p-1 text-muted-foreground transition-colors hover:text-foreground"
+				class="rounded p-2.5 text-muted-foreground transition-colors hover:text-foreground sm:p-1"
 				onclick={() => (queuePanelState.open = false)}
 				aria-label="Close queue"
 			>
@@ -117,7 +117,7 @@
 						{/if}
 						<button
 							type="button"
-							class="shrink-0 rounded p-1 text-muted-foreground opacity-100 transition-opacity hover:text-foreground sm:opacity-0 sm:group-hover:opacity-100"
+							class="shrink-0 rounded p-2 text-muted-foreground opacity-100 transition-opacity hover:text-foreground sm:p-1 sm:opacity-0 sm:group-hover:opacity-100"
 							onclick={() => player.removeFromQueue(queueArrayIndex)}
 							aria-label="Remove {track.title} from queue"
 						>
