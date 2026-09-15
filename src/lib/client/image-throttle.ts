@@ -23,7 +23,24 @@
  * also keeps its own videoId-keyed blob URL cache and hands out the same
  * object URL to every concurrent caller instead of minting a new one per
  * mount.
+ *
+ * That blobUrlCache above is only in-memory, though — a full page reload
+ * clears it, even on a browser session where the service worker's own
+ * Cache Storage entry for every cover is still there from last time and
+ * would resolve near-instantly. Naively running every fetch through
+ * acquireSlot() regardless punished that case for no reason: a reload of
+ * a page with hundreds of covers, ALL already SW-cached, still queued
+ * them 20-at-a-time exactly as if they were fresh cold fetches hitting
+ * S3, even though not one of them was going to touch the network. Before
+ * queuing, this checks the SW's own Cache Storage directly (a cheap,
+ * synchronous-ish lookup, not a real network request) — a hit skips
+ * acquireSlot() entirely, since it can't contribute to the S3 rate-limit
+ * burst this throttle exists to prevent; only a genuine cache miss queues.
  */
+
+import { coverCacheKey, extractVideoIdFromCoverPath } from '$lib/shared/audio-cache-key';
+
+const COVER_SW_CACHE_NAME = 'cover-v1';
 
 const blobUrlCache = new Map<string, { url: string; refCount: number }>();
 // Tracks a fetch that's already been started (queued or in-flight) for a
@@ -87,6 +104,27 @@ function cacheKeyFor(url: string): string {
 }
 
 /**
+ * True if the service worker's own Cache Storage already has this cover
+ * (see coverCacheKey/service-worker.ts) — cheap, local, no network
+ * involved, so checking it before acquireSlot() is essentially free
+ * compared to the cost of needlessly rate-limiting an already-cached
+ * fetch. Fails open (false) on anything unexpected — a mid-navigation
+ * `caches` access, no service worker registered yet, etc — since a false
+ * negative here just costs one queue slot, not correctness.
+ */
+async function isAlreadyCoverCached(url: string): Promise<boolean> {
+	if (typeof caches === 'undefined') return false;
+	try {
+		const videoId = extractVideoIdFromCoverPath(new URL(url).pathname);
+		if (!videoId) return false;
+		const cache = await caches.open(COVER_SW_CACHE_NAME);
+		return (await cache.match(coverCacheKey(videoId))) !== undefined;
+	} catch {
+		return false;
+	}
+}
+
+/**
  * Resolves to a local blob URL for `url`, through the shared per-second
  * throttle. Concurrent or repeated calls for the same underlying object
  * (recognized by ignoring the presigned query string — see cacheKeyFor)
@@ -114,7 +152,9 @@ export async function throttledFetchBlobUrl(url: string): Promise<string> {
 	}
 
 	const fetchPromise = (async () => {
-		await acquireSlot();
+		if (!(await isAlreadyCoverCached(url))) {
+			await acquireSlot();
+		}
 		const response = await fetch(url);
 		if (!response.ok) throw new Error(`Failed to fetch ${url}: ${response.status}`);
 		const blob = await response.blob();

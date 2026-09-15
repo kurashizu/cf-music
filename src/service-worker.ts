@@ -14,6 +14,7 @@ import {
 	coverCacheKey,
 	extractVideoIdFromCoverPath
 } from '$lib/shared/audio-cache-key';
+import { sliceRangeFromCachedResponse } from '$lib/shared/range-slice';
 
 const sw = self as unknown as ServiceWorkerGlobalScope;
 
@@ -76,24 +77,31 @@ sw.addEventListener('fetch', (event) => {
 
 	const cacheName = audioVideoId ? AUDIO_CACHE : COVER_CACHE;
 	const cacheKey = audioVideoId ? audioCacheKey(audioVideoId) : coverCacheKey(coverVideoId!);
-
-	// A browser playing/seeking an <audio> element sends real Range
-	// requests (Range: bytes=...), not just full-file GETs — every
-	// playback triggers at least one. Those go straight through, cache
-	// untouched: returning a cached *full* response for a request that
-	// asked for a specific byte range would hand the browser something
-	// that doesn't match what it asked for, and the Cache API can't
-	// store the 206 response the network would give back anyway (see the
-	// comment below — it throws outright). The only path that ever
-	// populates AUDIO_CACHE is the explicit PRECACHE_AUDIO message
-	// handler further down, a plain full-file fetch with no Range header.
-	if (event.request.headers.has('range')) return;
+	const rangeHeader = event.request.headers.get('range');
 
 	event.respondWith(
 		(async () => {
 			const cache = await caches.open(cacheName);
 			const cached = await cache.match(cacheKey);
-			if (cached) return cached;
+
+			// A browser playing/seeking an <audio> element sends real Range
+			// requests (Range: bytes=...), not just full-file GETs — every
+			// playback triggers at least one. A cached entry is always the
+			// FULL file (see below — only ever written from a non-Range
+			// fetch), so a Range request against one is answered by slicing
+			// the requested bytes out of it locally, rather than either
+			// ignoring the cache (the old behavior — meant every playback of
+			// an already-cached song still hit the network) or handing back
+			// the full cached response as if it were the requested range
+			// (wrong Content-Range, and the browser would just re-request).
+			if (cached && rangeHeader) {
+				const sliced = await sliceRangeFromCachedResponse(cached.clone(), rangeHeader);
+				if (sliced) return sliced;
+				// Range unparseable/unsatisfiable against this entry — fall
+				// through to a real fetch rather than serve something wrong.
+			} else if (cached) {
+				return cached;
+			}
 
 			const response = await fetch(event.request);
 			// Only a real, complete (status 200) response is worth
@@ -102,12 +110,11 @@ sw.addEventListener('fetch', (event) => {
 			// instead of a working retry. Status 206 (Partial Content)
 			// also satisfies response.ok, but the Cache API flatly
 			// refuses to store partial responses (cache.put throws
-			// "Partial response (status code 206) is unsupported") — this
-			// shouldn't be reachable now that Range requests bail out
-			// above, but a defensive check costs nothing and a request
-			// this handler didn't anticipate is exactly the case where
-			// "silently don't cache" beats "throw and fail the request
-			// that was otherwise about to succeed".
+			// "Partial response (status code 206) is unsupported"), so a
+			// Range request's own response (206) is never a candidate for
+			// caching here regardless — only ever a plain full-file fetch
+			// (no Range header, this handler's non-Range path, or the
+			// PRECACHE_AUDIO message handler below) populates the cache.
 			if (response.status === 200) {
 				await cache.put(cacheKey, response.clone());
 			}
