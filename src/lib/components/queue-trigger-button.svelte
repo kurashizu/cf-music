@@ -5,10 +5,15 @@
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import LayersIcon from '@lucide/svelte/icons/layers';
 
-	let buttonEl: HTMLElement | undefined = $state();
-
-	function toggle() {
-		if (buttonEl) queuePanelState.anchorRect = buttonEl.getBoundingClientRect();
+	// bits-ui's Tooltip.Trigger child snippet already owns a `ref` binding
+	// on `props` internally (it needs the element to position the tooltip)
+	// — a second bind:ref on the same element for our own purposes throws
+	// ("Cannot do bind:ref={undefined} when ref has a fallback value"),
+	// so the anchor position is captured from the click event's own
+	// target instead of a separate ref.
+	function toggle(event: MouseEvent) {
+		const target = event.currentTarget as HTMLElement;
+		queuePanelState.anchorRect = target.getBoundingClientRect();
 		queuePanelState.open = !queuePanelState.open;
 	}
 </script>
@@ -18,7 +23,6 @@
 		{#snippet child({ props })}
 			<Button
 				{...props}
-				bind:ref={buttonEl}
 				variant="ghost"
 				size="icon-sm"
 				class="relative transition-colors {player.upcoming.length > 0
