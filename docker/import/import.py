@@ -37,9 +37,11 @@ import hashlib
 import hmac
 import json
 import os
+import random
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -64,9 +66,50 @@ SOCKS5_PROXY = "socks5://127.0.0.1:40000"
 COVER_CRF = "40"
 DOWNLOAD_CONCURRENCY = 3  # sequential downloads were the bottleneck on large playlists
 
+YT_DLP_MAX_RETRIES = 4
+YT_DLP_RETRY_BASE_DELAY_SECONDS = 5  # doubles each retry, plus jitter — see with_retry
+
 
 class QuotaExceededError(Exception):
     """Raised when a batch's estimated total size exceeds the user's remaining storage quota."""
+
+
+def _is_rate_limit_error(exc: Exception) -> bool:
+    """True for yt-dlp's own HTTP 429 (a DownloadError wrapping urllib's
+    HTTPError) as well as its "Too Many Requests" text form for extractors
+    that surface it as a plain error message instead — the WARP proxy's
+    IP is shared across every concurrent download in this job (and any
+    other job running at the same time), so a 429 here is almost always
+    transient rate-limiting, not "this video is broken"."""
+    message = str(exc)
+    return "429" in message or "Too Many Requests" in message
+
+
+def with_retry(fn, *args, description: str, **kwargs):
+    """Runs a blocking yt-dlp call, retrying on rate-limit errors with
+    exponential backoff + jitter (the jitter matters here specifically:
+    DOWNLOAD_CONCURRENCY songs hitting a 429 around the same moment and
+    retrying on the exact same fixed schedule would just recreate the
+    same burst against the same shared proxy IP). Non-rate-limit failures
+    (age-gated video, region-blocked, genuinely removed) are raised
+    immediately — retrying those would only waste the job's time budget
+    on something no amount of waiting fixes."""
+    last_exc: Exception | None = None
+    for attempt in range(YT_DLP_MAX_RETRIES + 1):
+        try:
+            return fn(*args, **kwargs)
+        except Exception as exc:  # noqa: BLE001 - re-raised below if not retried
+            last_exc = exc
+            if not _is_rate_limit_error(exc) or attempt == YT_DLP_MAX_RETRIES:
+                raise
+            delay = YT_DLP_RETRY_BASE_DELAY_SECONDS * (2**attempt) + random.uniform(0, 3)
+            print(
+                f"{description}: rate limited (attempt {attempt + 1}/{YT_DLP_MAX_RETRIES + 1}), "
+                f"retrying in {delay:.1f}s",
+                file=sys.stderr,
+            )
+            time.sleep(delay)
+    raise last_exc  # unreachable, but satisfies type checkers
 
 
 def sign(message: str) -> str:
@@ -110,8 +153,12 @@ def websocket_url() -> str:
 
 def extract_playlist_entries(source_url: str) -> list[dict]:
     options = {"extract_flat": "in_playlist", "quiet": True, "proxy": SOCKS5_PROXY}
-    with yt_dlp.YoutubeDL(options) as ydl:
-        info = ydl.extract_info(source_url, download=False)
+
+    def _extract():
+        with yt_dlp.YoutubeDL(options) as ydl:
+            return ydl.extract_info(source_url, download=False)
+
+    info = with_retry(_extract, description="playlist extraction")
     entries = info.get("entries") or [info]
     return [e for e in entries if e is not None]
 
@@ -129,8 +176,12 @@ def estimate_song_size_bytes(entry: dict) -> int:
     try:
         options = {"format": "bestaudio/best", "quiet": True, "proxy": SOCKS5_PROXY}
         video_id_url = entry.get("url") or entry.get("webpage_url") or entry["id"]
-        with yt_dlp.YoutubeDL(options) as ydl:
-            info = ydl.extract_info(video_id_url, download=False)
+
+        def _extract():
+            with yt_dlp.YoutubeDL(options) as ydl:
+                return ydl.extract_info(video_id_url, download=False)
+
+        info = with_retry(_extract, description=f"size probe {entry.get('id')}")
         # filesize is exact (from the server's Content-Length);
         # filesize_approx is yt-dlp's own estimate from bitrate * duration
         # when the server didn't report one.
@@ -234,10 +285,15 @@ def download_song(video_id_url: str, workdir: Path) -> dict:
         "proxy": SOCKS5_PROXY,
         "noplaylist": True,
     }
-    with yt_dlp.YoutubeDL(options) as ydl:
-        info = ydl.extract_info(video_id_url, download=True)
 
-    audio_path = Path(ydl.prepare_filename(info))
+    def _download():
+        with yt_dlp.YoutubeDL(options) as ydl:
+            return ydl.extract_info(video_id_url, download=True)
+
+    info = with_retry(_download, description=f"download {video_id_url}")
+
+    with yt_dlp.YoutubeDL(options) as ydl:
+        audio_path = Path(ydl.prepare_filename(info))
     return {"info": info, "audio_path": audio_path}
 
 

@@ -10,7 +10,7 @@ FROM debian:bookworm-slim
 
 RUN apt-get update \
 	&& apt-get install -y --no-install-recommends \
-		curl gnupg lsb-release dbus python3 python3-pip python3-venv ffmpeg ca-certificates \
+		curl gnupg lsb-release dbus python3 python3-pip python3-venv ffmpeg ca-certificates unzip \
 	&& curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg \
 		| gpg --yes --dearmor --output /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg \
 	&& echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" \
@@ -19,6 +19,16 @@ RUN apt-get update \
 	&& apt-get install -y --no-install-recommends cloudflare-warp \
 	&& apt-get clean \
 	&& rm -rf /var/lib/apt/lists/*
+
+# yt-dlp's youtube extractor increasingly needs a real JS runtime to solve
+# the PO token / player signature challenge — without one it falls back to
+# a degraded extraction path (missing formats, more retries, and by report
+# a higher chance of hitting 429s under this job's concurrent downloads).
+# Deno is what yt-dlp probes for and prefers by default (see its own
+# --js-runtimes flag), and unlike Node it ships as a single static binary
+# with no separate package manager/install step.
+RUN curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sh -s -- --no-modify-path \
+	&& deno --version
 
 RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:${PATH}"
