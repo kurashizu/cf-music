@@ -2,8 +2,9 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { env } from 'cloudflare:test';
 import { eq, and } from 'drizzle-orm';
 import { getDb } from '../db';
-import { users, songs, songPlays } from '../db/schema';
+import { users, songs, userSongs } from '../db/schema';
 import { recordSongPlay } from './plays';
+import { setCachePreference } from '../cache/preferences';
 
 const db = getDb(env.DB);
 
@@ -28,7 +29,7 @@ async function seedSong(videoId: string) {
 }
 
 beforeEach(async () => {
-	await db.delete(songPlays);
+	await db.delete(userSongs);
 	await db.delete(songs);
 	await db.delete(users);
 });
@@ -40,7 +41,7 @@ describe('recordSongPlay', () => {
 
 		await recordSongPlay(db, 'u1', 'a');
 
-		const row = await db.query.songPlays.findFirst({ where: and(eq(songPlays.userId, 'u1'), eq(songPlays.videoId, 'a')) });
+		const row = await db.query.userSongs.findFirst({ where: and(eq(userSongs.userId, 'u1'), eq(userSongs.videoId, 'a')) });
 		expect(row?.playCount).toBe(1);
 		expect(row?.lastPlayedAt).not.toBeNull();
 	});
@@ -53,7 +54,7 @@ describe('recordSongPlay', () => {
 		await recordSongPlay(db, 'u1', 'a');
 		await recordSongPlay(db, 'u1', 'a');
 
-		const row = await db.query.songPlays.findFirst({ where: and(eq(songPlays.userId, 'u1'), eq(songPlays.videoId, 'a')) });
+		const row = await db.query.userSongs.findFirst({ where: and(eq(userSongs.userId, 'u1'), eq(userSongs.videoId, 'a')) });
 		expect(row?.playCount).toBe(3);
 	});
 
@@ -66,8 +67,8 @@ describe('recordSongPlay', () => {
 		await recordSongPlay(db, 'u2', 'shared');
 		await recordSongPlay(db, 'u2', 'shared');
 
-		const u1Row = await db.query.songPlays.findFirst({ where: and(eq(songPlays.userId, 'u1'), eq(songPlays.videoId, 'shared')) });
-		const u2Row = await db.query.songPlays.findFirst({ where: and(eq(songPlays.userId, 'u2'), eq(songPlays.videoId, 'shared')) });
+		const u1Row = await db.query.userSongs.findFirst({ where: and(eq(userSongs.userId, 'u1'), eq(userSongs.videoId, 'shared')) });
+		const u2Row = await db.query.userSongs.findFirst({ where: and(eq(userSongs.userId, 'u2'), eq(userSongs.videoId, 'shared')) });
 		expect(u1Row?.playCount).toBe(1);
 		expect(u2Row?.playCount).toBe(2);
 	});
@@ -82,7 +83,19 @@ describe('recordSongPlay', () => {
 		// value captured before either write landed.
 		await Promise.all([recordSongPlay(db, 'u1', 'a'), recordSongPlay(db, 'u1', 'a')]);
 
-		const row = await db.query.songPlays.findFirst({ where: and(eq(songPlays.userId, 'u1'), eq(songPlays.videoId, 'a')) });
+		const row = await db.query.userSongs.findFirst({ where: and(eq(userSongs.userId, 'u1'), eq(userSongs.videoId, 'a')) });
 		expect(row?.playCount).toBe(2);
+	});
+
+	it('does not clobber an existing cache_type when recording a play on an already-pinned song', async () => {
+		await seedUser('u1');
+		await seedSong('a');
+		await setCachePreference(db, 'u1', 'a', 'pinned');
+
+		await recordSongPlay(db, 'u1', 'a');
+
+		const row = await db.query.userSongs.findFirst({ where: and(eq(userSongs.userId, 'u1'), eq(userSongs.videoId, 'a')) });
+		expect(row?.playCount).toBe(1);
+		expect(row?.cacheType).toBe('pinned');
 	});
 });

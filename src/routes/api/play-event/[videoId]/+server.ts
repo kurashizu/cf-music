@@ -11,7 +11,7 @@ import { recordSongPlay } from '$lib/server/library/plays';
  * to have already applied it, and does not re-derive it from a request body,
  * since duration/currentTime are easy to spoof and the cost of an inflated
  * play count here is low for a private, invite-only app). Scoped to this
- * user's own play history — see recordSongPlay/song_plays for why this
+ * user's own play history — see recordSongPlay/user_songs for why this
  * can't be a global counter on `songs`.
  */
 export const POST: RequestHandler = async (event) => {

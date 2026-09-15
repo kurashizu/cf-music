@@ -121,30 +121,26 @@ export const playlistSongs = sqliteTable('playlist_songs', {
 	index('idx_playlist_songs_video_id').on(t.videoId)
 ]);
 
-// Local cache markers: distinguishes lazy (evictable) caching from pinned (user-requested, never auto-cleared)
-// Note: this table records "the user's caching intent" — actual IndexedDB contents are the browser's own source of truth and don't sync across devices
-export const cachePreferences = sqliteTable('cache_preferences', {
-	userId: text('user_id')
-		.notNull()
-		.references(() => users.id, { onDelete: 'cascade' }),
-	videoId: text('video_id')
-		.notNull()
-		.references(() => songs.videoId, { onDelete: 'cascade' }),
-	cacheType: text('cache_type', { enum: ['lazy', 'pinned'] }).notNull().default('lazy'),
-	updatedAt: text('updated_at')
-		.notNull()
-		.default(sql`(current_timestamp)`)
-}, (t) => [primaryKey({ columns: [t.userId, t.videoId] })]);
-
-// Per-user play history, used as the LFU+LRU blended eviction score input —
-// deliberately scoped to (user_id, video_id) rather than being a global
-// counter on `songs`: since songs are deduplicated and shared across users,
-// a global count let one user's heavy listening make a song look "popular"
-// and eviction-resistant in a completely different user's library, even if
-// that second user had never played it at all. Eviction always operates on
-// one user's own library (see evictSongForUser), so its scoring input needs
-// to be that same user's own history, not everyone's combined.
-export const songPlays = sqliteTable('song_plays', {
+// One row per (user, song) relationship: play history (the LFU+LRU blended
+// eviction score input) and offline cache intent, merged together since
+// both are just facets of "how this user relates to this song" — scoped
+// per-user rather than being a global counter on `songs`: songs are
+// deduplicated and shared across users, so a global play count let one
+// user's heavy listening make a song look "popular" and eviction-resistant
+// in a completely different user's library, even if that second user had
+// never played it at all. Eviction always operates on one user's own
+// library (see evictSongForUser), so its scoring input needs to be that
+// same user's own history, not everyone's combined.
+//
+// cache_type distinguishes lazy (evictable) caching from pinned
+// (user-requested, never auto-cleared) — this only records "the user's
+// caching intent"; actual IndexedDB contents are the browser's own source
+// of truth and don't sync across devices. Unlike the old standalone
+// cache_preferences table, unpinning no longer deletes the row once it
+// might also be carrying play history — it resets cache_type back to
+// 'lazy' instead (see setCachePreference). A missing row now means "never
+// played and never pinned", not "currently lazy".
+export const userSongs = sqliteTable('user_songs', {
 	userId: text('user_id')
 		.notNull()
 		.references(() => users.id, { onDelete: 'cascade' }),
@@ -153,6 +149,7 @@ export const songPlays = sqliteTable('song_plays', {
 		.references(() => songs.videoId, { onDelete: 'cascade' }),
 	playCount: integer('play_count').notNull().default(0),
 	lastPlayedAt: text('last_played_at'),
+	cacheType: text('cache_type', { enum: ['lazy', 'pinned'] }).notNull().default('lazy'),
 	updatedAt: text('updated_at')
 		.notNull()
 		.default(sql`(current_timestamp)`)

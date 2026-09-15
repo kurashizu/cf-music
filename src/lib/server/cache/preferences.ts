@@ -1,6 +1,6 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import type { Db } from '../db';
-import { cachePreferences, playlists, playlistSongs, songs } from '../db/schema';
+import { userSongs, playlists, playlistSongs, songs } from '../db/schema';
 import { chunk } from '../../shared/chunk';
 
 // Same D1 bound-parameter ceiling as findKnownVideoIds (see that file for
@@ -18,9 +18,9 @@ export interface CachePreferenceEntry {
 
 /**
  * Every song in a user's library annotated with its cache preference —
- * songs with no cache_preferences row default to 'lazy' (the schema's own
- * default), since that row is only created the first time a preference is
- * explicitly set, not at import time.
+ * songs with no user_songs row default to 'lazy' (the schema's own
+ * default), since that row is only created the first time this user plays
+ * or pins the song, not at import time.
  */
 export async function listCachePreferences(db: Db, userId: string): Promise<CachePreferenceEntry[]> {
 	const librarySongs = await db
@@ -39,13 +39,13 @@ export async function listCachePreferences(db: Db, userId: string): Promise<Cach
 	const pinnedVideoIds = new Set<string>();
 	for (const batch of chunk(librarySongs.map((s) => s.videoId), VIDEO_IDS_BATCH_SIZE)) {
 		const rows = await db
-			.select({ videoId: cachePreferences.videoId })
-			.from(cachePreferences)
+			.select({ videoId: userSongs.videoId })
+			.from(userSongs)
 			.where(
 				and(
-					eq(cachePreferences.userId, userId),
-					eq(cachePreferences.cacheType, 'pinned'),
-					inArray(cachePreferences.videoId, batch)
+					eq(userSongs.userId, userId),
+					eq(userSongs.cacheType, 'pinned'),
+					inArray(userSongs.videoId, batch)
 				)
 			);
 		for (const row of rows) pinnedVideoIds.add(row.videoId);
@@ -58,11 +58,12 @@ export async function listCachePreferences(db: Db, userId: string): Promise<Cach
 }
 
 /**
- * Sets one song's cache preference for a user. Setting back to 'lazy' (the
- * default) deletes the row rather than storing it explicitly — there's
- * nothing meaningful to persist once a song is no longer pinned, and it
- * keeps listCachePreferences' "no row = lazy" assumption accurate without
- * needing to sweep stale rows later.
+ * Sets one song's cache preference for a user. Upserts rather than
+ * deleting the row when set back to 'lazy': unlike the old standalone
+ * cache_preferences table, this row (user_songs) may also be carrying this
+ * user's play history for the song, which a delete would destroy. A
+ * missing row still means "never played and never pinned" — it's only
+ * once either happens that the row exists at all.
  */
 export async function setCachePreference(
 	db: Db,
@@ -70,18 +71,11 @@ export async function setCachePreference(
 	videoId: string,
 	cacheType: CacheType
 ): Promise<void> {
-	if (cacheType === 'lazy') {
-		await db
-			.delete(cachePreferences)
-			.where(and(eq(cachePreferences.userId, userId), eq(cachePreferences.videoId, videoId)));
-		return;
-	}
-
 	await db
-		.insert(cachePreferences)
-		.values({ userId, videoId, cacheType: 'pinned' })
+		.insert(userSongs)
+		.values({ userId, videoId, cacheType })
 		.onConflictDoUpdate({
-			target: [cachePreferences.userId, cachePreferences.videoId],
-			set: { cacheType: 'pinned', updatedAt: new Date().toISOString() }
+			target: [userSongs.userId, userSongs.videoId],
+			set: { cacheType, updatedAt: new Date().toISOString() }
 		});
 }

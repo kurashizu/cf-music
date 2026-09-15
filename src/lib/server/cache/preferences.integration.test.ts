@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { env } from 'cloudflare:test';
 import { getDb } from '../db';
-import { users, songs, playlists, playlistSongs, cachePreferences } from '../db/schema';
+import { users, songs, playlists, playlistSongs, userSongs } from '../db/schema';
 import { listCachePreferences, setCachePreference } from './preferences';
 import { createPlaylist, addSongToPlaylist } from '../library/playlists';
+import { recordSongPlay } from '../library/plays';
 
 const db = getDb(env.DB);
 
@@ -33,7 +34,7 @@ beforeEach(async () => {
 	// before deleting playlists/users, or a user left with a default from
 	// a previous test violates that foreign key.
 	await db.update(users).set({ defaultPlaylistId: null });
-	await db.delete(cachePreferences);
+	await db.delete(userSongs);
 	await db.delete(playlistSongs);
 	await db.delete(playlists);
 	await db.delete(songs);
@@ -93,7 +94,7 @@ describe('setCachePreference', () => {
 
 		await setCachePreference(db, 'u1', 'a', 'pinned');
 
-		const row = await db.query.cachePreferences.findFirst({
+		const row = await db.query.userSongs.findFirst({
 			where: (t, { eq, and }) => and(eq(t.userId, 'u1'), eq(t.videoId, 'a'))
 		});
 		expect(row?.cacheType).toBe('pinned');
@@ -107,23 +108,45 @@ describe('setCachePreference', () => {
 		await expect(setCachePreference(db, 'u1', 'a', 'pinned')).resolves.not.toThrow();
 	});
 
-	it('deletes the row when set back to lazy', async () => {
+	it('resets cache_type to lazy rather than deleting the row when set back to lazy', async () => {
 		await seedUser('u1');
 		await seedSong('a');
 		await setCachePreference(db, 'u1', 'a', 'pinned');
 
 		await setCachePreference(db, 'u1', 'a', 'lazy');
 
-		const row = await db.query.cachePreferences.findFirst({
+		const row = await db.query.userSongs.findFirst({
 			where: (t, { eq, and }) => and(eq(t.userId, 'u1'), eq(t.videoId, 'a'))
 		});
-		expect(row).toBeUndefined();
+		expect(row?.cacheType).toBe('lazy');
 	});
 
-	it('setting lazy when no row exists is a no-op, not an error', async () => {
+	it('setting lazy when no row exists creates one at the default state, without throwing', async () => {
 		await seedUser('u1');
 		await seedSong('a');
 
 		await expect(setCachePreference(db, 'u1', 'a', 'lazy')).resolves.not.toThrow();
+
+		const row = await db.query.userSongs.findFirst({
+			where: (t, { eq, and }) => and(eq(t.userId, 'u1'), eq(t.videoId, 'a'))
+		});
+		expect(row?.playCount).toBe(0);
+		expect(row?.cacheType).toBe('lazy');
+	});
+
+	it('unpinning preserves this user\'s existing play history on the same row', async () => {
+		await seedUser('u1');
+		await seedSong('a');
+		await recordSongPlay(db, 'u1', 'a');
+		await recordSongPlay(db, 'u1', 'a');
+		await setCachePreference(db, 'u1', 'a', 'pinned');
+
+		await setCachePreference(db, 'u1', 'a', 'lazy');
+
+		const row = await db.query.userSongs.findFirst({
+			where: (t, { eq, and }) => and(eq(t.userId, 'u1'), eq(t.videoId, 'a'))
+		});
+		expect(row?.cacheType).toBe('lazy');
+		expect(row?.playCount).toBe(2);
 	});
 });

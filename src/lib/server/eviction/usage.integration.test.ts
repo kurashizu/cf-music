@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { env } from 'cloudflare:test';
 import { getDb } from '../db';
-import { users, songs, playlists, playlistSongs, songPlays, auditLog } from '../db/schema';
+import { users, songs, playlists, playlistSongs, userSongs, auditLog } from '../db/schema';
 import { createPlaylist, addSongToPlaylist } from '../library/playlists';
 import { recordSongPlay } from '../library/plays';
 import {
@@ -43,7 +43,7 @@ beforeEach(async () => {
 	// a previous test violates that foreign key.
 	await db.update(users).set({ defaultPlaylistId: null });
 	await db.delete(auditLog);
-	await db.delete(songPlays);
+	await db.delete(userSongs);
 	await db.delete(playlistSongs);
 	await db.delete(playlists);
 	await db.delete(songs);
