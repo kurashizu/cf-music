@@ -35,7 +35,15 @@
 		}
 	});
 
+	// draggingIndex/overIndex describe the drag purely in terms of the
+	// *original* indices in `songs`. The list below renders using this
+	// pair to compute each row's visual `order` (CSS), instead of
+	// splicing `songs` itself on every dragover — splicing would move the
+	// keyed DOM node the browser is actively tracking mid-drag, which is
+	// what caused focus/hover state to jump around during a drag.
+	// `songs` is only actually reordered once, on drop.
 	let draggingIndex = $state<number | null>(null);
+	let overIndex = $state<number | null>(null);
 	let removeTarget = $state<{ videoId: string; title: string } | null>(null);
 	let removeSubmitting = $state(false);
 	let deleteTarget = $state<{ videoId: string; title: string } | null>(null);
@@ -121,20 +129,34 @@
 
 	function handleDragStart(index: number) {
 		draggingIndex = index;
+		overIndex = index;
 	}
 
 	function handleDragOver(event: DragEvent, index: number) {
 		event.preventDefault();
-		if (draggingIndex === null || draggingIndex === index) return;
-		const reordered = [...songs];
-		const [moved] = reordered.splice(draggingIndex, 1);
-		reordered.splice(index, 0, moved);
-		songs = reordered;
-		draggingIndex = index;
+		if (draggingIndex === null) return;
+		overIndex = index;
+	}
+
+	function visualOrder(index: number): number {
+		if (draggingIndex === null || overIndex === null || draggingIndex === index) return index;
+		if (draggingIndex < overIndex) {
+			if (index > draggingIndex && index <= overIndex) return index - 1;
+		} else if (index >= overIndex && index < draggingIndex) {
+			return index + 1;
+		}
+		return index;
 	}
 
 	async function handleDragEnd() {
+		if (draggingIndex !== null && overIndex !== null && draggingIndex !== overIndex) {
+			const reordered = [...songs];
+			const [moved] = reordered.splice(draggingIndex, 1);
+			reordered.splice(overIndex, 0, moved);
+			songs = reordered;
+		}
 		draggingIndex = null;
+		overIndex = null;
 		try {
 			const response = await fetch(`/api/playlists/${data.playlist.id}/reorder`, {
 				method: 'PUT',
@@ -198,6 +220,7 @@
 						.currentTrack?.videoId === song.videoId
 						? 'bg-muted'
 						: ''} {draggingIndex === index ? 'opacity-50' : ''}"
+					style="order: {visualOrder(index)}"
 					draggable="true"
 					ondragstart={() => handleDragStart(index)}
 					ondragover={(e) => handleDragOver(e, index)}
