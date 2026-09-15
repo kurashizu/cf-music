@@ -152,6 +152,12 @@ describe('applyImportEvent', () => {
 		expect(next.fatalError).toBe('yt-dlp extraction failed');
 	});
 
+	it('cancelled marks the job cancelled regardless of its prior status', () => {
+		const job = makeJob({ status: 'failed', fatalError: 'yt-dlp extraction failed' });
+		const next = applyImportEvent(job, { type: 'cancelled' });
+		expect(next.status).toBe('cancelled');
+	});
+
 	it('does not mutate the input job object', () => {
 		const job = makeJob({ completedCount: 1 });
 		applyImportEvent(job, { type: 'song_success', song: {

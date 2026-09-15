@@ -56,6 +56,11 @@ function applyFatalError(job: ImportJobState, reason: string): ImportJobState {
 	return { ...job, status: 'failed', fatalError: reason };
 }
 
+/** Mirrors cancelImportJob()'s server-side transition. */
+function applyCancelled(job: ImportJobState): ImportJobState {
+	return { ...job, status: 'cancelled' };
+}
+
 /**
  * Pure reducer applying one progress event to a job's client-side state.
  * Mirrors the D1 state transitions the Durable Object applies server-side
@@ -85,5 +90,7 @@ export function applyImportEvent(job: ImportJobState, event: ImportProgressEvent
 			return applyComplete(job);
 		case 'fatal_error':
 			return applyFatalError(job, event.reason);
+		case 'cancelled':
+			return applyCancelled(job);
 	}
 }

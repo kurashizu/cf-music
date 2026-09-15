@@ -173,6 +173,22 @@ export class ImportProgressDurableObject implements DurableObject {
 		for (const ciWs of ciSockets) {
 			ciWs.send(raw);
 		}
+
+		// A still-running job also learns about this via CI's own eventual
+		// fatal_error/complete once it sees the forwarded cancel above — but
+		// a job with no CI connection left (already completed/failed, e.g.
+		// dismissing a failed job) has no such follow-up event coming. This
+		// broadcast is what lets the browser that requested the cancel
+		// actually see the job disappear in that case, instead of it
+		// silently staying stuck at 'failed' in the UI even though the D1
+		// row is already 'cancelled'.
+		const cancelledMessage: CiProgressMessage = { jobId: control.jobId, event: { type: 'cancelled' } };
+		const cancelledRaw = JSON.stringify(cancelledMessage);
+		for (const browserWs of this.ctx.getWebSockets()) {
+			if (!isCiSocket(this.ctx.getTags(browserWs))) {
+				browserWs.send(cancelledRaw);
+			}
+		}
 	}
 
 	async webSocketClose(ws: WebSocket, code: number, reason: string): Promise<void> {

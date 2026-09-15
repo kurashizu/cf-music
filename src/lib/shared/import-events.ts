@@ -62,7 +62,16 @@ export type ImportProgressEvent =
 	// left the job stuck at its initial status forever: the CI process's own
 	// stderr/exit code has no path back to the Worker, since exiting non-zero
 	// just drops the WebSocket connection without saying why.
-	| { type: 'fatal_error'; reason: string };
+	| { type: 'fatal_error'; reason: string }
+	// Broadcast by the Durable Object itself (not CI) right after it applies
+	// a browser's cancel request — see handleBrowserControl. A cancel of a
+	// still-running job also reaches the browser via CI's own eventual
+	// fatal_error/complete once it sees the forwarded cancel, but a job
+	// with no CI connection left (already completed/failed) has no such
+	// follow-up event coming; without this, the browser that requested the
+	// cancel/dismiss never learns it succeeded and the job never leaves the
+	// import page.
+	| { type: 'cancelled' };
 
 export interface ImportProgressMessage {
 	jobId: string;
