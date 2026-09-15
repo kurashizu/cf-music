@@ -354,6 +354,11 @@
 		overIndex = index;
 	}
 
+	// First song with a cover, used as the blurred banner background — same
+	// "representative cover" idea as the library grid's own mosaic
+	// thumbnail, just simpler here since a banner only needs one image.
+	const bannerCoverUrl = $derived(songs.find((s) => s.coverUrl)?.coverUrl ?? null);
+
 	function handleDragOver(event: DragEvent, index: number) {
 		event.preventDefault();
 		if (draggingIndex === null) return;
@@ -400,7 +405,14 @@
 	<title>{data.playlist.name} · KRSZ Music</title>
 </svelte:head>
 
-<div class="mx-auto max-w-3xl p-4 md:p-8">
+{#if bannerCoverUrl}
+	<div class="relative h-40 w-full overflow-hidden md:h-56">
+		<img src={bannerCoverUrl} alt="" class="size-full scale-110 object-cover blur-2xl" aria-hidden="true" />
+		<div class="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-background/10"></div>
+	</div>
+{/if}
+
+<div class="mx-auto max-w-3xl p-4 md:p-8 {bannerCoverUrl ? '-mt-16 md:-mt-24' : ''}">
 	<div class="mb-6 flex flex-wrap items-center justify-between gap-4">
 		<div class="min-w-0">
 			<h1 class="truncate text-lg font-medium">{data.playlist.name}</h1>

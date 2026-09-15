@@ -123,6 +123,8 @@
 		await player.playQueue(toQueueTracks(), actualIndex);
 	}
 
+	const bannerCoverUrl = $derived(data.songs.find((s) => s.coverUrl)?.coverUrl ?? null);
+
 	async function addToQueue(videoId: string) {
 		const song = data.songs.find((s) => s.videoId === videoId);
 		if (!song) return;
@@ -250,7 +252,14 @@
 	<title>{data.value} · KRSZ Music</title>
 </svelte:head>
 
-<div class="mx-auto max-w-3xl p-4 md:p-8">
+{#if bannerCoverUrl}
+	<div class="relative h-40 w-full overflow-hidden md:h-56">
+		<img src={bannerCoverUrl} alt="" class="size-full scale-110 object-cover blur-2xl" aria-hidden="true" />
+		<div class="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-background/10"></div>
+	</div>
+{/if}
+
+<div class="mx-auto max-w-3xl p-4 md:p-8 {bannerCoverUrl ? '-mt-16 md:-mt-24' : ''}">
 	<div class="mb-6 flex flex-wrap items-center justify-between gap-4">
 		<div class="min-w-0">
 			<p class="text-xs text-muted-foreground capitalize">{data.field}</p>
