@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import type { Db } from '../db';
 import { songs } from '../db/schema';
 import type { ObjectStorage } from '../storage/s3';
@@ -12,6 +12,7 @@ export interface OrphanScanResult {
 
 export interface DeadReference {
 	videoId: string;
+	title: string;
 	field: 'audioKey' | 'coverKey';
 	key: string;
 }
@@ -65,7 +66,7 @@ export async function findOrphanedObjects(db: Db, storage: ObjectStorage): Promi
 export async function findDeadSongReferences(db: Db, storage: ObjectStorage): Promise<DeadReferenceScanResult> {
 	const [bucketKeys, songRows] = await Promise.all([
 		storage.listAllKeys(),
-		db.select({ videoId: songs.videoId, audioKey: songs.audioKey, coverKey: songs.coverKey }).from(songs)
+		db.select({ videoId: songs.videoId, title: songs.title, audioKey: songs.audioKey, coverKey: songs.coverKey }).from(songs)
 	]);
 
 	const bucketKeySet = new Set(bucketKeys);
@@ -73,10 +74,10 @@ export async function findDeadSongReferences(db: Db, storage: ObjectStorage): Pr
 
 	for (const row of songRows) {
 		if (!bucketKeySet.has(row.audioKey)) {
-			deadReferences.push({ videoId: row.videoId, field: 'audioKey', key: row.audioKey });
+			deadReferences.push({ videoId: row.videoId, title: row.title, field: 'audioKey', key: row.audioKey });
 		}
 		if (row.coverKey && !bucketKeySet.has(row.coverKey)) {
-			deadReferences.push({ videoId: row.videoId, field: 'coverKey', key: row.coverKey });
+			deadReferences.push({ videoId: row.videoId, title: row.title, field: 'coverKey', key: row.coverKey });
 		}
 	}
 
@@ -93,14 +94,24 @@ export async function findDeadSongReferences(db: Db, storage: ObjectStorage): Pr
  * over a cosmetic issue. `actorId` is the admin performing this, recorded
  * the same way other admin actions are (see recordAuditEvent's userId vs
  * actorId distinction).
+ *
+ * Returns whether the write actually changed anything, via `.returning()`
+ * rather than assuming it did: two admins resolving the same reference at
+ * nearly the same time both pass the caller's "is this still dead" recheck
+ * and both call this, but only the first's DELETE/UPDATE affects a row —
+ * the second's affects zero, and only the caller that actually changed
+ * something should record an audit event, or the log would show the same
+ * action twice for something that only happened once.
  */
 export async function resolveDeadSongReference(
 	db: Db,
 	actorId: string,
 	reference: DeadReference
-): Promise<void> {
+): Promise<{ resolved: boolean }> {
 	if (reference.field === 'audioKey') {
-		await db.delete(songs).where(eq(songs.videoId, reference.videoId));
+		const deleted = await db.delete(songs).where(eq(songs.videoId, reference.videoId)).returning({ videoId: songs.videoId });
+		if (deleted.length === 0) return { resolved: false };
+
 		await recordAuditEvent(db, {
 			actorId,
 			eventType: 'manual_delete',
@@ -108,10 +119,16 @@ export async function resolveDeadSongReference(
 			targetId: reference.videoId,
 			detail: { reason: 'dead_audio_reference', key: reference.key }
 		});
-		return;
+		return { resolved: true };
 	}
 
-	await db.update(songs).set({ coverKey: null }).where(eq(songs.videoId, reference.videoId));
+	const updated = await db
+		.update(songs)
+		.set({ coverKey: null })
+		.where(and(eq(songs.videoId, reference.videoId), eq(songs.coverKey, reference.key)))
+		.returning({ videoId: songs.videoId });
+	if (updated.length === 0) return { resolved: false };
+
 	await recordAuditEvent(db, {
 		actorId,
 		eventType: 'cover_reference_cleared',
@@ -119,4 +136,5 @@ export async function resolveDeadSongReference(
 		targetId: reference.videoId,
 		detail: { reason: 'dead_cover_reference', key: reference.key }
 	});
+	return { resolved: true };
 }

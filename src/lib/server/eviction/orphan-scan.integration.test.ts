@@ -96,14 +96,14 @@ describe('findDeadSongReferences', () => {
 		await seedSong('a', { audioKey: 'audio/a.webm', coverKey: null });
 		const storage = new FakeObjectStorage([]);
 		const result = await findDeadSongReferences(db, storage);
-		expect(result.deadReferences).toEqual([{ videoId: 'a', field: 'audioKey', key: 'audio/a.webm' }]);
+		expect(result.deadReferences).toEqual([{ videoId: 'a', title: 'Song a', field: 'audioKey', key: 'audio/a.webm' }]);
 	});
 
 	it('reports a song\'s coverKey as dead independently of its audioKey', async () => {
 		await seedSong('a', { audioKey: 'audio/a.webm', coverKey: 'covers/a.avif' });
 		const storage = new FakeObjectStorage(['audio/a.webm']);
 		const result = await findDeadSongReferences(db, storage);
-		expect(result.deadReferences).toEqual([{ videoId: 'a', field: 'coverKey', key: 'covers/a.avif' }]);
+		expect(result.deadReferences).toEqual([{ videoId: 'a', title: 'Song a', field: 'coverKey', key: 'covers/a.avif' }]);
 	});
 
 	it('does not report a dead coverKey for a song with no coverKey at all', async () => {
@@ -118,8 +118,8 @@ describe('findDeadSongReferences', () => {
 		const storage = new FakeObjectStorage([]);
 		const result = await findDeadSongReferences(db, storage);
 		expect(result.deadReferences).toEqual([
-			{ videoId: 'a', field: 'audioKey', key: 'audio/a.webm' },
-			{ videoId: 'a', field: 'coverKey', key: 'covers/a.avif' }
+			{ videoId: 'a', title: 'Song a', field: 'audioKey', key: 'audio/a.webm' },
+			{ videoId: 'a', title: 'Song a', field: 'coverKey', key: 'covers/a.avif' }
 		]);
 	});
 
@@ -128,7 +128,7 @@ describe('findDeadSongReferences', () => {
 		await seedSong('b', { audioKey: 'audio/b.webm', coverKey: null });
 		const storage = new FakeObjectStorage(['audio/a.webm']);
 		const result = await findDeadSongReferences(db, storage);
-		expect(result.deadReferences).toEqual([{ videoId: 'b', field: 'audioKey', key: 'audio/b.webm' }]);
+		expect(result.deadReferences).toEqual([{ videoId: 'b', title: 'Song b', field: 'audioKey', key: 'audio/b.webm' }]);
 	});
 });
 
@@ -137,7 +137,7 @@ describe('resolveDeadSongReference', () => {
 		await seedUser('admin1');
 		await seedSong('a', { audioKey: 'audio/a.webm', coverKey: null });
 
-		await resolveDeadSongReference(db, 'admin1', { videoId: 'a', field: 'audioKey', key: 'audio/a.webm' });
+		await resolveDeadSongReference(db, 'admin1', { videoId: 'a', title: 'Song a', field: 'audioKey', key: 'audio/a.webm' });
 
 		const song = await db.query.songs.findFirst({ where: eq(songs.videoId, 'a') });
 		expect(song).toBeUndefined();
@@ -147,7 +147,7 @@ describe('resolveDeadSongReference', () => {
 		await seedUser('admin1');
 		await seedSong('a', { audioKey: 'audio/a.webm', coverKey: 'covers/a.avif', title: 'Keep Me' });
 
-		await resolveDeadSongReference(db, 'admin1', { videoId: 'a', field: 'coverKey', key: 'covers/a.avif' });
+		await resolveDeadSongReference(db, 'admin1', { videoId: 'a', title: 'Song a', field: 'coverKey', key: 'covers/a.avif' });
 
 		const song = await db.query.songs.findFirst({ where: eq(songs.videoId, 'a') });
 		expect(song?.coverKey).toBeNull();
@@ -159,7 +159,7 @@ describe('resolveDeadSongReference', () => {
 		await seedUser('admin1');
 		await seedSong('a', { audioKey: 'audio/a.webm', coverKey: null });
 
-		await resolveDeadSongReference(db, 'admin1', { videoId: 'a', field: 'audioKey', key: 'audio/a.webm' });
+		await resolveDeadSongReference(db, 'admin1', { videoId: 'a', title: 'Song a', field: 'audioKey', key: 'audio/a.webm' });
 
 		const entry = await db.query.auditLog.findFirst({ where: eq(auditLog.targetId, 'a') });
 		expect(entry?.actorId).toBe('admin1');
@@ -170,9 +170,51 @@ describe('resolveDeadSongReference', () => {
 		await seedUser('admin1');
 		await seedSong('a', { audioKey: 'audio/a.webm', coverKey: 'covers/a.avif' });
 
-		await resolveDeadSongReference(db, 'admin1', { videoId: 'a', field: 'coverKey', key: 'covers/a.avif' });
+		await resolveDeadSongReference(db, 'admin1', { videoId: 'a', title: 'Song a', field: 'coverKey', key: 'covers/a.avif' });
 
 		const entry = await db.query.auditLog.findFirst({ where: eq(auditLog.targetId, 'a') });
 		expect(entry?.eventType).toBe('cover_reference_cleared');
+	});
+
+	it('reports resolved: true when the audioKey delete actually removes a row', async () => {
+		await seedUser('admin1');
+		await seedSong('a', { audioKey: 'audio/a.webm', coverKey: null });
+
+		const result = await resolveDeadSongReference(db, 'admin1', { videoId: 'a', title: 'Song a', field: 'audioKey', key: 'audio/a.webm' });
+
+		expect(result.resolved).toBe(true);
+	});
+
+	it('reports resolved: false and writes no audit event on a second concurrent resolve of the same audioKey reference', async () => {
+		await seedUser('admin1');
+		await seedUser('admin2');
+		await seedSong('a', { audioKey: 'audio/a.webm', coverKey: null });
+
+		const first = await resolveDeadSongReference(db, 'admin1', { videoId: 'a', title: 'Song a', field: 'audioKey', key: 'audio/a.webm' });
+		// The row is already gone - a second admin resolving "the same"
+		// reference (e.g. both had it open in their own scan results) finds
+		// nothing left to delete.
+		const second = await resolveDeadSongReference(db, 'admin2', { videoId: 'a', title: 'Song a', field: 'audioKey', key: 'audio/a.webm' });
+
+		expect(first.resolved).toBe(true);
+		expect(second.resolved).toBe(false);
+		const entries = await db.query.auditLog.findMany({ where: eq(auditLog.targetId, 'a') });
+		expect(entries).toHaveLength(1);
+		expect(entries[0].actorId).toBe('admin1');
+	});
+
+	it('reports resolved: false and writes no audit event when the coverKey no longer matches (changed since the scan)', async () => {
+		await seedUser('admin1');
+		await seedSong('a', { audioKey: 'audio/a.webm', coverKey: 'covers/new.avif' });
+
+		// Resolving a stale reference to the *old* cover key, which this
+		// song no longer actually has.
+		const result = await resolveDeadSongReference(db, 'admin1', { videoId: 'a', title: 'Song a', field: 'coverKey', key: 'covers/old.avif' });
+
+		expect(result.resolved).toBe(false);
+		const song = await db.query.songs.findFirst({ where: eq(songs.videoId, 'a') });
+		expect(song?.coverKey).toBe('covers/new.avif');
+		const entries = await db.query.auditLog.findMany({ where: eq(auditLog.targetId, 'a') });
+		expect(entries).toHaveLength(0);
 	});
 });

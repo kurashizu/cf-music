@@ -41,6 +41,6 @@ export const DELETE: RequestHandler = async (event) => {
 		return json({ resolved: false, reason: 'No longer a dead reference' });
 	}
 
-	await resolveDeadSongReference(db, session.userId, stillDead);
-	return json({ resolved: true });
+	const { resolved } = await resolveDeadSongReference(db, session.userId, stillDead);
+	return json({ resolved, reason: resolved ? undefined : 'Already resolved by another admin' });
 };

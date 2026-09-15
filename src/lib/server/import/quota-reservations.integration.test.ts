@@ -76,9 +76,16 @@ describe('reserveQuota', () => {
 		const retry = await reserveQuota(db, 'u1', jobId, 'a', 500_000);
 
 		expect(first.reserved).toBe(true);
-		// The ON CONFLICT DO NOTHING means the retry's own insert doesn't
-		// land, but the row from the first call still exists - remaining
-		// quota reflects one reservation, not two.
+		// The retry's own INSERT is a genuine conflict (same job_id +
+		// video_id), so ON CONFLICT DO NOTHING means RETURNING yields zero
+		// rows for it - reserved must be false here, not just "true again
+		// because a row still exists from the first call". A caller
+		// (download_one in import.py) branches on this boolean alone, so a
+		// wrong true here would be a real bug this test needs to actually
+		// catch, not just check the downstream remainingBytes number.
+		expect(retry.reserved).toBe(false);
+		// The row from the first call still exists - remaining quota
+		// reflects one reservation, not two.
 		expect(retry.remainingBytes).toBe(500_000);
 	});
 

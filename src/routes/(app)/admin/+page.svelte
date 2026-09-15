@@ -38,6 +38,7 @@
 	}
 	interface DeadReference {
 		videoId: string;
+		title: string;
 		field: 'audioKey' | 'coverKey';
 		key: string;
 	}
@@ -54,6 +55,13 @@
 	let deadReferenceScan = $state<DeadReferenceScanResult | null>(null);
 	let deadReferenceScanLoading = $state(false);
 	let deadReferenceResolving = $state<string | null>(null);
+	// Deleting a song for a dead audioKey is irreversible and can affect
+	// other users who share the song (see resolveDeadSongReference) —
+	// unlike clearing a dead coverKey (the song still plays fine either
+	// way), this needs the same confirm-before-destroy step every other
+	// destructive action in this app gets (compare the playlist delete
+	// dialog on the Library page).
+	let deleteSongTarget = $state<DeadReference | null>(null);
 
 	async function runOrphanScan() {
 		orphanScanLoading = true;
@@ -148,6 +156,21 @@
 		} finally {
 			deadReferenceResolving = null;
 		}
+	}
+
+	function handleResolveClick(reference: DeadReference) {
+		if (reference.field === 'audioKey') {
+			deleteSongTarget = reference;
+			return;
+		}
+		resolveDeadReference(reference);
+	}
+
+	async function confirmDeleteSong() {
+		if (!deleteSongTarget) return;
+		const target = deleteSongTarget;
+		deleteSongTarget = null;
+		await resolveDeadReference(target);
 	}
 
 	async function generateInviteCode() {
@@ -396,16 +419,16 @@
 									<li class="flex items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-muted">
 										<div class="min-w-0 flex-1">
 											<p class="truncate text-sm">
-												{reference.videoId}
+												{reference.title}
 												<span class="ml-1 text-xs text-muted-foreground">{reference.field}</span>
 											</p>
 											<code class="text-xs text-muted-foreground">{reference.key}</code>
 										</div>
 										<Button
-											variant="outline"
+											variant={reference.field === 'audioKey' ? 'destructive' : 'outline'}
 											size="sm"
 											disabled={deadReferenceResolving === deadReferenceKey(reference)}
-											onclick={() => resolveDeadReference(reference)}
+											onclick={() => handleResolveClick(reference)}
 										>
 											{reference.field === 'audioKey' ? 'Delete song' : 'Clear cover'}
 										</Button>
@@ -442,5 +465,30 @@
 				</Button>
 			</Dialog.Footer>
 		</form>
+	</Dialog.Content>
+</Dialog.Root>
+
+<Dialog.Root open={deleteSongTarget !== null} onOpenChange={(open) => !open && (deleteSongTarget = null)}>
+	<Dialog.Content class="sm:max-w-sm">
+		<Dialog.Header>
+			<Dialog.Title>Delete "{deleteSongTarget?.title}"?</Dialog.Title>
+			<Dialog.Description>
+				This song has no audio object left in storage, so it can't be played anyway — deleting
+				removes it permanently, including from every user's playlists that reference it. This
+				cannot be undone.
+			</Dialog.Description>
+		</Dialog.Header>
+		<Dialog.Footer>
+			<Button variant="outline" onclick={() => (deleteSongTarget = null)}>Cancel</Button>
+			<Button
+				variant="destructive"
+				disabled={deleteSongTarget !== null && deadReferenceResolving === deadReferenceKey(deleteSongTarget)}
+				onclick={confirmDeleteSong}
+			>
+				{deleteSongTarget !== null && deadReferenceResolving === deadReferenceKey(deleteSongTarget)
+					? 'Deleting…'
+					: 'Delete'}
+			</Button>
+		</Dialog.Footer>
 	</Dialog.Content>
 </Dialog.Root>
