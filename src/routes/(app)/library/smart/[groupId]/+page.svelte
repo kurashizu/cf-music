@@ -1,12 +1,24 @@
 <script lang="ts">
+	import { invalidateAll } from '$app/navigation';
+	import { toast } from 'svelte-sonner';
 	import { player } from '$lib/client/player.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import { Input } from '$lib/components/ui/input/index.js';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
+	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import PlayIcon from '@lucide/svelte/icons/play';
 	import PauseIcon from '@lucide/svelte/icons/pause';
 	import ShuffleIcon from '@lucide/svelte/icons/shuffle';
 	import ListMusicIcon from '@lucide/svelte/icons/list-music';
 	import ClockIcon from '@lucide/svelte/icons/clock';
 	import MusicIcon from '@lucide/svelte/icons/music';
+	import MoreHorizontalIcon from '@lucide/svelte/icons/more-horizontal';
+	import Trash2Icon from '@lucide/svelte/icons/trash-2';
+	import DownloadIcon from '@lucide/svelte/icons/download';
+	import SearchIcon from '@lucide/svelte/icons/search';
+	import ListPlusIcon from '@lucide/svelte/icons/list-plus';
+	import XIcon from '@lucide/svelte/icons/x';
+	import { downloadSongForOffline } from '$lib/client/offline-cache';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -14,6 +26,68 @@
 	const isThisGroupPlaying = $derived(
 		player.isPlaying && data.songs.some((s) => s.videoId === player.currentTrack?.videoId)
 	);
+
+	let searchQuery = $state('');
+	const filteredSongs = $derived(
+		searchQuery.trim().length === 0
+			? data.songs
+			: data.songs.filter((s) => s.title.toLowerCase().includes(searchQuery.trim().toLowerCase()))
+	);
+
+	let selected = $state<Set<string>>(new Set());
+	let lastSelectedIndex = $state<number | null>(null);
+	let batchWorking = $state(false);
+	let batchDeleteConfirm = $state(false);
+	let downloadingVideoId = $state<string | null>(null);
+	let deleteTarget = $state<{ videoId: string; title: string } | null>(null);
+	let deleteSubmitting = $state(false);
+	let copyTarget = $state<string | null>(null); // videoId, or null when copying the current selection
+	let copyDialogOpen = $state(false);
+	let copySubmitting = $state(false);
+
+	const allVisibleSelected = $derived(
+		filteredSongs.length > 0 && filteredSongs.every((s) => selected.has(s.videoId))
+	);
+
+	function toggleSelectAll() {
+		if (allVisibleSelected) {
+			clearSelection();
+			return;
+		}
+		selected = new Set(filteredSongs.map((s) => s.videoId));
+		lastSelectedIndex = filteredSongs.length - 1;
+	}
+
+	function toggleSelected(videoId: string) {
+		const next = new Set(selected);
+		if (next.has(videoId)) next.delete(videoId);
+		else next.add(videoId);
+		selected = next;
+	}
+
+	function clearSelection() {
+		selected = new Set();
+		lastSelectedIndex = null;
+	}
+
+	// File-manager-style click selection, same as the playlist detail page.
+	function handleRowClick(event: MouseEvent, index: number) {
+		const videoId = filteredSongs[index].videoId;
+		if (event.shiftKey && lastSelectedIndex !== null) {
+			const [from, to] = [lastSelectedIndex, index].sort((a, b) => a - b);
+			const next = new Set(selected);
+			for (let i = from; i <= to; i++) next.add(filteredSongs[i].videoId);
+			selected = next;
+			return;
+		}
+		if (event.metaKey || event.ctrlKey) {
+			toggleSelected(videoId);
+			lastSelectedIndex = index;
+			return;
+		}
+		selected = selected.size === 1 && selected.has(videoId) ? new Set() : new Set([videoId]);
+		lastSelectedIndex = index;
+	}
 
 	function toQueueTracks() {
 		return data.songs.map((s) => ({
@@ -40,11 +114,135 @@
 	}
 
 	async function playFrom(index: number) {
-		if (player.currentTrack?.videoId === data.songs[index].videoId) {
+		const song = filteredSongs[index];
+		const actualIndex = data.songs.findIndex((s) => s.videoId === song.videoId);
+		if (player.currentTrack?.videoId === song.videoId) {
 			await player.togglePlayPause();
 			return;
 		}
-		await player.playQueue(toQueueTracks(), index);
+		await player.playQueue(toQueueTracks(), actualIndex);
+	}
+
+	async function addToQueue(videoId: string) {
+		const song = data.songs.find((s) => s.videoId === videoId);
+		if (!song) return;
+		await player.addToQueue([
+			{ videoId: song.videoId, title: song.title, durationSeconds: song.durationSeconds }
+		]);
+		toast.success('Added to queue');
+	}
+
+	async function addSelectionToQueue() {
+		const tracks = data.songs
+			.filter((s) => selected.has(s.videoId))
+			.map((s) => ({ videoId: s.videoId, title: s.title, durationSeconds: s.durationSeconds }));
+		if (tracks.length === 0) return;
+		await player.addToQueue(tracks);
+		toast.success(`Added ${tracks.length} song(s) to queue`);
+		clearSelection();
+	}
+
+	async function handleDownload(videoId: string) {
+		downloadingVideoId = videoId;
+		try {
+			const ok = await downloadSongForOffline(videoId);
+			toast[ok ? 'success' : 'error'](ok ? 'Downloaded for offline playback' : 'Failed to download song');
+		} finally {
+			downloadingVideoId = null;
+		}
+	}
+
+	async function handleBatchDownload() {
+		batchWorking = true;
+		try {
+			let failures = 0;
+			for (const videoId of selected) {
+				const ok = await downloadSongForOffline(videoId);
+				if (!ok) failures++;
+			}
+			toast[failures === 0 ? 'success' : 'error'](
+				failures === 0 ? 'Downloaded for offline playback' : `Failed to download ${failures} song(s)`
+			);
+			clearSelection();
+		} finally {
+			batchWorking = false;
+		}
+	}
+
+	function openCopyDialogForSong(videoId: string) {
+		copyTarget = videoId;
+		copyDialogOpen = true;
+	}
+
+	function openCopyDialogForSelection() {
+		copyTarget = null;
+		copyDialogOpen = true;
+	}
+
+	async function handleCopy(toPlaylistId: string) {
+		const isBatchCopy = copyTarget === null;
+		const videoIds = isBatchCopy ? [...selected] : [copyTarget];
+		if (videoIds.length === 0) return;
+		copySubmitting = true;
+		try {
+			const results = await Promise.all(
+				videoIds.map((videoId) =>
+					fetch(`/api/playlists/${toPlaylistId}/songs`, {
+						method: 'POST',
+						headers: { 'content-type': 'application/json' },
+						body: JSON.stringify({ videoId })
+					})
+				)
+			);
+			const failures = results.filter((r) => !r.ok).length;
+			toast[failures === 0 ? 'success' : 'error'](
+				failures === 0
+					? videoIds.length === 1
+						? 'Copied to playlist'
+						: `Copied ${videoIds.length} songs`
+					: `Failed to copy ${failures} song(s)`
+			);
+			copyDialogOpen = false;
+			copyTarget = null;
+			if (isBatchCopy) clearSelection();
+		} finally {
+			copySubmitting = false;
+		}
+	}
+
+	async function handleDeleteOne() {
+		if (!deleteTarget) return;
+		deleteSubmitting = true;
+		try {
+			const response = await fetch(`/api/songs/${deleteTarget.videoId}`, { method: 'DELETE' });
+			if (!response.ok) {
+				toast.error('Failed to delete song');
+				return;
+			}
+			toast.success('Song deleted');
+			deleteTarget = null;
+			await invalidateAll();
+		} finally {
+			deleteSubmitting = false;
+		}
+	}
+
+	async function handleBatchDelete() {
+		batchWorking = true;
+		try {
+			const results = await Promise.all(
+				[...selected].map((videoId) => fetch(`/api/songs/${videoId}`, { method: 'DELETE' }))
+			);
+			const failures = results.filter((r) => !r.ok).length;
+			toast[failures === 0 ? 'success' : 'error'](
+				failures === 0 ? 'Songs deleted' : `Failed to delete ${failures} song(s)`
+			);
+			batchDeleteConfirm = false;
+			clearSelection();
+			await invalidateAll();
+		} finally {
+			batchWorking = false;
+		}
 	}
 </script>
 
@@ -84,24 +282,98 @@
 		</div>
 	</div>
 
+	{#if data.songs.length > 0}
+		<div class="mb-3 flex items-center gap-2">
+			<div class="relative flex-1">
+				<SearchIcon class="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+				<Input placeholder="Search songs…" bind:value={searchQuery} class="pl-9" />
+			</div>
+			<Button size="sm" variant="outline" onclick={toggleSelectAll}>
+				{allVisibleSelected ? 'Deselect all' : 'Select all'}
+			</Button>
+		</div>
+	{/if}
+
+	{#if selected.size > 0}
+		<div
+			class="sticky top-0 z-10 mb-2 flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2"
+		>
+			<div class="flex items-center gap-2">
+				<Button variant="ghost" size="icon-sm" onclick={clearSelection} aria-label="Clear selection">
+					<XIcon class="size-4" />
+				</Button>
+				<span class="text-sm text-muted-foreground">{selected.size} selected</span>
+			</div>
+			<div class="flex items-center gap-2">
+				<Button size="sm" variant="outline" class="gap-1.5" onclick={addSelectionToQueue}>
+					<ListPlusIcon class="size-3.5" />
+					Add to queue
+				</Button>
+				<Button
+					size="sm"
+					variant="outline"
+					class="gap-1.5"
+					disabled={batchWorking}
+					onclick={handleBatchDownload}
+				>
+					<DownloadIcon class="size-3.5" />
+					Download
+				</Button>
+				{#if data.playlists.length > 0}
+					<Button
+						size="sm"
+						variant="outline"
+						class="gap-1.5"
+						disabled={batchWorking}
+						onclick={openCopyDialogForSelection}
+					>
+						<ListMusicIcon class="size-3.5" />
+						Copy to…
+					</Button>
+				{/if}
+				<Button
+					size="sm"
+					variant="destructive"
+					class="gap-1.5"
+					disabled={batchWorking}
+					onclick={() => (batchDeleteConfirm = true)}
+				>
+					<Trash2Icon class="size-3.5" />
+					Delete
+				</Button>
+			</div>
+		</div>
+	{/if}
+
 	{#if data.songs.length === 0}
 		<div class="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border py-16 text-center">
 			<ListMusicIcon class="size-8 text-muted-foreground" />
 			<p class="text-sm text-muted-foreground">Nothing here.</p>
 		</div>
+	{:else if filteredSongs.length === 0}
+		<p class="py-8 text-center text-sm text-muted-foreground">No songs match "{searchQuery}".</p>
 	{:else}
 		<ul class="flex flex-col">
-			{#each data.songs as song, index (song.videoId)}
+			{#each filteredSongs as song, index (song.videoId)}
+				<!-- svelte-ignore a11y_click_events_have_key_events -->
+				<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 				<li
-					class="group flex items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-muted {player
-						.currentTrack?.videoId === song.videoId
-						? 'bg-muted'
-						: ''}"
+					class="group flex items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-muted {selected.has(
+						song.videoId
+					)
+						? 'bg-muted ring-1 ring-inset ring-ring/50'
+						: player.currentTrack?.videoId === song.videoId
+							? 'bg-muted'
+							: ''}"
+					onclick={(e) => handleRowClick(e, index)}
 				>
 					<button
 						type="button"
 						class="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
-						onclick={() => playFrom(index)}
+						onclick={(e) => {
+							e.stopPropagation();
+							playFrom(index);
+						}}
 						aria-label={player.currentTrack?.videoId === song.videoId && player.isPlaying
 							? 'Pause'
 							: 'Play'}
@@ -141,8 +413,130 @@
 						<ClockIcon class="size-3" />
 						{formatDuration(song.durationSeconds)}
 					</span>
+
+					<Button
+						variant="ghost"
+						size="icon-sm"
+						class="opacity-0 transition-opacity group-hover:opacity-100"
+						disabled={downloadingVideoId === song.videoId}
+						onclick={(e) => {
+							e.stopPropagation();
+							handleDownload(song.videoId);
+						}}
+						aria-label="Download for offline playback"
+					>
+						<DownloadIcon class="size-4" />
+					</Button>
+
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<span onclick={(e) => e.stopPropagation()}>
+						<DropdownMenu.Root>
+							<DropdownMenu.Trigger>
+								{#snippet child({ props })}
+									<Button
+										{...props}
+										variant="ghost"
+										size="icon-sm"
+										class="opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100"
+									>
+										<MoreHorizontalIcon class="size-4" />
+									</Button>
+								{/snippet}
+							</DropdownMenu.Trigger>
+							<DropdownMenu.Content align="end" class="min-w-52">
+								<DropdownMenu.Item onclick={() => addToQueue(song.videoId)}>
+									<ListPlusIcon class="size-4" />
+									Add to queue
+								</DropdownMenu.Item>
+								{#if data.playlists.length > 0}
+									<DropdownMenu.Item onclick={() => openCopyDialogForSong(song.videoId)}>
+										<ListMusicIcon class="size-4" />
+										Copy to playlist…
+									</DropdownMenu.Item>
+								{/if}
+								<DropdownMenu.Item
+									variant="destructive"
+									onclick={() => (deleteTarget = { videoId: song.videoId, title: song.title })}
+								>
+									<Trash2Icon class="size-4" />
+									Delete from library
+								</DropdownMenu.Item>
+							</DropdownMenu.Content>
+						</DropdownMenu.Root>
+					</span>
 				</li>
 			{/each}
 		</ul>
 	{/if}
 </div>
+
+<Dialog.Root
+	open={copyDialogOpen}
+	onOpenChange={(open) => {
+		copyDialogOpen = open;
+		if (!open) copyTarget = null;
+	}}
+>
+	<Dialog.Content class="sm:max-w-sm">
+		<Dialog.Header>
+			<Dialog.Title>Copy to playlist</Dialog.Title>
+			<Dialog.Description>
+				{copyTarget !== null ? 'This song' : `${selected.size} song(s)`} will be added to the playlist
+				you pick.
+			</Dialog.Description>
+		</Dialog.Header>
+		<ul class="flex max-h-64 flex-col gap-1 overflow-y-auto">
+			{#each data.playlists as playlist (playlist.id)}
+				<li>
+					<Button
+						variant="outline"
+						class="w-full justify-start"
+						disabled={copySubmitting}
+						onclick={() => handleCopy(playlist.id)}
+					>
+						{playlist.name}
+					</Button>
+				</li>
+			{/each}
+		</ul>
+		<Dialog.Footer>
+			<Button variant="outline" onclick={() => (copyDialogOpen = false)}>Cancel</Button>
+		</Dialog.Footer>
+	</Dialog.Content>
+</Dialog.Root>
+
+<Dialog.Root open={deleteTarget !== null} onOpenChange={(open) => !open && (deleteTarget = null)}>
+	<Dialog.Content class="sm:max-w-sm">
+		<Dialog.Header>
+			<Dialog.Title>Delete "{deleteTarget?.title}"?</Dialog.Title>
+			<Dialog.Description>
+				This deletes the song from your library entirely — it disappears from every playlist it's
+				in. This can't be undone.
+			</Dialog.Description>
+		</Dialog.Header>
+		<Dialog.Footer>
+			<Button variant="outline" onclick={() => (deleteTarget = null)}>Cancel</Button>
+			<Button variant="destructive" disabled={deleteSubmitting} onclick={handleDeleteOne}>
+				{deleteSubmitting ? 'Deleting…' : 'Delete'}
+			</Button>
+		</Dialog.Footer>
+	</Dialog.Content>
+</Dialog.Root>
+
+<Dialog.Root open={batchDeleteConfirm} onOpenChange={(open) => !open && (batchDeleteConfirm = false)}>
+	<Dialog.Content class="sm:max-w-sm">
+		<Dialog.Header>
+			<Dialog.Title>Delete {selected.size} songs?</Dialog.Title>
+			<Dialog.Description>
+				This deletes them from your library entirely — they'll disappear from every playlist. This
+				can't be undone.
+			</Dialog.Description>
+		</Dialog.Header>
+		<Dialog.Footer>
+			<Button variant="outline" onclick={() => (batchDeleteConfirm = false)}>Cancel</Button>
+			<Button variant="destructive" disabled={batchWorking} onclick={handleBatchDelete}>
+				{batchWorking ? 'Deleting…' : 'Delete'}
+			</Button>
+		</Dialog.Footer>
+	</Dialog.Content>
+</Dialog.Root>
