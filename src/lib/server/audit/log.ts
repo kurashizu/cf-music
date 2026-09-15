@@ -6,6 +6,7 @@ export type AuditEventType =
 	| 'import'
 	| 'evict'
 	| 'manual_delete'
+	| 'cover_reference_cleared'
 	| 'login'
 	| 'login_failed'
 	| 'password_change'

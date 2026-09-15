@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { env } from 'cloudflare:test';
+import { eq } from 'drizzle-orm';
 import { getDb } from '../db';
-import { songs } from '../db/schema';
+import { songs, users, auditLog } from '../db/schema';
 import type { ObjectStorage } from '../storage/s3';
-import { findOrphanedObjects, findDeadSongReferences } from './orphan-scan';
+import { findOrphanedObjects, findDeadSongReferences, resolveDeadSongReference } from './orphan-scan';
 
 const db = getDb(env.DB);
 
@@ -38,8 +39,14 @@ async function seedSong(videoId: string, overrides: Partial<typeof songs.$inferI
 		.onConflictDoNothing();
 }
 
+async function seedUser(id: string) {
+	await db.insert(users).values({ id, username: `user-${id}`, passwordHash: 'x' }).onConflictDoNothing();
+}
+
 beforeEach(async () => {
+	await db.delete(auditLog);
 	await db.delete(songs);
+	await db.delete(users);
 });
 
 describe('findOrphanedObjects', () => {
@@ -122,5 +129,50 @@ describe('findDeadSongReferences', () => {
 		const storage = new FakeObjectStorage(['audio/a.webm']);
 		const result = await findDeadSongReferences(db, storage);
 		expect(result.deadReferences).toEqual([{ videoId: 'b', field: 'audioKey', key: 'audio/b.webm' }]);
+	});
+});
+
+describe('resolveDeadSongReference', () => {
+	it('deletes the whole song row for a dead audioKey (song has no audio at all)', async () => {
+		await seedUser('admin1');
+		await seedSong('a', { audioKey: 'audio/a.webm', coverKey: null });
+
+		await resolveDeadSongReference(db, 'admin1', { videoId: 'a', field: 'audioKey', key: 'audio/a.webm' });
+
+		const song = await db.query.songs.findFirst({ where: eq(songs.videoId, 'a') });
+		expect(song).toBeUndefined();
+	});
+
+	it('only clears the coverKey for a dead coverKey, keeping the rest of the song row intact', async () => {
+		await seedUser('admin1');
+		await seedSong('a', { audioKey: 'audio/a.webm', coverKey: 'covers/a.avif', title: 'Keep Me' });
+
+		await resolveDeadSongReference(db, 'admin1', { videoId: 'a', field: 'coverKey', key: 'covers/a.avif' });
+
+		const song = await db.query.songs.findFirst({ where: eq(songs.videoId, 'a') });
+		expect(song?.coverKey).toBeNull();
+		expect(song?.title).toBe('Keep Me');
+		expect(song?.audioKey).toBe('audio/a.webm');
+	});
+
+	it('records an audit event with the acting admin as actorId for an audioKey resolution', async () => {
+		await seedUser('admin1');
+		await seedSong('a', { audioKey: 'audio/a.webm', coverKey: null });
+
+		await resolveDeadSongReference(db, 'admin1', { videoId: 'a', field: 'audioKey', key: 'audio/a.webm' });
+
+		const entry = await db.query.auditLog.findFirst({ where: eq(auditLog.targetId, 'a') });
+		expect(entry?.actorId).toBe('admin1');
+		expect(entry?.eventType).toBe('manual_delete');
+	});
+
+	it('records a distinct audit event type for a coverKey resolution', async () => {
+		await seedUser('admin1');
+		await seedSong('a', { audioKey: 'audio/a.webm', coverKey: 'covers/a.avif' });
+
+		await resolveDeadSongReference(db, 'admin1', { videoId: 'a', field: 'coverKey', key: 'covers/a.avif' });
+
+		const entry = await db.query.auditLog.findFirst({ where: eq(auditLog.targetId, 'a') });
+		expect(entry?.eventType).toBe('cover_reference_cleared');
 	});
 });

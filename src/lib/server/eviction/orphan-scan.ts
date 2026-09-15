@@ -1,6 +1,8 @@
+import { eq } from 'drizzle-orm';
 import type { Db } from '../db';
 import { songs } from '../db/schema';
 import type { ObjectStorage } from '../storage/s3';
+import { recordAuditEvent } from '../audit/log';
 
 export interface OrphanScanResult {
 	orphanKeys: string[];
@@ -79,4 +81,42 @@ export async function findDeadSongReferences(db: Db, storage: ObjectStorage): Pr
 	}
 
 	return { deadReferences, totalBucketKeys: bucketKeys.length, totalSongs: songRows.length };
+}
+
+/**
+ * Resolves one dead reference found by findDeadSongReferences — the two
+ * fields need different actions, not a single "delete it" for both: a dead
+ * audioKey means the song has no audio at all, so the row itself is
+ * deleted (its playlist_songs rows cascade); a dead coverKey means the
+ * song still plays fine, just without cover art, so only the cover
+ * reference is cleared rather than destroying an otherwise-working song
+ * over a cosmetic issue. `actorId` is the admin performing this, recorded
+ * the same way other admin actions are (see recordAuditEvent's userId vs
+ * actorId distinction).
+ */
+export async function resolveDeadSongReference(
+	db: Db,
+	actorId: string,
+	reference: DeadReference
+): Promise<void> {
+	if (reference.field === 'audioKey') {
+		await db.delete(songs).where(eq(songs.videoId, reference.videoId));
+		await recordAuditEvent(db, {
+			actorId,
+			eventType: 'manual_delete',
+			targetType: 'song',
+			targetId: reference.videoId,
+			detail: { reason: 'dead_audio_reference', key: reference.key }
+		});
+		return;
+	}
+
+	await db.update(songs).set({ coverKey: null }).where(eq(songs.videoId, reference.videoId));
+	await recordAuditEvent(db, {
+		actorId,
+		eventType: 'cover_reference_cleared',
+		targetType: 'song',
+		targetId: reference.videoId,
+		detail: { reason: 'dead_cover_reference', key: reference.key }
+	});
 }
