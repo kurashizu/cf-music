@@ -4,7 +4,13 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import HardDriveIcon from '@lucide/svelte/icons/hard-drive';
 	import PinIcon from '@lucide/svelte/icons/pin';
-	import { precachePinnedSongs, reconcileAudioCache } from '$lib/client/offline-cache';
+	import Trash2Icon from '@lucide/svelte/icons/trash-2';
+	import {
+		precachePinnedSongs,
+		reconcileAudioCache,
+		listCachedVideoIds,
+		clearCachedAudio
+	} from '$lib/client/offline-cache';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -14,6 +20,9 @@
 	// same pattern (and why untrack, not a $derived, is the right tool here).
 	let entries = $state(untrack(() => data.entries));
 	let pendingVideoId = $state<string | null>(null);
+	let cachedVideoIds = $state<Set<string>>(new Set());
+	let clearingVideoId = $state<string | null>(null);
+	let clearingAll = $state(false);
 
 	function formatBytes(bytes: number): string {
 		if (bytes < 1024) return `${bytes} B`;
@@ -38,7 +47,33 @@
 		// for why a song removed from the library entirely (not just
 		// unpinned) can otherwise leave its cached bytes behind forever.
 		reconcileAudioCache(entries.map((e) => e.videoId));
+
+		listCachedVideoIds().then((ids) => {
+			cachedVideoIds = new Set(ids);
+		});
 	});
+
+	async function clearOne(videoId: string) {
+		clearingVideoId = videoId;
+		try {
+			await clearCachedAudio([videoId]);
+			cachedVideoIds = new Set([...cachedVideoIds].filter((id) => id !== videoId));
+			toast.success('Removed from offline cache');
+		} finally {
+			clearingVideoId = null;
+		}
+	}
+
+	async function clearAll() {
+		clearingAll = true;
+		try {
+			await clearCachedAudio([...cachedVideoIds]);
+			cachedVideoIds = new Set();
+			toast.success('Offline cache cleared');
+		} finally {
+			clearingAll = false;
+		}
+	}
 
 	async function togglePin(videoId: string, currentlyPinned: boolean) {
 		pendingVideoId = videoId;
@@ -80,7 +115,19 @@
 	<div class="mb-6 flex items-center gap-2">
 		<Button href="/settings" variant="ghost" size="sm" class="-ml-2">← Settings</Button>
 	</div>
-	<h1 class="mb-1 text-lg font-medium">Offline cache</h1>
+	<div class="mb-1 flex items-center justify-between gap-3">
+		<h1 class="text-lg font-medium">Offline cache</h1>
+		<Button
+			size="sm"
+			variant="outline"
+			class="gap-1.5"
+			disabled={clearingAll || cachedVideoIds.size === 0}
+			onclick={clearAll}
+		>
+			<Trash2Icon class="size-3.5" />
+			{clearingAll ? 'Clearing…' : 'Clear all'}
+		</Button>
+	</div>
 	<p class="mb-6 text-sm text-muted-foreground">
 		Pin a song to keep it downloaded for offline playback. Songs you play are cached
 		temporarily either way, but only pinned songs are kept when space is needed for others.
@@ -97,8 +144,23 @@
 				<li class="flex items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-muted">
 					<div class="min-w-0 flex-1">
 						<p class="truncate text-sm">{entry.title}</p>
-						<p class="text-xs text-muted-foreground">{formatBytes(entry.fileSizeBytes)}</p>
+						<p class="text-xs text-muted-foreground">
+							{formatBytes(entry.fileSizeBytes)}
+							{cachedVideoIds.has(entry.videoId) ? '· Downloaded' : ''}
+						</p>
 					</div>
+					{#if cachedVideoIds.has(entry.videoId)}
+						<Button
+							size="sm"
+							variant="ghost"
+							class="gap-1.5 text-muted-foreground"
+							disabled={clearingVideoId === entry.videoId}
+							onclick={() => clearOne(entry.videoId)}
+						>
+							<Trash2Icon class="size-3.5" />
+							Clear
+						</Button>
+					{/if}
 					<Button
 						size="sm"
 						variant={entry.cacheType === 'pinned' ? 'default' : 'outline'}

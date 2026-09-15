@@ -25,7 +25,7 @@ const LIST_CACHED_AUDIO_TIMEOUT_MS = 5000;
  * error and no signal that the "keep cache synced" pass silently stopped
  * running.
  */
-async function listCachedVideoIds(): Promise<string[]> {
+export async function listCachedVideoIds(): Promise<string[]> {
 	const registration = await navigator.serviceWorker.ready;
 	if (!registration.active) return [];
 
@@ -91,6 +91,17 @@ export async function precachePinnedSongs(pinnedVideoIds: string[]): Promise<voi
 			// fine online, it just won't be available offline yet.
 		}
 	}
+}
+
+/**
+ * Deletes cached audio for the given videoIds from the service worker's
+ * audio cache, without touching pin state — a song can still be pinned
+ * (or in the library) after this; it just has to be re-fetched from the
+ * network next time it's played.
+ */
+export async function clearCachedAudio(videoIds: string[]): Promise<void> {
+	if (!('serviceWorker' in navigator) || videoIds.length === 0) return;
+	await postToServiceWorker({ type: 'EVICT_AUDIO', videoIds });
 }
 
 export interface StorageEstimate {

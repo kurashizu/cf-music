@@ -85,47 +85,34 @@
 		</Card.Content>
 	</Card.Root>
 
-	<Card.Root class="mb-4">
-		<Card.Content>
-			<div class="mb-2 flex items-center justify-between text-sm">
-				<span class="flex items-center gap-1.5 text-muted-foreground">
-					<GlobeIcon class="size-4" />
-					Browser offline cache
-				</span>
-				{#if browserStorage}
-					<span class="text-muted-foreground">
-						{formatBytes(browserStorage.usageBytes)} / {formatBytes(data.quotaBytes)}
-					</span>
-				{/if}
-			</div>
-			{#if browserStorage}
-				<div class="h-1.5 overflow-hidden rounded-full bg-muted">
-					<div
-						class="h-full bg-foreground transition-all duration-300"
-						style="width: {browserUsagePercent}%"
-					></div>
-				</div>
-			{:else}
-				<p class="text-xs text-muted-foreground">
-					Not available in this browser.
-				</p>
-			{/if}
-			<p class="mt-2 text-xs text-muted-foreground">
-				Space used by this browser for offline playback (all sites sharing this
-				origin's storage, not just pinned songs — browsers don't expose a more
-				specific figure), shown against your account storage limit.
-			</p>
-		</Card.Content>
-	</Card.Root>
-
 	<a href="/settings/offline-cache" class="mb-4 block">
 		<Card.Root class="transition-colors hover:border-ring/50">
-			<Card.Content class="flex items-center justify-between gap-3">
-				<div>
-					<p class="text-sm font-medium">Offline downloads</p>
-					<p class="text-xs text-muted-foreground">Choose which songs stay available without internet</p>
+			<Card.Content>
+				<div class="mb-2 flex items-center justify-between text-sm">
+					<span class="flex items-center gap-1.5 text-muted-foreground">
+						<GlobeIcon class="size-4" />
+						Browser offline cache
+					</span>
+					<div class="flex items-center gap-1.5 text-muted-foreground">
+						{#if browserStorage}
+							<span>{formatBytes(browserStorage.usageBytes)} / {formatBytes(data.quotaBytes)}</span>
+						{/if}
+						<ChevronRightIcon class="size-4 shrink-0" />
+					</div>
 				</div>
-				<ChevronRightIcon class="size-4 shrink-0 text-muted-foreground" />
+				{#if browserStorage}
+					<div class="h-1.5 overflow-hidden rounded-full bg-muted">
+						<div
+							class="h-full bg-foreground transition-all duration-300"
+							style="width: {browserUsagePercent}%"
+						></div>
+					</div>
+				{:else}
+					<p class="text-xs text-muted-foreground">Not available in this browser.</p>
+				{/if}
+				<p class="mt-2 text-xs text-muted-foreground">
+					Pin songs to keep them downloaded for offline playback, and manage what's cached.
+				</p>
 			</Card.Content>
 		</Card.Root>
 	</a>
