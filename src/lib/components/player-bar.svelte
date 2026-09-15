@@ -231,22 +231,46 @@
 						{...props}
 						variant="ghost"
 						size="icon-sm"
-						class={player.upcoming.length > 0 ? 'text-foreground' : 'text-muted-foreground'}
+						class="relative {player.upcoming.length > 0 ? 'text-foreground' : 'text-muted-foreground'}"
 						aria-label="Queue"
 					>
 						<ListMusicIcon class="size-4" />
+						{#if player.upcoming.length > 0}
+							<span
+								class="absolute -top-1 -right-1 flex size-3.5 items-center justify-center rounded-full bg-foreground text-[9px] font-medium text-background"
+							>
+								{player.upcoming.length > 9 ? '9+' : player.upcoming.length}
+							</span>
+						{/if}
 					</Button>
 				{/snippet}
 			</DropdownMenu.Trigger>
-			<DropdownMenu.Content align="end" class="w-72">
+			<DropdownMenu.Content align="end" class="w-80 p-0">
+				{#if player.currentTrack}
+					<div class="flex items-center gap-2 border-b border-border px-3 py-2.5">
+						<div class="flex size-1.5 shrink-0 items-center justify-center">
+							<span
+								class="size-1.5 rounded-full {player.isPlaying
+									? 'animate-pulse bg-foreground'
+									: 'bg-muted-foreground'}"
+							></span>
+						</div>
+						<p class="min-w-0 flex-1 truncate text-sm font-medium">{player.currentTrack.title}</p>
+						<span class="shrink-0 text-xs text-muted-foreground">
+							{formatTime(player.currentTimeSeconds)}
+						</span>
+					</div>
+				{/if}
 				{#if player.upcoming.length === 0}
-					<p class="px-2 py-3 text-center text-xs text-muted-foreground">
-						Nothing queued up next.
-					</p>
+					<p class="px-3 py-6 text-center text-xs text-muted-foreground">Nothing queued up next.</p>
 				{:else}
-					<div class="flex max-h-80 flex-col overflow-y-auto">
-						{#each player.upcoming as { track, queueArrayIndex } (queueArrayIndex)}
-							<div class="group flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-muted">
+					<div class="flex max-h-80 flex-col overflow-y-auto p-1.5">
+						<p class="px-1.5 py-1 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+							Next up
+						</p>
+						{#each player.upcoming as { track, queueArrayIndex }, position (queueArrayIndex)}
+							<div class="group flex items-center gap-2.5 rounded-md px-1.5 py-1.5 hover:bg-muted">
+								<span class="w-4 shrink-0 text-right text-xs text-muted-foreground">{position + 1}</span>
 								<button
 									type="button"
 									class="min-w-0 flex-1 truncate text-left text-sm"
@@ -254,6 +278,11 @@
 								>
 									{track.title}
 								</button>
+								{#if track.durationSeconds !== null}
+									<span class="shrink-0 text-xs text-muted-foreground">
+										{formatTime(track.durationSeconds)}
+									</span>
+								{/if}
 								<button
 									type="button"
 									class="shrink-0 rounded p-1 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground"

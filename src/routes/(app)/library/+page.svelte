@@ -48,14 +48,16 @@
 			? data.smartPlaylists
 			: data.smartPlaylists.filter((g) => g.value.toLowerCase().includes(normalizedQuery))
 	);
-	// Song results only show once there's an actual query — with no query,
-	// every one of potentially hundreds of library songs would "match",
-	// which isn't a useful thing to render below the playlist grid.
+	// Song results only show once there's an actual query or artist filter —
+	// with neither active, every one of potentially hundreds of library
+	// songs would "match", which isn't a useful thing to render below the
+	// playlist grid.
 	const matchingSongs = $derived(
-		normalizedQuery.length === 0
+		normalizedQuery.length === 0 && artistFilter === 'all'
 			? []
 			: data.librarySongs.filter((s) => {
 					if (artistFilter !== 'all' && s.artist !== artistFilter) return false;
+					if (normalizedQuery.length === 0) return true;
 					return (
 						s.title.toLowerCase().includes(normalizedQuery) ||
 						(s.artist?.toLowerCase().includes(normalizedQuery) ?? false)
@@ -277,8 +279,10 @@
 		</div>
 	{/if}
 
-	{#if searchQuery.trim().length > 0 && filteredPlaylists.length === 0 && filteredSmartPlaylists.length === 0 && matchingSongs.length === 0}
-		<p class="py-8 text-center text-sm text-muted-foreground">No matches for "{searchQuery}".</p>
+	{#if (searchQuery.trim().length > 0 || artistFilter !== 'all') && filteredPlaylists.length === 0 && filteredSmartPlaylists.length === 0 && matchingSongs.length === 0}
+		<p class="py-8 text-center text-sm text-muted-foreground">
+			{searchQuery.trim().length > 0 ? `No matches for "${searchQuery}".` : `No songs by ${artistFilter}.`}
+		</p>
 	{/if}
 
 	{#if matchingSongs.length > 0}
