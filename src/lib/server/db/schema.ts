@@ -200,6 +200,40 @@ export const quotaReservations = sqliteTable('quota_reservations', {
 	index('idx_quota_reservations_user_id').on(t.userId)
 ]);
 
+// Audio-embedding jobs: one row per song, tracks whether its audio has been
+// sent to the embedding model and written to Vectorize yet. Global (not
+// per-user) since a song's audio content is the same regardless of who
+// imported it — mirrors `songs` itself being deduplicated across users.
+//
+// Retries are deliberately NOT backed off within a single CI run: a job that
+// fails with a retryable error (rate limit / embedding service unavailable)
+// is just put back to 'pending' and picked up by the next scheduled workflow
+// run, so the run interval (see .github/workflows/embedding.yml) IS the
+// backoff. Non-retryable failures (bad/corrupt audio, unsupported format)
+// go straight to 'failed' and are never retried automatically.
+export const embeddingJobs = sqliteTable('embedding_jobs', {
+	id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+	videoId: text('video_id')
+		.notNull()
+		.unique()
+		.references(() => songs.videoId, { onDelete: 'cascade' }),
+	status: text('status', {
+		enum: ['pending', 'processing', 'done', 'failed']
+	})
+		.notNull()
+		.default('pending'),
+	attempts: integer('attempts').notNull().default(0),
+	lastError: text('last_error'),
+	createdAt: text('created_at')
+		.notNull()
+		.default(sql`(current_timestamp)`),
+	updatedAt: text('updated_at')
+		.notNull()
+		.default(sql`(current_timestamp)`)
+}, (t) => [
+	index('idx_embedding_jobs_status').on(t.status),
+]);
+
 // Audit log: storage/auth/admin actions, admin-only visibility. No
 // retention/cleanup mechanism exists — rows accumulate indefinitely (no
 // Cron Trigger is configured in wrangler.jsonc, and nothing else in this

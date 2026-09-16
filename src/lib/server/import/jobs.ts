@@ -5,6 +5,7 @@ import { addSongToPlaylist, ensureDefaultPlaylist } from '../library/playlists';
 import { chunk } from '../../shared/chunk';
 import { recordAuditEvent } from '../audit/log';
 import { releaseQuotaReservation, releaseAllQuotaReservationsForJob } from './quota-reservations';
+import { enqueueEmbeddingJob } from '../embedding/jobs';
 import type {
 	PreviewEntry,
 	SongImportSuccess,
@@ -274,6 +275,12 @@ export async function recordSongImported(db: Db, jobId: string, userId: string, 
 			tags: song.tags ? JSON.stringify(song.tags) : undefined
 		})
 		.onConflictDoNothing(); // video_id already imported (by this or another user) — reuse the existing row
+
+	// Queued regardless of whether the insert above actually landed a new
+	// row (onConflictDoNothing doesn't report that) — enqueueEmbeddingJob is
+	// itself onConflictDoNothing against the same videoId, so this is a
+	// no-op for a song that's already queued/embedded from a prior import.
+	await enqueueEmbeddingJob(db, song.videoId);
 
 	await linkImportedSongToLibrary(db, userId, job.targetPlaylistId, song.videoId);
 

@@ -13,3 +13,12 @@ GITHUB_REPO_OWNER=
 GITHUB_REPO_NAME=
 GITHUB_IMPORT_WORKFLOW_FILE=import.yml
 GITHUB_ACTIONS_TOKEN=
+
+# Shared HMAC secret with the GitHub Actions embedding workflow (see
+# src/lib/server/import/webhook-auth.ts, reused as-is, and
+# .github/workflows/embedding.yml).
+# Must match the same value the workflow uses to sign its callback requests.
+# (The Gemini API key itself is a GitHub Actions secret, not a Worker one —
+# CI calls the Gemini embedding API directly and only sends the resulting
+# vector back to the Worker, which never talks to Gemini itself.)
+EMBEDDING_WEBHOOK_SECRET=

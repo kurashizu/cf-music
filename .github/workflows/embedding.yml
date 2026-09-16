@@ -1,0 +1,30 @@
+name: Embedding
+
+on:
+  schedule:
+    # 4 times a day — the retry interval for rate-limited/service-unavailable
+    # jobs (see embedding_jobs' status comment in schema.ts) is this
+    # interval, not an in-run backoff.
+    - cron: "0 */6 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  embed:
+    runs-on: ubuntu-latest
+    # Well under GitHub's own 6-hour job limit and under the next scheduled
+    # run — a job that somehow runs this long is stuck, not just slow.
+    timeout-minutes: 60
+    steps:
+      - name: Install dependencies
+        run: pip install --upgrade google-genai
+
+      - name: Run embedding batch
+        run: python3 embed.py
+        working-directory: .github/scripts/embedding
+        env:
+          WORKER_BASE_URL: ${{ secrets.WORKER_BASE_URL }}
+          EMBEDDING_WEBHOOK_SECRET: ${{ secrets.EMBEDDING_WEBHOOK_SECRET }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
