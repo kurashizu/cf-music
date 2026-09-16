@@ -84,7 +84,7 @@
 				{#each column as day (day.date)}
 					<button
 						type="button"
-						class="group relative aspect-square w-full min-w-3 rounded-sm {intensityClass(day.count)} transition-transform hover:scale-125"
+						class="group relative aspect-square w-full min-w-3 rounded-sm {intensityClass(day.count)} ring-primary transition-shadow hover:ring-2"
 						onclick={() => (tappedDate = tappedDate === day.date ? null : day.date)}
 						aria-label="{day.count} {day.count === 1 ? 'play' : 'plays'} on {formatDate(day.date)}"
 					>
