@@ -281,7 +281,7 @@ export const auditLog = sqliteTable('audit_log', {
 	actorId: text('actor_id').references(() => users.id, { onDelete: 'set null' }), // who performed it (differs from userId when an admin acts on another user's behalf)
 	eventType: text('event_type').notNull(), // import / evict / manual_delete / cover_reference_cleared /
 	// login / login_failed / password_change / invite_used / invite_created / quota_adjusted / force_logout /
-	// embedding_claimed / embedding_completed / embedding_failed
+	// embedding_claimed / embedding_completed / embedding_failed / auto_tag_claimed / auto_tag_completed
 	// (see AUDIT_EVENT_TYPES in src/lib/shared/audit-event-types.ts for the authoritative list)
 	targetType: text('target_type'), // song / user / playlist / import_job / embedding_job
 	targetId: text('target_id'),

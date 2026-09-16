@@ -5,6 +5,8 @@
  */
 export interface VectorStore {
 	upsertSongEmbedding(videoId: string, embedding: number[]): Promise<void>;
+	/** Fetches embeddings by videoId — a plain lookup, not a similarity query. Missing ids are silently omitted from the result, not errored on (e.g. a videoId claimed for auto-tagging whose embedding job hasn't actually written to Vectorize yet). */
+	getSongEmbeddings(videoIds: string[]): Promise<Map<string, number[]>>;
 }
 
 export class VectorizeSongStore implements VectorStore {
@@ -12,6 +14,12 @@ export class VectorizeSongStore implements VectorStore {
 
 	async upsertSongEmbedding(videoId: string, embedding: number[]): Promise<void> {
 		await this.index.upsert([{ id: videoId, values: embedding }]);
+	}
+
+	async getSongEmbeddings(videoIds: string[]): Promise<Map<string, number[]>> {
+		if (videoIds.length === 0) return new Map();
+		const vectors = await this.index.getByIds(videoIds);
+		return new Map(vectors.map((v) => [v.id, Array.from(v.values)]));
 	}
 }
 

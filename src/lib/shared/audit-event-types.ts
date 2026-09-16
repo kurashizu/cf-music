@@ -18,7 +18,9 @@ export const AUDIT_EVENT_TYPES = [
 	'force_logout',
 	'embedding_claimed',
 	'embedding_completed',
-	'embedding_failed'
+	'embedding_failed',
+	'auto_tag_claimed',
+	'auto_tag_completed'
 ] as const;
 
 export type AuditEventType = (typeof AUDIT_EVENT_TYPES)[number];
