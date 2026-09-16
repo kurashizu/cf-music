@@ -28,27 +28,45 @@ jobs:
       # ffmpeg/ffprobe are NOT preinstalled on ubuntu-latest (confirmed via
       # a live run failing with "No such file or directory: 'ffprobe'" —
       # unlike the import pipeline's own Docker image, which bakes them in
-      # explicitly, see docker/import/Dockerfile). Caches apt's downloaded
-      # .deb files (not just pip's HTTP cache, mirroring import.yml's own
-      # restore/save-around-install pattern) so a cache hit skips
-      # re-downloading ffmpeg's package set from the network every run —
-      # apt-get install still runs every time, but against locally cached
-      # packages instead of hitting the archive mirror.
-      - uses: actions/cache/restore@v6
-        with:
-          path: /var/cache/apt/archives
-          key: embedding-ffmpeg-apt
-
-      - name: Install ffmpeg
+      # explicitly, see docker/import/Dockerfile). Uses johnvansickle.com's
+      # prebuilt static amd64 binaries (no apt/package-manager involvement
+      # at all — a single self-contained tar.xz, same source many other CI
+      # pipelines pull ffmpeg from) rather than compiling or apt-installing.
+      # Cache-keyed on the file's ETag (fetched via a cheap HEAD request, not
+      # the ~40MB download itself — same "resolve a cheap identifier, cache
+      # on that" shape as import.yml's own digest-based image cache) so a
+      # cache hit skips re-downloading entirely until upstream actually
+      # publishes a new build.
+      - name: Resolve ffmpeg static build ETag
+        id: ffmpeg-etag
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ffmpeg
+          etag=$(curl -sI https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz \
+            | grep -i '^etag:' | tr -d '"\r' | awk '{print $2}')
+          echo "etag=${etag}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache/restore@v6
+        id: ffmpeg-cache
+        with:
+          path: .ffmpeg-bin
+          key: embedding-ffmpeg-static-${{ steps.ffmpeg-etag.outputs.etag }}
+
+      - name: Download and extract ffmpeg static build
+        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        run: |
+          curl -sL -o ffmpeg-static.tar.xz \
+            https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz
+          mkdir -p .ffmpeg-bin
+          tar -xf ffmpeg-static.tar.xz -C .ffmpeg-bin --strip-components=1
+          rm ffmpeg-static.tar.xz
 
       - uses: actions/cache/save@v6
-        if: always()
+        if: always() && steps.ffmpeg-cache.outputs.cache-hit != 'true'
         with:
-          path: /var/cache/apt/archives
-          key: embedding-ffmpeg-apt
+          path: .ffmpeg-bin
+          key: embedding-ffmpeg-static-${{ steps.ffmpeg-etag.outputs.etag }}
+
+      - name: Add ffmpeg to PATH
+        run: echo "$GITHUB_WORKSPACE/.ffmpeg-bin" >> "$GITHUB_PATH"
 
       - uses: actions/cache/restore@v6
         with:
