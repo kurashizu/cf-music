@@ -3,8 +3,13 @@ import type { Db } from '../db';
 import { embeddingJobs, songs } from '../db/schema';
 import { chunk } from '../../shared/chunk';
 
-// Same D1 bound-parameter cap as findKnownVideoIds in import/jobs.ts.
-const VIDEO_IDS_BATCH_SIZE = 90;
+// D1 caps bound parameters per statement at ~100 (see findKnownVideoIds in
+// import/jobs.ts for the same limit). That constant's batch size of 90 is
+// NOT reusable here: it was calibrated for a 1-param-per-row IN (...)
+// clause, but each row inserted below binds 4 params (id, video_id, status,
+// attempts), so a 90-row batch would need ~360 params — comfortably over
+// the limit. 20 rows × 4 params = 80, safely under it.
+const MISSING_JOBS_INSERT_BATCH_SIZE = 20;
 
 // Non-retryable failures (bad/corrupt audio, unsupported format, model
 // rejected the input) go straight to 'failed'. Retryable ones (rate limit,
@@ -127,7 +132,7 @@ export async function enqueueMissingEmbeddingJobs(db: Db): Promise<number> {
 	`);
 	if (missing.length === 0) return 0;
 
-	for (const batch of chunk(missing, VIDEO_IDS_BATCH_SIZE)) {
+	for (const batch of chunk(missing, MISSING_JOBS_INSERT_BATCH_SIZE)) {
 		await db
 			.insert(embeddingJobs)
 			.values(batch.map((row) => ({ videoId: row.videoId })))
