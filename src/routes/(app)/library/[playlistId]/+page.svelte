@@ -19,6 +19,7 @@
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import ListPlusIcon from '@lucide/svelte/icons/list-plus';
 	import CheckIcon from '@lucide/svelte/icons/check';
+	import SparklesIcon from '@lucide/svelte/icons/sparkles';
 	import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle';
 	import ArrowUpIcon from '@lucide/svelte/icons/arrow-up';
 	import ArrowDownIcon from '@lucide/svelte/icons/arrow-down';
@@ -682,6 +683,14 @@
 								Cached
 							</span>
 						{/if}
+						{#if song.embeddingStatus === 'done'}
+							<span
+								class="absolute top-1 right-1 flex items-center gap-0.5 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] text-white backdrop-blur-sm"
+							>
+								<SparklesIcon class="size-2.5" />
+								Embedded
+							</span>
+						{/if}
 						<button
 							type="button"
 							class="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors active:bg-black/40 sm:group-hover:bg-black/40"
@@ -869,6 +878,15 @@
 					>
 						{formatAudioSpec(song.codec, song.bitrateKbps)}
 					</span>
+
+					{#if song.embeddingStatus === 'done'}
+						<span
+							class="hidden shrink-0 items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground sm:flex"
+						>
+							<SparklesIcon class="size-3" />
+							Embedded
+						</span>
+					{/if}
 
 					<span class="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
 						<ClockIcon class="size-3" />

@@ -1,6 +1,6 @@
 import { eq, and, isNull, max, inArray } from 'drizzle-orm';
 import type { Db } from '../db';
-import { playlists, playlistSongs, songs, users, importJobs, userSongs } from '../db/schema';
+import { playlists, playlistSongs, songs, users, importJobs, userSongs, embeddingJobs } from '../db/schema';
 
 export class LibraryError extends Error {
 	constructor(
@@ -212,13 +212,17 @@ export async function getPlaylistWithSongs(db: Db, playlistId: string, userId: s
 	const playlist = await getOwnedPlaylist(db, playlistId, userId);
 
 	const entries = await db
-		.select({ song: songs, position: playlistSongs.position })
+		.select({ song: songs, position: playlistSongs.position, embeddingStatus: embeddingJobs.status })
 		.from(playlistSongs)
 		.innerJoin(songs, eq(playlistSongs.videoId, songs.videoId))
+		.leftJoin(embeddingJobs, eq(embeddingJobs.videoId, songs.videoId))
 		.where(eq(playlistSongs.playlistId, playlistId))
 		.orderBy(playlistSongs.position);
 
-	return { ...playlist, songs: entries.map((e) => e.song) };
+	// embeddingStatus is null when no embedding_jobs row exists yet (e.g. a
+	// song imported before the pipeline, not yet backfilled) — treated the
+	// same as any non-'done' status: not embedded.
+	return { ...playlist, songs: entries.map((e) => ({ ...e.song, embeddingStatus: e.embeddingStatus })) };
 }
 
 export async function renamePlaylist(db: Db, playlistId: string, userId: string, name: string): Promise<void> {

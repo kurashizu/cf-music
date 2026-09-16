@@ -1,6 +1,6 @@
 import { and, eq } from 'drizzle-orm';
 import type { Db } from '../db';
-import { playlists, playlistSongs, songs } from '../db/schema';
+import { embeddingJobs, playlists, playlistSongs, songs } from '../db/schema';
 import { PLAYLIST_MOSAIC_COVER_COUNT } from './playlists';
 
 export type SmartPlaylistField = 'artist' | 'genre';
@@ -81,6 +81,8 @@ export interface SmartPlaylistSong {
 	codec: string;
 	bitrateKbps: number | null;
 	coverKey: string | null;
+	/** null when no embedding_jobs row exists yet (e.g. a song imported before the pipeline, not yet backfilled) — treated the same as any non-'done' status: not embedded. */
+	embeddingStatus: string | null;
 }
 
 /** Fetches every song in `userId`'s library matching one artist/genre value — the smart-playlist equivalent of getPlaylistWithSongs. */
@@ -99,10 +101,12 @@ export async function getSmartPlaylistSongs(
 			durationSeconds: songs.durationSeconds,
 			codec: songs.codec,
 			bitrateKbps: songs.bitrateKbps,
-			coverKey: songs.coverKey
+			coverKey: songs.coverKey,
+			embeddingStatus: embeddingJobs.status
 		})
 		.from(playlistSongs)
 		.innerJoin(playlists, eq(playlistSongs.playlistId, playlists.id))
 		.innerJoin(songs, eq(playlistSongs.videoId, songs.videoId))
+		.leftJoin(embeddingJobs, eq(embeddingJobs.videoId, songs.videoId))
 		.where(and(eq(playlists.userId, userId), eq(column, value)));
 }
