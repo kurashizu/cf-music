@@ -323,8 +323,15 @@
 <div class="mx-auto max-w-4xl p-4 md:p-8">
 	<h1 class="mb-6 text-lg font-medium">Admin</h1>
 
+	<div class="mb-6 flex justify-end">
+		<Button href="/admin/audit-log" variant="outline" size="sm" class="gap-1.5">
+			<ClipboardListIcon class="size-4" />
+			Audit log
+		</Button>
+	</div>
+
 	<Tabs.Root value="invites" class="w-full">
-		<Tabs.List class="grid w-full grid-cols-4">
+		<Tabs.List class="grid w-full grid-cols-3">
 			<Tabs.Trigger value="invites" class="gap-1.5">
 				<TicketIcon class="size-4" />
 				Invites
@@ -332,10 +339,6 @@
 			<Tabs.Trigger value="users" class="gap-1.5">
 				<UsersIcon class="size-4" />
 				Users
-			</Tabs.Trigger>
-			<Tabs.Trigger value="audit" class="gap-1.5">
-				<ClipboardListIcon class="size-4" />
-				Audit log
 			</Tabs.Trigger>
 			<Tabs.Trigger value="storage" class="gap-1.5">
 				<HardDriveIcon class="size-4" />
@@ -394,26 +397,6 @@
 					</li>
 				{/each}
 			</ul>
-		</Tabs.Content>
-
-		<Tabs.Content value="audit" class="pt-4">
-			{#if data.auditEntries.length === 0}
-				<p class="py-8 text-center text-sm text-muted-foreground">No audit events yet.</p>
-			{:else}
-				<ul class="flex flex-col gap-1">
-					{#each data.auditEntries as entry (entry.id)}
-						<li class="flex items-center gap-3 rounded-lg px-2 py-2 text-sm transition-colors hover:bg-muted">
-							<span class="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs">
-								{entry.eventType}
-							</span>
-							<span class="min-w-0 flex-1 truncate text-muted-foreground">
-								{entry.targetType ? `${entry.targetType} ${entry.targetId}` : ''}
-							</span>
-							<span class="shrink-0 text-xs text-muted-foreground">{formatDate(entry.createdAt)}</span>
-						</li>
-					{/each}
-				</ul>
-			{/if}
 		</Tabs.Content>
 
 		<Tabs.Content value="storage" class="pt-4">

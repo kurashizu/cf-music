@@ -21,9 +21,10 @@ describe('recordAuditEvent / listAuditLog', () => {
 		await seedUser('u1');
 		await recordAuditEvent(db, { actorId: 'u1', eventType: 'login' });
 
-		const entries = await listAuditLog(db);
+		const { entries, total } = await listAuditLog(db);
 
 		expect(entries).toHaveLength(1);
+		expect(total).toBe(1);
 		expect(entries[0].eventType).toBe('login');
 		expect(entries[0].actorId).toBe('u1');
 	});
@@ -36,7 +37,8 @@ describe('recordAuditEvent / listAuditLog', () => {
 			detail: { code: 'ABC123' }
 		});
 
-		const [entry] = await listAuditLog(db);
+		const { entries } = await listAuditLog(db);
+		const [entry] = entries;
 
 		expect(JSON.parse(entry.detail!)).toEqual({ code: 'ABC123' });
 		expect(entry.targetType).toBeNull();
@@ -56,7 +58,7 @@ describe('recordAuditEvent / listAuditLog', () => {
 			.where(eq(auditLog.id, firstEntry.id));
 		await recordAuditEvent(db, { actorId: 'u1', eventType: 'invite_created' });
 
-		const entries = await listAuditLog(db);
+		const { entries } = await listAuditLog(db);
 
 		expect(entries[0].eventType).toBe('invite_created');
 	});
@@ -67,8 +69,9 @@ describe('recordAuditEvent / listAuditLog', () => {
 			await recordAuditEvent(db, { actorId: 'u1', eventType: 'login' });
 		}
 
-		const entries = await listAuditLog(db, { limit: 2 });
+		const { entries, total } = await listAuditLog(db, { limit: 2 });
 
 		expect(entries).toHaveLength(2);
+		expect(total).toBe(5);
 	});
 });

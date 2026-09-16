@@ -33,6 +33,7 @@ import random
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -102,12 +103,32 @@ def claim_jobs() -> list[dict]:
     return _post("/api/embedding-jobs/claim", {"limit": CLAIM_LIMIT})["jobs"]
 
 
-def complete_job(job_id: str, video_id: str, embedding: list[float]) -> None:
-    _post("/api/embedding-jobs/complete", {"jobId": job_id, "videoId": video_id, "embedding": embedding})
+def complete_job(
+    job_id: str,
+    video_id: str,
+    embedding: list[float],
+    segment_count: int,
+    total_audio_seconds: float,
+    embed_millis: int,
+) -> None:
+    _post(
+        "/api/embedding-jobs/complete",
+        {
+            "jobId": job_id,
+            "videoId": video_id,
+            "embedding": embedding,
+            "segmentCount": segment_count,
+            "totalAudioSeconds": total_audio_seconds,
+            "embedMillis": embed_millis,
+        },
+    )
 
 
-def fail_job(job_id: str, error: str, retryable: bool) -> None:
-    _post("/api/embedding-jobs/fail", {"jobId": job_id, "error": error, "retryable": retryable})
+def fail_job(job_id: str, video_id: str, error: str, retryable: bool) -> None:
+    _post(
+        "/api/embedding-jobs/fail",
+        {"jobId": job_id, "videoId": video_id, "error": error, "retryable": retryable},
+    )
 
 
 def download_audio(url: str, dest_path: Path) -> None:
@@ -165,12 +186,14 @@ def compute_sample_plan(duration: float) -> list[tuple[float, float]]:
     return plan
 
 
-def extract_segments(audio_path: Path, workdir: Path) -> list[Path]:
+def extract_segments(audio_path: Path, workdir: Path) -> tuple[list[Path], list[tuple[float, float]]]:
     """Transcodes each planned segment to its own MP3 (Gemini's audio input
     only accepts MP3/WAV, regardless of the source container/codec — so
     this transcode happens unconditionally, not just when a song needs
     splitting). Segments are extracted independently, never concatenated
-    into one clip — see the module docstring for why."""
+    into one clip — see the module docstring for why. Returns the plan
+    alongside the paths so callers can report segment count/total audio
+    seconds without re-probing the source file."""
     duration = probe_duration_seconds(audio_path)
     if duration is None:
         raise NonRetryableError("ffprobe could not determine audio duration")
@@ -189,7 +212,7 @@ def extract_segments(audio_path: Path, workdir: Path) -> list[Path]:
         if result.returncode != 0:
             raise NonRetryableError(f"ffmpeg failed on segment {i}: {result.stderr[:500]}")
         segment_paths.append(segment_path)
-    return segment_paths
+    return segment_paths, plan
 
 
 def embed_segments(client: genai.Client | None, video_id: str, segment_paths: list[Path]) -> list[float]:
@@ -235,20 +258,23 @@ def process_job(client: genai.Client | None, job: dict) -> None:
 
         try:
             download_audio(job["audioUrl"], audio_path)
-            segment_paths = extract_segments(audio_path, workdir)
+            segment_paths, plan = extract_segments(audio_path, workdir)
+            embed_started_at = time.monotonic()
             embedding = embed_segments(client, video_id, segment_paths)
+            embed_millis = round((time.monotonic() - embed_started_at) * 1000)
         except NonRetryableError as exc:
             print(f"{video_id}: non-retryable failure: {exc}", file=sys.stderr)
-            fail_job(job_id, str(exc), retryable=False)
+            fail_job(job_id, video_id, str(exc), retryable=False)
             return
         except Exception as exc:  # noqa: BLE001 - one job's failure must not abort the batch
             retryable = is_retryable_api_error(exc)
             print(f"{video_id}: {'retryable' if retryable else 'non-retryable'} failure: {exc}", file=sys.stderr)
-            fail_job(job_id, str(exc)[:500], retryable=retryable)
+            fail_job(job_id, video_id, str(exc)[:500], retryable=retryable)
             return
 
-    complete_job(job_id, video_id, embedding)
-    print(f"{video_id}: embedded ({len(embedding)} dims)")
+    total_audio_seconds = sum(length_seconds for _, length_seconds in plan)
+    complete_job(job_id, video_id, embedding, len(plan), total_audio_seconds, embed_millis)
+    print(f"{video_id}: embedded ({len(embedding)} dims, {len(plan)} segment(s), {embed_millis}ms)")
 
 
 def main() -> None:

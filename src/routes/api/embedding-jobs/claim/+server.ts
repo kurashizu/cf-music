@@ -5,6 +5,7 @@ import { claimEmbeddingJobs, failEmbeddingJob, getSongsForEmbeddingJobs } from '
 import { verifyWebhookSignature } from '$lib/server/import/webhook-auth';
 import { pickPositiveNumber } from '$lib/server/http/validate';
 import { getObjectStorage } from '$lib/server/storage/factory';
+import { recordAuditEvent } from '$lib/server/audit/log';
 
 // One scheduled workflow run claims at most this many songs — keeps a
 // single GitHub Actions job (60-minute timeout, same backstop as import.yml)
@@ -68,5 +69,13 @@ export const POST: RequestHandler = async (event) => {
 		})
 	);
 
-	return json({ jobs: jobs.filter((j) => j !== null) });
+	const claimedJobs = jobs.filter((j) => j !== null);
+
+	await recordAuditEvent(db, {
+		eventType: 'embedding_claimed',
+		targetType: 'embedding_job',
+		detail: { videoIds: claimedJobs.map((j) => j.videoId), requestedLimit: limit }
+	});
+
+	return json({ jobs: claimedJobs });
 };
