@@ -95,6 +95,13 @@ describe('findOrphanedObjects', () => {
 		expect(result.orphanKeys).toEqual([]);
 		expect(result.totalReferencedKeys).toBe(1);
 	});
+
+	it('excludes ci-state/ keys from both orphanKeys and totalBucketKeys', async () => {
+		const storage = new FakeObjectStorage(['ci-state/www.youtube.com_cookies.txt', 'audio/stray.webm']);
+		const result = await findOrphanedObjects(db, storage);
+		expect(result.orphanKeys).toEqual(['audio/stray.webm']);
+		expect(result.totalBucketKeys).toBe(1);
+	});
 });
 
 describe('findDeadSongReferences', () => {

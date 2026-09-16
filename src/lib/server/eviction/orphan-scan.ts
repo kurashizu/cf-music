@@ -33,6 +33,18 @@ export interface UnreferencedSongScanResult {
 	totalSongs: number;
 }
 
+// Prefixes for things deliberately kept in the same bucket that aren't a
+// song's audioKey/coverKey and never will be — e.g. ci-state/, where the
+// import pipeline's yt-dlp cookies file lives (see YT_COOKIES_OBJECT_KEY in
+// docker/import/import.py). Without this, every scan below would report
+// them as orphaned (true, in the narrow sense that no `songs` row points at
+// them) and an admin could delete something that's still very much in use.
+const NON_SONG_KEY_PREFIXES = ['ci-state/'];
+
+function isSongNamespaceKey(key: string): boolean {
+	return !NON_SONG_KEY_PREFIXES.some((prefix) => key.startsWith(prefix));
+}
+
 /**
  * Finds S3 objects with no corresponding row in `songs` at all — every
  * legitimate object is either a song's audioKey or coverKey, and every song
@@ -54,9 +66,11 @@ export async function findOrphanedObjects(db: Db, storage: ObjectStorage): Promi
 		if (row.coverKey) referencedKeys.add(row.coverKey);
 	}
 
+	const songNamespaceKeys = bucketKeys.filter(isSongNamespaceKey);
+
 	return {
-		orphanKeys: bucketKeys.filter((key) => !referencedKeys.has(key)),
-		totalBucketKeys: bucketKeys.length,
+		orphanKeys: songNamespaceKeys.filter((key) => !referencedKeys.has(key)),
+		totalBucketKeys: songNamespaceKeys.length,
 		totalReferencedKeys: referencedKeys.size
 	};
 }

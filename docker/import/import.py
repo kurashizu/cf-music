@@ -66,6 +66,21 @@ SOCKS5_PROXY = "socks5://127.0.0.1:40000"
 COVER_CRF = "40"
 DOWNLOAD_CONCURRENCY = 3  # sequential downloads were the bottleneck on large playlists
 
+# Netscape-format cookies.txt for a real (secondary/throwaway) YouTube
+# account, manually uploaded to MinIO out-of-band — this script never
+# generates or refreshes it. Authenticated requests are less likely to hit
+# the "Sign in to confirm you're not a bot" wall in the first place (see
+# _is_bot_check_error) than the anonymous requests every yt-dlp call used
+# to make; this doesn't replace the WARP proxy or the bot-check retry
+# ladder, both of which stay in place for whenever this account also gets
+# walled. Object key deliberately outside audio/covers/ so it's never
+# swept up by the S3 bucket's own song-key orphan scan.
+YT_COOKIES_OBJECT_KEY = "ci-state/www.youtube.com_cookies.txt"
+# Set once by fetch_cookies_file() in __main__, before run() starts — every
+# yt_dlp_options() call reads this module global rather than having it
+# threaded through as a parameter.
+YT_DLP_COOKIES_PATH: str | None = None
+
 YT_DLP_MAX_RETRIES = 4
 YT_DLP_RETRY_BASE_DELAY_SECONDS = 5  # doubles each retry, plus jitter — see with_retry
 
@@ -74,8 +89,16 @@ YT_DLP_RETRY_BASE_DELAY_SECONDS = 5  # doubles each retry, plus jitter — see w
 # ladder rather than reusing YT_DLP_RETRY_BASE_DELAY_SECONDS — the job-level
 # timeout-minutes: 60 in import.yml is the actual backstop against this ladder
 # still not being enough.
-YT_DLP_BOT_CHECK_MAX_RETRIES = 3
+#
+# Linear, not exponential, growth: at MAX_RETRIES=10 an exponential ladder's
+# last delay alone would run ~6.4 hours (45 * 2^9), guaranteeing the 60-minute
+# job timeout kills the run long before attempt 10 — making the configured
+# retry count a lie. This schedule (45, 75, 105, ... +30s per attempt) sums to
+# 1800s (30min) worst case across all 10 attempts, leaving the other 30
+# minutes of the job timeout for the retries' own download work.
+YT_DLP_BOT_CHECK_MAX_RETRIES = 10
 YT_DLP_BOT_CHECK_BASE_DELAY_SECONDS = 45
+YT_DLP_BOT_CHECK_DELAY_STEP_SECONDS = 30
 
 
 class QuotaExceededError(Exception):
@@ -125,7 +148,11 @@ def with_retry(fn, *args, description: str, **kwargs):
             if _is_bot_check_error(exc):
                 if bot_check_attempts >= YT_DLP_BOT_CHECK_MAX_RETRIES:
                     raise
-                delay = YT_DLP_BOT_CHECK_BASE_DELAY_SECONDS * (2**bot_check_attempts) + random.uniform(0, 5)
+                delay = (
+                    YT_DLP_BOT_CHECK_BASE_DELAY_SECONDS
+                    + YT_DLP_BOT_CHECK_DELAY_STEP_SECONDS * bot_check_attempts
+                    + random.uniform(0, 5)
+                )
                 bot_check_attempts += 1
                 print(
                     f"{description}: bot-check wall (attempt {bot_check_attempts}/"
@@ -150,6 +177,29 @@ def with_retry(fn, *args, description: str, **kwargs):
 
 def sign(message: str) -> str:
     return hmac.new(IMPORT_WEBHOOK_SECRET.encode(), message.encode(), hashlib.sha256).hexdigest()
+
+
+def fetch_cookies_file() -> str | None:
+    """Downloads the cookies.txt at YT_COOKIES_OBJECT_KEY into a temp file
+    for yt-dlp's own --cookies handling, or returns None if it isn't
+    there — cookies are an optional mitigation (see the constant's own
+    comment), not a hard requirement, so a missing object shouldn't fail
+    every import job outright. Runs once at process start (see __main__
+    below), well before run()'s own asyncio.run — this is a single
+    blocking network call, not worth threading through to_thread for."""
+    s3_client = boto3.client(
+        "s3",
+        endpoint_url=MINIO_ENDPOINT,
+        aws_access_key_id=MINIO_ACCESS_KEY,
+        aws_secret_access_key=MINIO_SECRET_KEY,
+    )
+    dest_path = Path(tempfile.gettempdir()) / "yt-cookies.txt"
+    try:
+        s3_client.download_file(MINIO_BUCKET, YT_COOKIES_OBJECT_KEY, str(dest_path))
+    except Exception as exc:  # noqa: BLE001 - missing/unreadable cookies file falls back to cookie-less
+        print(f"No cookies file at {YT_COOKIES_OBJECT_KEY} ({exc}); proceeding without cookies", file=sys.stderr)
+        return None
+    return str(dest_path)
 
 
 def fetch_known_video_ids(video_ids: list[str]) -> set[str]:
@@ -187,8 +237,22 @@ def websocket_url() -> str:
     return f"{base}/api/import/ws?{query}"
 
 
+def yt_dlp_options(**overrides) -> dict:
+    """Base options every yt_dlp.YoutubeDL(...) call site shares (proxy,
+    quiet, and cookies when YT_DLP_COOKIES_PATH was set — see its own
+    comment) — cookiefile is simply omitted, not set to None, when there's
+    no cookies file, since yt-dlp treats an explicit None the same as
+    "don't pass this option" anyway, but omitting it is the less surprising
+    of the two to read here."""
+    options = {"quiet": True, "proxy": SOCKS5_PROXY}
+    if YT_DLP_COOKIES_PATH:
+        options["cookiefile"] = YT_DLP_COOKIES_PATH
+    options.update(overrides)
+    return options
+
+
 def extract_playlist_entries(source_url: str) -> list[dict]:
-    options = {"extract_flat": "in_playlist", "quiet": True, "proxy": SOCKS5_PROXY}
+    options = yt_dlp_options(extract_flat="in_playlist")
 
     def _extract():
         with yt_dlp.YoutubeDL(options) as ydl:
@@ -210,7 +274,7 @@ def estimate_song_size_bytes(entry: dict) -> int:
     fail again (and be reported as such) when download_song actually gets
     to it, so there's no need to treat that failure twice."""
     try:
-        options = {"format": "bestaudio/best", "quiet": True, "proxy": SOCKS5_PROXY}
+        options = yt_dlp_options(format="bestaudio/best")
         video_id_url = entry.get("url") or entry.get("webpage_url") or entry["id"]
 
         def _extract():
@@ -313,14 +377,12 @@ def reserve_quota(job_id: str, video_id: str, estimated_bytes: int) -> bool:
 
 def download_song(video_id_url: str, workdir: Path) -> dict:
     audio_template = str(workdir / "%(id)s.%(ext)s")
-    options = {
-        "format": "bestaudio/best",
-        "outtmpl": audio_template,
-        "writethumbnail": True,
-        "quiet": True,
-        "proxy": SOCKS5_PROXY,
-        "noplaylist": True,
-    }
+    options = yt_dlp_options(
+        format="bestaudio/best",
+        outtmpl=audio_template,
+        writethumbnail=True,
+        noplaylist=True,
+    )
 
     def _download():
         with yt_dlp.YoutubeDL(options) as ydl:
@@ -523,14 +585,21 @@ async def run() -> None:
             async with send_lock:
                 await ws_box[0].send(payload)
 
-        # Cancellation is checked for the entire job lifetime (probing and
-        # downloading both watch `cancelled`), not just once downloading
-        # starts — a cancel decision arriving during the (now potentially
-        # multi-minute, on a huge playlist) probing phase should stop the
-        # job just as promptly as one arriving mid-download. In-flight
-        # work (a probe or a download already running) still finishes —
-        # there's no point discarding a nearly-done call — but nothing new
-        # starts once cancelled is set.
+        # Cancellation used to be cooperative: set a flag, let whatever's
+        # in flight finish, stop starting new work. That's wrong for a
+        # download already running inside asyncio.to_thread — it's a
+        # synchronous, blocking call (yt-dlp, including its own
+        # with_retry backoff sleep, now up to ~30min worst case across
+        # YT_DLP_BOT_CHECK_MAX_RETRIES retries) with no way to interrupt
+        # it cooperatively from here; the flag would just sit unread
+        # until that thread happens to return on its own. os._exit below
+        # kills the whole process immediately instead, which is safe to
+        # do the instant this decision arrives: the Worker already
+        # flipped the D1 job to 'cancelled' and released its quota
+        # reservations before it ever forwarded this message to CI (see
+        # handleBrowserControl in import-progress.ts), and
+        # disconnectImportJob's own check for an already-terminal status
+        # means the resulting WebSocket drop is a no-op on that side too.
         cancelled = False
 
         async def watch_for_cancel() -> None:
@@ -554,9 +623,17 @@ async def run() -> None:
                         return
                 decision = json.loads(cancel_message)
                 if decision.get("action") == "cancel":
-                    print("Import was cancelled mid-run", file=sys.stderr)
+                    print("Import was cancelled mid-run — killing the process now", file=sys.stderr)
                     cancelled = True
-                    return
+                    # Not sys.exit(): that raises SystemExit, which only
+                    # unwinds the current coroutine's stack — every
+                    # worker thread blocked in yt-dlp/ffmpeg (exactly the
+                    # case this exists for) would keep running regardless,
+                    # holding the runner open until they finished on their
+                    # own anyway. os._exit(0) terminates the process
+                    # immediately, no unwinding, taking every thread down
+                    # with it.
+                    os._exit(0)
 
         watcher = asyncio.create_task(watch_for_cancel())
 
@@ -739,6 +816,10 @@ async def run() -> None:
 
 
 if __name__ == "__main__":
+    # Set before run() so every yt_dlp_options() call below (playlist
+    # extraction, size probing, download — all of which can hit the
+    # bot-check wall, not just the download step) picks it up.
+    YT_DLP_COOKIES_PATH = fetch_cookies_file()
     try:
         asyncio.run(run())
     except Exception:  # noqa: BLE001 - surface a non-zero exit for the workflow's own logs
