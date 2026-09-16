@@ -6,6 +6,7 @@
 	import { motionParams } from '$lib/client/motion';
 	import XIcon from '@lucide/svelte/icons/x';
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
+	import InfiniteScrollSentinel from '$lib/components/infinite-scroll-sentinel.svelte';
 
 	// Purely visual — collapses the now-playing row's audio-spec detail,
 	// no data implications, cheap enough to not bother persisting.
@@ -45,6 +46,25 @@
 		const m = Math.floor(seconds / 60);
 		const s = Math.floor(seconds % 60);
 		return `${m}:${s.toString().padStart(2, '0')}`;
+	}
+
+	// A long playlist's queue can carry hundreds of upcoming tracks — same
+	// windowing pattern as the playlist/library pages (see their own
+	// visibleCount/loadMore), just scoped to this panel's own scroll
+	// container instead of the page. Resets whenever the panel (re)opens or
+	// the *current track* changes, not on every upcoming-array mutation —
+	// removeFromQueue/reorder already animate via animate:flip and
+	// shouldn't also snap the window back to the top.
+	const PAGE_SIZE = 30;
+	let visibleCount = $state(PAGE_SIZE);
+	$effect(() => {
+		queuePanelState.open;
+		player.currentTrack;
+		visibleCount = PAGE_SIZE;
+	});
+	const visibleUpcoming = $derived(player.upcoming.slice(0, visibleCount));
+	function loadMore() {
+		visibleCount = Math.min(player.upcoming.length, visibleCount + PAGE_SIZE);
 	}
 </script>
 
@@ -114,7 +134,7 @@
 				<p class="px-1.5 py-1 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
 					Next up
 				</p>
-				{#each player.upcoming as { track, queueArrayIndex }, position (queueArrayIndex)}
+				{#each visibleUpcoming as { track, queueArrayIndex }, position (queueArrayIndex)}
 					<div
 						class="group flex items-center gap-2.5 rounded-md px-1.5 py-1.5 transition-colors active:bg-muted hover:bg-muted"
 						animate:flip={motionParams({ duration: 200 })}
@@ -143,6 +163,9 @@
 						</button>
 					</div>
 				{/each}
+				{#if visibleCount < player.upcoming.length}
+					<InfiniteScrollSentinel onIntersect={loadMore} />
+				{/if}
 			</div>
 		{/if}
 	</div>
