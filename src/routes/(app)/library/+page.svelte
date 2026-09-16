@@ -19,7 +19,8 @@
 	import MusicIcon from '@lucide/svelte/icons/music';
 	import PlaylistCover from '$lib/components/playlist-cover.svelte';
 	import { player } from '$lib/client/player.svelte';
-	import * as Select from '$lib/components/ui/select/index.js';
+	import SongSortFilterBar from '$lib/components/song-sort-filter-bar.svelte';
+	import { sortSongs, matchesDurationRange, type SongSortField, type SortDirection } from '$lib/shared/song-sort-filter';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -30,6 +31,16 @@
 
 	let searchQuery = $state('');
 	let artistFilter = $state<string>('all');
+	let sortField = $state<SongSortField>('title');
+	let sortDirection = $state<SortDirection>('asc');
+	let minDurationMinutes = $state('');
+	let maxDurationMinutes = $state('');
+
+	const SORT_OPTIONS = [
+		{ value: 'title' as const, label: 'Title' },
+		{ value: 'artist' as const, label: 'Artist' },
+		{ value: 'duration' as const, label: 'Duration' }
+	];
 
 	const artistOptions = $derived(
 		[...new Set(data.librarySongs.map((s) => s.artist).filter((a): a is string => a !== null))].sort(
@@ -53,18 +64,28 @@
 	// with neither active, every one of potentially hundreds of library
 	// songs would "match", which isn't a useful thing to render below the
 	// playlist grid.
-	const matchingSongs = $derived(
-		normalizedQuery.length === 0 && artistFilter === 'all'
-			? []
-			: data.librarySongs.filter((s) => {
-					if (artistFilter !== 'all' && s.artist !== artistFilter) return false;
-					if (normalizedQuery.length === 0) return true;
-					return (
-						s.title.toLowerCase().includes(normalizedQuery) ||
-						(s.artist?.toLowerCase().includes(normalizedQuery) ?? false)
-					);
-				})
-	);
+	const matchingSongs = $derived.by(() => {
+		if (
+			normalizedQuery.length === 0 &&
+			artistFilter === 'all' &&
+			minDurationMinutes.trim() === '' &&
+			maxDurationMinutes.trim() === ''
+		) {
+			return [];
+		}
+		const minSeconds = minDurationMinutes.trim() === '' ? null : Number(minDurationMinutes) * 60;
+		const maxSeconds = maxDurationMinutes.trim() === '' ? null : Number(maxDurationMinutes) * 60;
+		const filtered = data.librarySongs.filter((s) => {
+			if (artistFilter !== 'all' && s.artist !== artistFilter) return false;
+			if (!matchesDurationRange(s.durationSeconds, { minSeconds, maxSeconds })) return false;
+			if (normalizedQuery.length === 0) return true;
+			return (
+				s.title.toLowerCase().includes(normalizedQuery) ||
+				(s.artist?.toLowerCase().includes(normalizedQuery) ?? false)
+			);
+		});
+		return sortSongs(filtered, sortField, sortDirection);
+	});
 
 	async function playSong(song: { videoId: string; title: string; durationSeconds: number | null }) {
 		const index = matchingSongs.findIndex((s) => s.videoId === song.videoId);
@@ -170,19 +191,16 @@
 				<SearchIcon class="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
 				<Input placeholder="Search playlists and songs…" bind:value={searchQuery} class="pl-9" />
 			</div>
-			{#if artistOptions.length > 0}
-				<Select.Root type="single" bind:value={artistFilter}>
-					<Select.Trigger class="w-40">
-						{artistFilter === 'all' ? 'All artists' : artistFilter}
-					</Select.Trigger>
-					<Select.Content>
-						<Select.Item value="all" label="All artists">All artists</Select.Item>
-						{#each artistOptions as artist (artist)}
-							<Select.Item value={artist} label={artist}>{artist}</Select.Item>
-						{/each}
-					</Select.Content>
-				</Select.Root>
-			{/if}
+			<SongSortFilterBar
+				bind:sortField
+				bind:sortDirection
+				sortOptions={SORT_OPTIONS}
+				bind:artistFilter
+				{artistOptions}
+				bind:minDurationMinutes
+				bind:maxDurationMinutes
+				showDurationFilter
+			/>
 		</div>
 	{/if}
 
@@ -280,9 +298,9 @@
 		</div>
 	{/if}
 
-	{#if (searchQuery.trim().length > 0 || artistFilter !== 'all') && filteredPlaylists.length === 0 && filteredSmartPlaylists.length === 0 && matchingSongs.length === 0}
+	{#if (searchQuery.trim().length > 0 || artistFilter !== 'all' || minDurationMinutes.trim() !== '' || maxDurationMinutes.trim() !== '') && filteredPlaylists.length === 0 && filteredSmartPlaylists.length === 0 && matchingSongs.length === 0}
 		<p class="py-8 text-center text-sm text-muted-foreground">
-			{searchQuery.trim().length > 0 ? `No matches for "${searchQuery}".` : `No songs by ${artistFilter}.`}
+			{searchQuery.trim().length > 0 ? `No matches for "${searchQuery}".` : 'No songs match the current filters.'}
 		</p>
 	{/if}
 

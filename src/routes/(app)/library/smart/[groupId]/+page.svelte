@@ -30,6 +30,8 @@
 	import ViewModeToggle from '$lib/components/view-mode-toggle.svelte';
 	import InfiniteScrollSentinel from '$lib/components/infinite-scroll-sentinel.svelte';
 	import ThrottledImage from '$lib/components/throttled-image.svelte';
+	import SongSortFilterBar from '$lib/components/song-sort-filter-bar.svelte';
+	import { sortSongs, matchesDurationRange, type SongSortField, type SortDirection } from '$lib/shared/song-sort-filter';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -46,11 +48,27 @@
 	);
 
 	let searchQuery = $state('');
-	const filteredSongs = $derived(
-		searchQuery.trim().length === 0
-			? data.songs
-			: data.songs.filter((s) => s.title.toLowerCase().includes(searchQuery.trim().toLowerCase()))
-	);
+	let sortField = $state<SongSortField>('title');
+	let sortDirection = $state<SortDirection>('asc');
+	let minDurationMinutes = $state('');
+	let maxDurationMinutes = $state('');
+
+	const SORT_OPTIONS = [
+		{ value: 'title' as const, label: 'Title' },
+		{ value: 'duration' as const, label: 'Duration' }
+	];
+
+	const filteredSongs = $derived.by(() => {
+		const query = searchQuery.trim().toLowerCase();
+		const minSeconds = minDurationMinutes.trim() === '' ? null : Number(minDurationMinutes) * 60;
+		const maxSeconds = maxDurationMinutes.trim() === '' ? null : Number(maxDurationMinutes) * 60;
+		const filtered = data.songs.filter((s) => {
+			if (query.length > 0 && !s.title.toLowerCase().includes(query)) return false;
+			if (!matchesDurationRange(s.durationSeconds, { minSeconds, maxSeconds })) return false;
+			return true;
+		});
+		return sortSongs(filtered, sortField, sortDirection);
+	});
 
 	const PAGE_SIZE = 20;
 	let visibleCount = $state(PAGE_SIZE);
@@ -365,11 +383,19 @@
 	</div>
 
 	{#if data.songs.length > 0}
-		<div class="mb-3 flex items-center gap-2">
-			<div class="relative flex-1">
+		<div class="mb-3 flex flex-wrap items-center gap-2">
+			<div class="relative min-w-48 flex-1">
 				<SearchIcon class="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
 				<Input placeholder="Search songs…" bind:value={searchQuery} class="pl-9" />
 			</div>
+			<SongSortFilterBar
+				bind:sortField
+				bind:sortDirection
+				sortOptions={SORT_OPTIONS}
+				bind:minDurationMinutes
+				bind:maxDurationMinutes
+				showDurationFilter
+			/>
 			<Button size="sm" variant="outline" onclick={toggleSelectAll}>
 				{allVisibleSelected ? 'Deselect all' : 'Select all'}
 			</Button>
@@ -439,7 +465,9 @@
 			<p class="text-sm text-muted-foreground">Nothing here.</p>
 		</div>
 	{:else if filteredSongs.length === 0}
-		<p class="py-8 text-center text-sm text-muted-foreground">No songs match "{searchQuery}".</p>
+		<p class="py-8 text-center text-sm text-muted-foreground">
+			{searchQuery.trim().length > 0 ? `No songs match "${searchQuery}".` : 'No songs match the current filters.'}
+		</p>
 	{:else if viewMode.mode === 'grid'}
 		<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8">
 			{#each visibleSongs as song, index (song.videoId)}
@@ -490,18 +518,22 @@
 								? 'Pause'
 								: 'Play'}
 						>
-							{#key player.currentTrack?.videoId === song.videoId && player.isPlaying}
-								<span
-									class="flex size-9 items-center justify-center rounded-full bg-black/50 opacity-100 backdrop-blur-sm transition-opacity sm:bg-black/60 sm:opacity-0 sm:group-hover:opacity-100"
-									transition:scale={motionParams({ duration: 100, start: 0.7 })}
-								>
-									{#if player.currentTrack?.videoId === song.videoId && player.isPlaying}
-										<PauseIcon class="size-4 text-white" />
-									{:else}
-										<PlayIcon class="size-4 text-white" />
-									{/if}
-								</span>
-							{/key}
+							<span
+								class="relative flex size-9 items-center justify-center rounded-full bg-black/50 opacity-100 backdrop-blur-sm transition-opacity sm:bg-black/60 sm:opacity-0 sm:group-hover:opacity-100"
+							>
+								{#key player.currentTrack?.videoId === song.videoId && player.isPlaying}
+									<span
+										class="absolute inset-0 flex items-center justify-center"
+										transition:scale={motionParams({ duration: 100, start: 0.7 })}
+									>
+										{#if player.currentTrack?.videoId === song.videoId && player.isPlaying}
+											<PauseIcon class="size-4 text-white" />
+										{:else}
+											<PlayIcon class="size-4 text-white" />
+										{/if}
+									</span>
+								{/key}
+							</span>
 						</button>
 						<span class="absolute top-1 right-1" onclick={(e) => e.stopPropagation()}>
 							<DropdownMenu.Root>

@@ -212,7 +212,12 @@ export async function getPlaylistWithSongs(db: Db, playlistId: string, userId: s
 	const playlist = await getOwnedPlaylist(db, playlistId, userId);
 
 	const entries = await db
-		.select({ song: songs, position: playlistSongs.position, embeddingStatus: embeddingJobs.status })
+		.select({
+			song: songs,
+			position: playlistSongs.position,
+			addedAt: playlistSongs.addedAt,
+			embeddingStatus: embeddingJobs.status
+		})
 		.from(playlistSongs)
 		.innerJoin(songs, eq(playlistSongs.videoId, songs.videoId))
 		.leftJoin(embeddingJobs, eq(embeddingJobs.videoId, songs.videoId))
@@ -222,7 +227,10 @@ export async function getPlaylistWithSongs(db: Db, playlistId: string, userId: s
 	// embeddingStatus is null when no embedding_jobs row exists yet (e.g. a
 	// song imported before the pipeline, not yet backfilled) — treated the
 	// same as any non-'done' status: not embedded.
-	return { ...playlist, songs: entries.map((e) => ({ ...e.song, embeddingStatus: e.embeddingStatus })) };
+	return {
+		...playlist,
+		songs: entries.map((e) => ({ ...e.song, addedAt: e.addedAt, embeddingStatus: e.embeddingStatus }))
+	};
 }
 
 /**

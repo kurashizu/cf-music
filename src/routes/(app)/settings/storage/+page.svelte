@@ -648,18 +648,22 @@
 									? 'Pause'
 									: 'Play'}
 							>
-								{#key player.currentTrack?.videoId === entry.videoId && player.isPlaying}
-									<span
-										class="flex size-9 items-center justify-center rounded-full bg-black/50 opacity-100 backdrop-blur-sm transition-opacity sm:bg-black/60 sm:opacity-0 sm:group-hover:opacity-100"
-										transition:scale={motionParams({ duration: 100, start: 0.7 })}
-									>
-										{#if player.currentTrack?.videoId === entry.videoId && player.isPlaying}
-											<PauseIcon class="size-4 text-white" />
-										{:else}
-											<PlayIcon class="size-4 text-white" />
-										{/if}
-									</span>
-								{/key}
+								<span
+									class="relative flex size-9 items-center justify-center rounded-full bg-black/50 opacity-100 backdrop-blur-sm transition-opacity sm:bg-black/60 sm:opacity-0 sm:group-hover:opacity-100"
+								>
+									{#key player.currentTrack?.videoId === entry.videoId && player.isPlaying}
+										<span
+											class="absolute inset-0 flex items-center justify-center"
+											transition:scale={motionParams({ duration: 100, start: 0.7 })}
+										>
+											{#if player.currentTrack?.videoId === entry.videoId && player.isPlaying}
+												<PauseIcon class="size-4 text-white" />
+											{:else}
+												<PlayIcon class="size-4 text-white" />
+											{/if}
+										</span>
+									{/key}
+								</span>
 							</button>
 							<span class="absolute top-1 right-1" onclick={(e) => e.stopPropagation()}>
 								<DropdownMenu.Root>
