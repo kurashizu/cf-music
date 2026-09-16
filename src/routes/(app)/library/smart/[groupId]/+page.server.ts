@@ -15,7 +15,7 @@ export const load: PageServerLoad = async ({ platform, locals, params }) => {
 
 	const db = getDb(platform!.env.DB);
 	const [songs, playlists] = await Promise.all([
-		getSmartPlaylistSongs(db, locals.session.userId, parsed.field, parsed.value),
+		getSmartPlaylistSongs(db, locals.session.userId, parsed.value),
 		listPlaylists(db, locals.session.userId)
 	]);
 
@@ -28,7 +28,6 @@ export const load: PageServerLoad = async ({ platform, locals, params }) => {
 	);
 
 	return {
-		field: parsed.field,
 		value: parsed.value,
 		songs: songsWithCovers,
 		// A smart group isn't a real playlist a song could already be "the

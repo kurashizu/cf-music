@@ -73,36 +73,7 @@ export const songs = sqliteTable('songs', {
 	coverWidth: integer('cover_width'),
 	coverHeight: integer('cover_height'),
 
-	// Zero-shot classification: cosine similarity between this song's own
-	// audio embedding (in Vectorize, keyed by video_id) and every tag in
-	// tagVectors' text embeddings — computed by the separate auto-tag CI
-	// pipeline (distinct from the embedding pipeline itself: a song must
-	// already have a Vectorize entry before this can run at all). JSON
-	// object mapping tag -> similarity score for EVERY tag in tagVectors,
-	// not a pre-filtered top-k — thresholding/sorting into an actual
-	// "Auto-Cat" browsing view is left to whatever reads this, so changing
-	// the display cutoff never requires recomputing anything. Null until
-	// the auto-tag pipeline has processed this song at least once. Named
-	// distinctly from the existing `tags` column above (that's raw
-	// yt-dlp/import metadata, not related to this at all).
-	autoTags: text('auto_tags'),
-
 	importedAt: text('imported_at')
-		.notNull()
-		.default(sql`(current_timestamp)`)
-});
-
-// The fixed candidate vocabulary for zero-shot song classification (see
-// songs.autoTags) — each tag's own text embedding, computed once via the
-// same gemini-embedding-2 model used for song audio, so the two vector
-// spaces are comparable by cosine similarity. A plain table (not a
-// hardcoded constant in code) so re-tuning the vocabulary is a data change,
-// not a deploy — the auto-tag CI script reads this fresh every run.
-export const tagVectors = sqliteTable('tag_vectors', {
-	tag: text('tag').primaryKey(),
-	facet: text('facet').notNull(), // genre / mood / instrumentation — informational grouping, not used in the similarity math itself
-	embedding: text('embedding').notNull(), // JSON array of 768 floats
-	createdAt: text('created_at')
 		.notNull()
 		.default(sql`(current_timestamp)`)
 });
@@ -115,24 +86,6 @@ export const playlists = sqliteTable('playlists', {
 		.references(() => users.id, { onDelete: 'cascade' }),
 	name: text('name').notNull(),
 	sourceUrl: text('source_url'), // import source; null for app-native playlists
-	// 'custom' is every playlist a user creates/renames/deletes themselves,
-	// including their own default playlist — unrestricted, same as always.
-	// The other three are system-generated (auto-tag stage two, and later
-	// artist/recommendation groupings): the application layer must reject
-	// rename/delete against any of them, since they're wholesale
-	// replaced by their own job on its next run, not edited in place.
-	type: text('type', {
-		enum: ['custom', 'auto_tag', 'artist', 'recommendation']
-	})
-		.notNull()
-		.default('custom'),
-	// Only meaningful for type='auto_tag': which tag (and its facet, purely
-	// informational grouping — see tagVectors.facet) this playlist
-	// represents, so a rebuild can target-delete this user's own auto_tag
-	// playlists without parsing `name` back into a tag. Both null for
-	// every other type.
-	tag: text('tag'),
-	facet: text('facet'),
 	createdAt: text('created_at')
 		.notNull()
 		.default(sql`(current_timestamp)`)
@@ -299,9 +252,10 @@ export const auditLog = sqliteTable('audit_log', {
 	actorId: text('actor_id').references(() => users.id, { onDelete: 'set null' }), // who performed it (differs from userId when an admin acts on another user's behalf)
 	eventType: text('event_type').notNull(), // import / evict / manual_delete / cover_reference_cleared /
 	// login / login_failed / password_change / invite_used / invite_created / quota_adjusted / force_logout /
-	// embedding_claimed / embedding_completed / embedding_failed / auto_tag_claimed /
-	// auto_tag_completed / auto_tag_playlists_rebuilt
-	// (see AUDIT_EVENT_TYPES in src/lib/shared/audit-event-types.ts for the authoritative list)
+	// embedding_claimed / embedding_completed / embedding_failed
+	// (see AUDIT_EVENT_TYPES in src/lib/shared/audit-event-types.ts for the authoritative list — note:
+	// a handful of existing rows use auto_tag_claimed/auto_tag_completed/auto_tag_playlists_rebuilt from
+	// a reverted feature; those values are no longer in AUDIT_EVENT_TYPES but the historical rows remain)
 	targetType: text('target_type'), // song / user / playlist / import_job / embedding_job
 	targetId: text('target_id'),
 	detail: text('detail'), // JSON blob with event-specific details

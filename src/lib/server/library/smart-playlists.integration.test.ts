@@ -45,50 +45,74 @@ describe('listSmartPlaylists', () => {
 		expect(await listSmartPlaylists(db, 'u1')).toEqual([]);
 	});
 
-	it('groups songs by artist and by genre independently', async () => {
+	it('groups songs by artist', async () => {
 		await seedUser('u1');
-		await seedSong('a', { artist: 'Radiohead', genre: 'Rock' });
-		await seedSong('b', { artist: 'Radiohead', genre: 'Alternative' });
+		await seedSong('a', { artist: 'Radiohead' });
+		await seedSong('b', { artist: 'Radiohead' });
 		const { id: p1 } = await createPlaylist(db, { userId: 'u1', name: 'Mix' });
 		await addSongToPlaylist(db, p1, 'u1', 'a');
 		await addSongToPlaylist(db, p1, 'u1', 'b');
 
 		const groups = await listSmartPlaylists(db, 'u1');
-		const artistGroup = groups.find((g) => g.id === 'artist:Radiohead');
-		expect(artistGroup?.songCount).toBe(2);
-		expect(groups.find((g) => g.id === 'genre:Rock')?.songCount).toBe(1);
-		expect(groups.find((g) => g.id === 'genre:Alternative')?.songCount).toBe(1);
+		expect(groups.find((g) => g.id === 'artist:Radiohead')?.songCount).toBe(2);
 	});
 
-	it('excludes songs with no artist/genre set from those groupings', async () => {
+	it('excludes songs with no artist set', async () => {
 		await seedUser('u1');
-		await seedSong('a', { artist: null, genre: null });
+		await seedSong('a', { artist: null });
+		await seedSong('b', { artist: null });
+		const { id: p1 } = await createPlaylist(db, { userId: 'u1', name: 'Mix' });
+		await addSongToPlaylist(db, p1, 'u1', 'a');
+		await addSongToPlaylist(db, p1, 'u1', 'b');
+
+		expect(await listSmartPlaylists(db, 'u1')).toEqual([]);
+	});
+
+	it('excludes an artist with only one matching song (below the 2-song minimum)', async () => {
+		await seedUser('u1');
+		await seedSong('a', { artist: 'Solo Artist' });
 		const { id: p1 } = await createPlaylist(db, { userId: 'u1', name: 'Mix' });
 		await addSongToPlaylist(db, p1, 'u1', 'a');
 
 		expect(await listSmartPlaylists(db, 'u1')).toEqual([]);
+	});
+
+	it('includes an artist with exactly 2 matching songs', async () => {
+		await seedUser('u1');
+		await seedSong('a', { artist: 'Two Song Artist' });
+		await seedSong('b', { artist: 'Two Song Artist' });
+		const { id: p1 } = await createPlaylist(db, { userId: 'u1', name: 'Mix' });
+		await addSongToPlaylist(db, p1, 'u1', 'a');
+		await addSongToPlaylist(db, p1, 'u1', 'b');
+
+		const groups = await listSmartPlaylists(db, 'u1');
+		expect(groups.map((g) => g.id)).toContain('artist:Two Song Artist');
 	});
 
 	it('only counts songs reachable through this user\'s own playlists', async () => {
 		await seedUser('u1');
 		await seedUser('u2');
 		await seedSong('a', { artist: 'Shared Artist' });
+		await seedSong('b', { artist: 'Shared Artist' });
 		const { id: p1 } = await createPlaylist(db, { userId: 'u2', name: 'Someone else\'s' });
 		await addSongToPlaylist(db, p1, 'u2', 'a');
+		await addSongToPlaylist(db, p1, 'u2', 'b');
 
 		expect(await listSmartPlaylists(db, 'u1')).toEqual([]);
 	});
 
-	it('counts a song only once per field even if it is in multiple of the user\'s playlists', async () => {
+	it('counts a song only once even if it is in multiple of the user\'s playlists', async () => {
 		await seedUser('u1');
 		await seedSong('a', { artist: 'Radiohead' });
+		await seedSong('b', { artist: 'Radiohead' });
 		const { id: p1 } = await createPlaylist(db, { userId: 'u1', name: 'Mix 1' });
 		const { id: p2 } = await createPlaylist(db, { userId: 'u1', name: 'Mix 2' });
 		await addSongToPlaylist(db, p1, 'u1', 'a');
 		await addSongToPlaylist(db, p2, 'u1', 'a');
+		await addSongToPlaylist(db, p1, 'u1', 'b');
 
 		const groups = await listSmartPlaylists(db, 'u1');
-		expect(groups.find((g) => g.id === 'artist:Radiohead')?.songCount).toBe(1);
+		expect(groups.find((g) => g.id === 'artist:Radiohead')?.songCount).toBe(2);
 	});
 
 	it('collects up to 4 member songs\' coverKeys, skipping songs with none', async () => {
@@ -116,19 +140,15 @@ describe('listSmartPlaylists', () => {
 
 describe('parseSmartPlaylistId', () => {
 	it('parses a valid artist id', () => {
-		expect(parseSmartPlaylistId('artist:Radiohead')).toEqual({ field: 'artist', value: 'Radiohead' });
-	});
-
-	it('parses a valid genre id', () => {
-		expect(parseSmartPlaylistId('genre:Rock')).toEqual({ field: 'genre', value: 'Rock' });
+		expect(parseSmartPlaylistId('artist:Radiohead')).toEqual({ value: 'Radiohead' });
 	});
 
 	it('preserves a colon that is part of the value itself', () => {
-		expect(parseSmartPlaylistId('artist:DJ: The Mix')).toEqual({ field: 'artist', value: 'DJ: The Mix' });
+		expect(parseSmartPlaylistId('artist:DJ: The Mix')).toEqual({ value: 'DJ: The Mix' });
 	});
 
-	it('rejects an unknown field', () => {
-		expect(parseSmartPlaylistId('album:Foo')).toBeNull();
+	it('rejects a non-artist prefix', () => {
+		expect(parseSmartPlaylistId('genre:Rock')).toBeNull();
 	});
 
 	it('rejects a string with no separator', () => {
@@ -149,7 +169,7 @@ describe('getSmartPlaylistSongs', () => {
 		await addSongToPlaylist(db, p1, 'u1', 'a');
 		await addSongToPlaylist(db, p1, 'u1', 'b');
 
-		const result = await getSmartPlaylistSongs(db, 'u1', 'artist', 'Radiohead');
+		const result = await getSmartPlaylistSongs(db, 'u1', 'Radiohead');
 		expect(result.map((s) => s.videoId)).toEqual(['a']);
 	});
 
@@ -160,6 +180,6 @@ describe('getSmartPlaylistSongs', () => {
 		const { id: p1 } = await createPlaylist(db, { userId: 'u2', name: 'Mix' });
 		await addSongToPlaylist(db, p1, 'u2', 'a');
 
-		expect(await getSmartPlaylistSongs(db, 'u1', 'artist', 'Radiohead')).toEqual([]);
+		expect(await getSmartPlaylistSongs(db, 'u1', 'Radiohead')).toEqual([]);
 	});
 });

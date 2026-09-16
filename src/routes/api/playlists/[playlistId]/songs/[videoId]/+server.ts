@@ -14,9 +14,7 @@ const VALID_MODES = new Set(['copy', 'move']);
 
 function handleLibraryError(err: unknown): never {
 	if (err instanceof LibraryError) {
-		if (err.code === 'default_playlist_protected' || err.code === 'system_playlist_protected') {
-			error(400, err.message);
-		}
+		if (err.code === 'default_playlist_protected') error(400, err.message);
 		error(404, err.message);
 	}
 	throw err;

@@ -177,18 +177,6 @@ describe('renamePlaylist', () => {
 		expect(playlist.name).toBe('All Imported');
 	});
 
-	it('rejects renaming a system-generated (auto_tag) playlist', async () => {
-		await seedUser('u1');
-		const [{ id }] = await db
-			.insert(playlists)
-			.values({ userId: 'u1', name: 'jazz', type: 'auto_tag', tag: 'jazz', facet: 'genre' })
-			.returning({ id: playlists.id });
-
-		await expect(renamePlaylist(db, id, 'u1', 'Renamed')).rejects.toThrow(LibraryError);
-
-		const playlist = await getPlaylistWithSongs(db, id, 'u1');
-		expect(playlist.name).toBe('jazz');
-	});
 });
 
 describe('deletePlaylist', () => {
@@ -221,18 +209,6 @@ describe('deletePlaylist', () => {
 
 		const user = await db.query.users.findFirst({ where: (t, { eq }) => eq(t.id, 'u1') });
 		expect(user?.defaultPlaylistId).toBe(id);
-	});
-
-	it('rejects deleting a system-generated (auto_tag) playlist', async () => {
-		await seedUser('u1');
-		const [{ id }] = await db
-			.insert(playlists)
-			.values({ userId: 'u1', name: 'jazz', type: 'auto_tag', tag: 'jazz', facet: 'genre' })
-			.returning({ id: playlists.id });
-
-		await expect(deletePlaylist(db, id, 'u1')).rejects.toThrow(LibraryError);
-
-		await expect(getPlaylistWithSongs(db, id, 'u1')).resolves.toBeDefined();
 	});
 
 	it('does not clear defaultPlaylistId when deleting an unrelated playlist', async () => {
@@ -311,17 +287,6 @@ describe('addSongToPlaylist', () => {
 		await expect(addSongToPlaylist(db, id, 'u1', 'nonexistent')).rejects.toThrow(LibraryError);
 	});
 
-	it('rejects adding a song to a system-generated (auto_tag) playlist', async () => {
-		await seedUser('u1');
-		await seedSong('a');
-		const [{ id }] = await db
-			.insert(playlists)
-			.values({ userId: 'u1', name: 'jazz', type: 'auto_tag', tag: 'jazz', facet: 'genre' })
-			.returning({ id: playlists.id });
-
-		await expect(addSongToPlaylist(db, id, 'u1', 'a')).rejects.toThrow(LibraryError);
-	});
-
 	it('is idempotent when adding the same song twice (no duplicate rows, no error)', async () => {
 		await seedUser('u1');
 		await seedSong('a');
@@ -392,17 +357,6 @@ describe('removeSongFromPlaylist', () => {
 		expect(playlist.songs).toHaveLength(1);
 	});
 
-	it('rejects removing a song from a system-generated (auto_tag) playlist', async () => {
-		await seedUser('u1');
-		await seedSong('a');
-		const [{ id }] = await db
-			.insert(playlists)
-			.values({ userId: 'u1', name: 'jazz', type: 'auto_tag', tag: 'jazz', facet: 'genre' })
-			.returning({ id: playlists.id });
-		await db.insert(playlistSongs).values({ playlistId: id, videoId: 'a', position: 0 });
-
-		await expect(removeSongFromPlaylist(db, id, 'u1', 'a')).rejects.toThrow(LibraryError);
-	});
 });
 
 describe('moveSongToPlaylist', () => {
@@ -482,21 +436,6 @@ describe('reorderPlaylist', () => {
 		await expect(reorderPlaylist(db, id, 'u1', ['a', 'intruder'])).rejects.toThrow(LibraryError);
 	});
 
-	it('rejects reordering a system-generated (auto_tag) playlist', async () => {
-		await seedUser('u1');
-		await seedSong('a');
-		await seedSong('b');
-		const [{ id }] = await db
-			.insert(playlists)
-			.values({ userId: 'u1', name: 'jazz', type: 'auto_tag', tag: 'jazz', facet: 'genre' })
-			.returning({ id: playlists.id });
-		await db.insert(playlistSongs).values([
-			{ playlistId: id, videoId: 'a', position: 0 },
-			{ playlistId: id, videoId: 'b', position: 1 }
-		]);
-
-		await expect(reorderPlaylist(db, id, 'u1', ['b', 'a'])).rejects.toThrow(LibraryError);
-	});
 });
 
 describe('isSongInUserLibrary', () => {

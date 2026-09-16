@@ -15,7 +15,6 @@
 	import PencilIcon from '@lucide/svelte/icons/pencil';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import UserIcon from '@lucide/svelte/icons/user';
-	import TagIcon from '@lucide/svelte/icons/tag';
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import MusicIcon from '@lucide/svelte/icons/music';
 	import PlaylistCover from '$lib/components/playlist-cover.svelte';
@@ -315,7 +314,7 @@
 	{/if}
 
 	{#if filteredSmartPlaylists.length > 0}
-		<h2 class="mt-10 mb-4 text-sm font-medium text-muted-foreground">Auto-categorized</h2>
+		<h2 class="mt-10 mb-4 text-sm font-medium text-muted-foreground">Artists</h2>
 		<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
 			{#each filteredSmartPlaylists as group (group.id)}
 				<Card.Root class="group relative overflow-hidden py-0 transition-colors active:border-ring/50 hover:border-ring/50">
@@ -325,11 +324,7 @@
 						>
 							<PlaylistCover coverUrls={group.coverUrls}>
 								{#snippet fallback()}
-									{#if group.field === 'artist'}
-										<UserIcon class="size-8 text-muted-foreground" />
-									{:else}
-										<TagIcon class="size-8 text-muted-foreground" />
-									{/if}
+									<UserIcon class="size-8 text-muted-foreground" />
 								{/snippet}
 							</PlaylistCover>
 						</div>

@@ -3,34 +3,35 @@ import type { Db } from '../db';
 import { embeddingJobs, playlists, playlistSongs, songs } from '../db/schema';
 import { PLAYLIST_MOSAIC_COVER_COUNT } from './playlists';
 
-export type SmartPlaylistField = 'artist' | 'genre';
-
 export interface SmartPlaylistSummary {
 	/** e.g. "artist:Radiohead" — the field + raw value, not a random id, since there's no row to look one up from. */
 	id: string;
-	field: SmartPlaylistField;
 	value: string;
 	songCount: number;
 	/** Up to PLAYLIST_MOSAIC_COVER_COUNT member songs' coverKeys, for a 2x2 mosaic thumbnail — same idea as playlists' own cover. */
 	coverKeys: string[];
 }
 
+// Below this many songs, an artist grouping reads as noise rather than a
+// useful browsing shortcut (a single-song "artist" card is just that one
+// song, redundant with finding it any other way) — so it's excluded from
+// the listing entirely rather than shown as a near-empty card.
+const MIN_SONGS_PER_ARTIST = 2;
+
 /**
- * Auto-categorized groupings of the user's library by artist/genre —
- * unlike playlists (src/lib/server/library/playlists.ts), these are
- * computed fresh from `songs.artist`/`songs.genre` on every call, not
- * stored anywhere: there's no playlist_songs row to add/remove, no name to
- * rename, no order to reorder. A song with no artist/genre set (most
- * plain YouTube uploads never populate genre, see the schema's own
- * comment) simply doesn't appear in that field's groupings — it's still
- * reachable through whatever real playlist(s) it's actually in.
+ * Auto-categorized groupings of the user's library by artist — unlike
+ * playlists (src/lib/server/library/playlists.ts), these are computed
+ * fresh from `songs.artist` on every call, not stored anywhere: there's
+ * no playlist_songs row to add/remove, no name to rename, no order to
+ * reorder. A song with no artist set simply doesn't appear in any
+ * grouping — it's still reachable through whatever real playlist(s) it's
+ * actually in.
  */
 export async function listSmartPlaylists(db: Db, userId: string): Promise<SmartPlaylistSummary[]> {
 	const librarySongs = await db
 		.selectDistinct({
 			videoId: songs.videoId,
 			artist: songs.artist,
-			genre: songs.genre,
 			coverKey: songs.coverKey
 		})
 		.from(playlistSongs)
@@ -40,38 +41,39 @@ export async function listSmartPlaylists(db: Db, userId: string): Promise<SmartP
 
 	const counts = new Map<string, SmartPlaylistSummary>();
 
-	function record(field: SmartPlaylistField, value: string | null, coverKey: string | null) {
-		if (!value) return;
-		const id = `${field}:${value}`;
+	for (const song of librarySongs) {
+		if (!song.artist) continue;
+		const id = `artist:${song.artist}`;
 		const existing = counts.get(id);
 		if (existing) {
 			existing.songCount += 1;
-			if (coverKey && existing.coverKeys.length < PLAYLIST_MOSAIC_COVER_COUNT) {
-				existing.coverKeys.push(coverKey);
+			if (song.coverKey && existing.coverKeys.length < PLAYLIST_MOSAIC_COVER_COUNT) {
+				existing.coverKeys.push(song.coverKey);
 			}
 		} else {
-			counts.set(id, { id, field, value, songCount: 1, coverKeys: coverKey ? [coverKey] : [] });
+			counts.set(id, {
+				id,
+				value: song.artist,
+				songCount: 1,
+				coverKeys: song.coverKey ? [song.coverKey] : []
+			});
 		}
 	}
 
-	for (const song of librarySongs) {
-		record('artist', song.artist, song.coverKey);
-		record('genre', song.genre, song.coverKey);
-	}
-
-	return [...counts.values()].sort((a, b) => b.songCount - a.songCount || a.value.localeCompare(b.value));
+	return [...counts.values()]
+		.filter((group) => group.songCount >= MIN_SONGS_PER_ARTIST)
+		.sort((a, b) => b.songCount - a.songCount || a.value.localeCompare(b.value));
 }
 
-/** Parses a SmartPlaylistSummary.id back into its field/value — the inverse of the `${field}:${value}` id above. */
-export function parseSmartPlaylistId(id: string): { field: SmartPlaylistField; value: string } | null {
-	const separatorIndex = id.indexOf(':');
-	if (separatorIndex === -1) return null;
+/** Parses a SmartPlaylistSummary.id back into its artist value — the inverse of the `artist:${value}` id above. */
+export function parseSmartPlaylistId(id: string): { value: string } | null {
+	const prefix = 'artist:';
+	if (!id.startsWith(prefix)) return null;
 
-	const field = id.slice(0, separatorIndex);
-	const value = id.slice(separatorIndex + 1);
-	if ((field !== 'artist' && field !== 'genre') || value.length === 0) return null;
+	const value = id.slice(prefix.length);
+	if (value.length === 0) return null;
 
-	return { field, value };
+	return { value };
 }
 
 export interface SmartPlaylistSong {
@@ -85,15 +87,8 @@ export interface SmartPlaylistSong {
 	embeddingStatus: string | null;
 }
 
-/** Fetches every song in `userId`'s library matching one artist/genre value — the smart-playlist equivalent of getPlaylistWithSongs. */
-export async function getSmartPlaylistSongs(
-	db: Db,
-	userId: string,
-	field: SmartPlaylistField,
-	value: string
-): Promise<SmartPlaylistSong[]> {
-	const column = field === 'artist' ? songs.artist : songs.genre;
-
+/** Fetches every song in `userId`'s library by one artist — the smart-playlist equivalent of getPlaylistWithSongs. */
+export async function getSmartPlaylistSongs(db: Db, userId: string, value: string): Promise<SmartPlaylistSong[]> {
 	return db
 		.selectDistinct({
 			videoId: songs.videoId,
@@ -108,5 +103,5 @@ export async function getSmartPlaylistSongs(
 		.innerJoin(playlists, eq(playlistSongs.playlistId, playlists.id))
 		.innerJoin(songs, eq(playlistSongs.videoId, songs.videoId))
 		.leftJoin(embeddingJobs, eq(embeddingJobs.videoId, songs.videoId))
-		.where(and(eq(playlists.userId, userId), eq(column, value)));
+		.where(and(eq(playlists.userId, userId), eq(songs.artist, value)));
 }

@@ -335,7 +335,7 @@
 <div class="mx-auto max-w-screen-2xl p-4 md:p-8">
 	<div class="mb-6 flex flex-wrap items-center justify-between gap-4">
 		<div class="min-w-0">
-			<p class="text-xs text-muted-foreground capitalize">{data.field}</p>
+			<p class="text-xs text-muted-foreground">Artist</p>
 			<h1 class="truncate text-lg font-medium">{data.value}</h1>
 			<p class="text-sm text-muted-foreground">
 				{data.songs.length} {data.songs.length === 1 ? 'song' : 'songs'}
