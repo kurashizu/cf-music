@@ -436,6 +436,12 @@ class PlayerStore {
 		this.playThresholdReached = false;
 		this.autoCacheTriggered = false;
 		this.currentTimeSeconds = 0;
+		// Only restoreSession() should ever seek a freshly loaded track to a
+		// nonzero position — without clearing this here, a stale resume
+		// position left over from restoreSession() (e.g. its durationchange
+		// hadn't fired yet, or this is a later track played after restore)
+		// would get consumed by the *next* track's durationchange instead.
+		this.pendingResumeSeconds = null;
 
 		const response = await fetch(`/api/stream-url/${track.videoId}`);
 		if (!response.ok) {
