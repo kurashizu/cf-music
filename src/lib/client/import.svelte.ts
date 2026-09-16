@@ -9,6 +9,7 @@ interface RawImportJob {
 	status: ImportJobStatus;
 	totalCount: number | null;
 	completedCount: number;
+	knownCount: number;
 	failedCount: number;
 	failures: string | null;
 	previewEntries: string | null;
@@ -22,6 +23,7 @@ function parseJobRow(row: RawImportJob): ImportJobState {
 		status: row.status,
 		totalCount: row.totalCount,
 		completedCount: row.completedCount,
+		knownCount: row.knownCount,
 		failedCount: row.failedCount,
 		failures: row.failures ? JSON.parse(row.failures) : [],
 		previewEntries: row.previewEntries ? JSON.parse(row.previewEntries) : null,

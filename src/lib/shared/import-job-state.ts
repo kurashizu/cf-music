@@ -11,6 +11,11 @@ export interface ImportJobState {
 	status: ImportJobStatus;
 	totalCount: number | null;
 	completedCount: number;
+	// Songs already owned by someone else (see recordKnownSongLinked) —
+	// never downloaded, only linked into this job's target playlist.
+	// Counts toward totalCount the same as completedCount, but shown to
+	// the user as "skipped" rather than "downloaded".
+	knownCount: number;
 	failedCount: number;
 	failures: SongImportFailureInput[];
 	previewEntries: PreviewEntry[] | null;
@@ -41,13 +46,17 @@ function applySongSuccess(job: ImportJobState): ImportJobState {
 	return { ...job, completedCount: job.completedCount + 1 };
 }
 
+function applySongKnown(job: ImportJobState): ImportJobState {
+	return { ...job, knownCount: job.knownCount + 1 };
+}
+
 function applySongFailed(job: ImportJobState, failure: SongImportFailureInput): ImportJobState {
 	return { ...job, failedCount: job.failedCount + 1, failures: [...job.failures, failure] };
 }
 
-/** Mirrors completeImportJob()'s server-side rule exactly: failed only when every song failed and none succeeded, otherwise completed. */
+/** Mirrors completeImportJob()'s server-side rule exactly: failed only when every song failed and none succeeded or were already known, otherwise completed. */
 function applyComplete(job: ImportJobState): ImportJobState {
-	const failed = job.failedCount > 0 && job.completedCount === 0;
+	const failed = job.failedCount > 0 && job.completedCount + job.knownCount === 0;
 	return { ...job, status: failed ? 'failed' : 'completed' };
 }
 
@@ -79,11 +88,7 @@ export function applyImportEvent(job: ImportJobState, event: ImportProgressEvent
 		case 'song_success':
 			return applySongSuccess(job);
 		case 'song_known':
-			// Same effect on client-side state as song_success: it counts
-			// toward completedCount either way (see recordKnownSongLinked),
-			// the only difference is server-side (no new `songs` row to
-			// write, since the video_id already existed).
-			return applySongSuccess(job);
+			return applySongKnown(job);
 		case 'song_failed':
 			return applySongFailed(job, event.failure);
 		case 'complete':

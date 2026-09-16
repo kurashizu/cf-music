@@ -148,6 +148,14 @@ export const importJobs = sqliteTable('import_jobs', {
 		.default('pending'),
 	totalCount: integer('total_count'),
 	completedCount: integer('completed_count').notNull().default(0),
+	// A song already owned by someone (recordKnownSongLinked) is never
+	// downloaded — it's linked into this job's target playlist as-is —
+	// which is a meaningfully different outcome from completedCount (a real
+	// new download landed) even though both count as "this job produced a
+	// usable song" toward totalCount. Kept separate rather than folded into
+	// completedCount so the UI can show "N skipped (already in library)"
+	// distinctly from "N downloaded".
+	knownCount: integer('known_count').notNull().default(0),
 	failedCount: integer('failed_count').notNull().default(0),
 	failures: text('failures'), // JSON array of failed video_id + reason entries
 	previewEntries: text('preview_entries'), // JSON array of {videoId, title, durationSeconds} found during extraction, informational only

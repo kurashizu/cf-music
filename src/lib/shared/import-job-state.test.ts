@@ -8,6 +8,7 @@ function makeJob(overrides: Partial<ImportJobState> = {}): ImportJobState {
 		status: 'pending',
 		totalCount: null,
 		completedCount: 0,
+		knownCount: 0,
 		failedCount: 0,
 		failures: [],
 		previewEntries: null,
@@ -88,10 +89,11 @@ describe('applyImportEvent', () => {
 		expect(next.failures).toEqual([{ videoId: 'z', reason: 'x' }]);
 	});
 
-	it('song_known increments completedCount, same as song_success', () => {
-		const job = makeJob({ completedCount: 2 });
+	it('song_known increments knownCount, not completedCount', () => {
+		const job = makeJob({ knownCount: 2 });
 		const next = applyImportEvent(job, { type: 'song_known', videoId: 'a' });
-		expect(next.completedCount).toBe(3);
+		expect(next.knownCount).toBe(3);
+		expect(next.completedCount).toBe(0);
 	});
 
 	it('song_known does not touch failedCount or failures', () => {
@@ -137,6 +139,12 @@ describe('applyImportEvent', () => {
 		const job = makeJob({ completedCount: 0, failedCount: 3 });
 		const next = applyImportEvent(job, { type: 'complete' });
 		expect(next.status).toBe('failed');
+	});
+
+	it('complete marks completed when songs were already known despite some failures', () => {
+		const job = makeJob({ completedCount: 0, knownCount: 2, failedCount: 1 });
+		const next = applyImportEvent(job, { type: 'complete' });
+		expect(next.status).toBe('completed');
 	});
 
 	it('complete marks completed when there were zero songs at all (0/0)', () => {

@@ -299,7 +299,7 @@ export async function recordSongImported(db: Db, jobId: string, userId: string, 
 /**
  * Records one song that was already in the library (found via
  * findKnownVideoIds) and so was never downloaded at all — only links it
- * into the job's target playlist and bumps completedCount, no `songs` row
+ * into the job's target playlist and bumps knownCount, no `songs` row
  * write (there's nothing new to write; the existing row is reused as-is).
  * Without this, a known song was skipped by CI's own filtering (so it's
  * correctly never re-downloaded) but then silently never linked into the
@@ -307,6 +307,11 @@ export async function recordSongImported(db: Db, jobId: string, userId: string, 
  * though the whole point of "already in the library" is that it's
  * available to reuse, not that it should be excluded from this import's
  * result.
+ *
+ * knownCount, not completedCount: both mean "this job produced a usable
+ * song" toward totalCount, but a skip and a real new download are a
+ * meaningfully different outcome to show the user — see the column's own
+ * comment in schema.ts.
  */
 export async function recordKnownSongLinked(db: Db, jobId: string, userId: string, videoId: string): Promise<void> {
 	const job = await getOwnedJob(db, jobId, userId);
@@ -315,7 +320,7 @@ export async function recordKnownSongLinked(db: Db, jobId: string, userId: strin
 
 	await db
 		.update(importJobs)
-		.set({ completedCount: sql`${importJobs.completedCount} + 1`, updatedAt: sql`(current_timestamp)` })
+		.set({ knownCount: sql`${importJobs.knownCount} + 1`, updatedAt: sql`(current_timestamp)` })
 		.where(eq(importJobs.id, jobId));
 }
 
@@ -381,20 +386,23 @@ export async function failImportJob(db: Db, jobId: string, userId: string, reaso
  * handlePossibleZombieJob) — distinct from failImportJob because an
  * unexpected disconnect after real progress isn't the same situation as
  * one before any song ever succeeded. Mirrors completeImportJob's own
- * status rule: some songs already landed (completedCount > 0) means the
- * user gets to keep that partial result marked `completed`, the same as
- * if CI had sent its own `complete` event right then — only a disconnect
- * with nothing to show for it is a real `failed`. Without this
+ * status rule: some songs already landed (completedCount + knownCount > 0)
+ * means the user gets to keep that partial result marked `completed`, the
+ * same as if CI had sent its own `complete` event right then — only a
+ * disconnect with nothing to show for it is a real `failed`. Without this
  * distinction, a 12-song batch that fully succeeded before CI's process
  * happened to drop the connection on its way to sending `complete` showed
  * up as an outright failure, even though every song the user asked for
- * was sitting in their library already.
+ * was sitting in their library already. knownCount counts here too: a
+ * batch that was 100% already-owned songs (nothing to download, only
+ * links to write) is just as much a real result as one CI downloaded
+ * itself.
  */
 export async function disconnectImportJob(db: Db, jobId: string, userId: string, reason: string): Promise<void> {
 	const job = await getOwnedJob(db, jobId, userId);
 	if (job.status === 'cancelled' || job.status === 'completed' || job.status === 'failed') return;
 
-	if (job.completedCount > 0) {
+	if (job.completedCount + job.knownCount > 0) {
 		await completeImportJob(db, jobId, userId);
 		return;
 	}
@@ -410,7 +418,12 @@ export async function completeImportJob(db: Db, jobId: string, userId: string): 
 	// completion should never overwrite.
 	if (job.status === 'cancelled') return;
 
-	const status = job.failedCount > 0 && job.completedCount === 0 ? 'failed' : 'completed';
+	// knownCount counts as "produced a usable song" the same as
+	// completedCount (see recordKnownSongLinked) — a batch that was 100%
+	// already-owned songs, with zero new downloads and zero failures,
+	// should read as `completed`, not `failed` for having completedCount
+	// === 0.
+	const status = job.failedCount > 0 && job.completedCount + job.knownCount === 0 ? 'failed' : 'completed';
 
 	await db
 		.update(importJobs)
@@ -432,6 +445,7 @@ export async function completeImportJob(db: Db, jobId: string, userId: string): 
 			sourceUrl: job.sourceUrl,
 			status,
 			completedCount: job.completedCount,
+			knownCount: job.knownCount,
 			failedCount: job.failedCount
 		}
 	});
