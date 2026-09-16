@@ -115,6 +115,24 @@ export const playlists = sqliteTable('playlists', {
 		.references(() => users.id, { onDelete: 'cascade' }),
 	name: text('name').notNull(),
 	sourceUrl: text('source_url'), // import source; null for app-native playlists
+	// 'custom' is every playlist a user creates/renames/deletes themselves,
+	// including their own default playlist — unrestricted, same as always.
+	// The other three are system-generated (auto-tag stage two, and later
+	// artist/recommendation groupings): the application layer must reject
+	// rename/delete against any of them, since they're wholesale
+	// replaced by their own job on its next run, not edited in place.
+	type: text('type', {
+		enum: ['custom', 'auto_tag', 'artist', 'recommendation']
+	})
+		.notNull()
+		.default('custom'),
+	// Only meaningful for type='auto_tag': which tag (and its facet, purely
+	// informational grouping — see tagVectors.facet) this playlist
+	// represents, so a rebuild can target-delete this user's own auto_tag
+	// playlists without parsing `name` back into a tag. Both null for
+	// every other type.
+	tag: text('tag'),
+	facet: text('facet'),
 	createdAt: text('created_at')
 		.notNull()
 		.default(sql`(current_timestamp)`)
@@ -281,7 +299,8 @@ export const auditLog = sqliteTable('audit_log', {
 	actorId: text('actor_id').references(() => users.id, { onDelete: 'set null' }), // who performed it (differs from userId when an admin acts on another user's behalf)
 	eventType: text('event_type').notNull(), // import / evict / manual_delete / cover_reference_cleared /
 	// login / login_failed / password_change / invite_used / invite_created / quota_adjusted / force_logout /
-	// embedding_claimed / embedding_completed / embedding_failed / auto_tag_claimed / auto_tag_completed
+	// embedding_claimed / embedding_completed / embedding_failed / auto_tag_claimed /
+	// auto_tag_completed / auto_tag_playlists_rebuilt
 	// (see AUDIT_EVENT_TYPES in src/lib/shared/audit-event-types.ts for the authoritative list)
 	targetType: text('target_type'), // song / user / playlist / import_job / embedding_job
 	targetId: text('target_id'),

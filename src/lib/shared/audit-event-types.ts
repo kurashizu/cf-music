@@ -20,7 +20,8 @@ export const AUDIT_EVENT_TYPES = [
 	'embedding_completed',
 	'embedding_failed',
 	'auto_tag_claimed',
-	'auto_tag_completed'
+	'auto_tag_completed',
+	'auto_tag_playlists_rebuilt'
 ] as const;
 
 export type AuditEventType = (typeof AUDIT_EVENT_TYPES)[number];

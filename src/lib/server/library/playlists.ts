@@ -5,7 +5,12 @@ import { playlists, playlistSongs, songs, users, importJobs, userSongs, embeddin
 export class LibraryError extends Error {
 	constructor(
 		message: string,
-		public readonly code: 'not_found' | 'forbidden' | 'song_not_in_library' | 'default_playlist_protected'
+		public readonly code:
+			| 'not_found'
+			| 'forbidden'
+			| 'song_not_in_library'
+			| 'default_playlist_protected'
+			| 'system_playlist_protected'
 	) {
 		super(message);
 		this.name = 'LibraryError';
@@ -226,7 +231,7 @@ export async function getPlaylistWithSongs(db: Db, playlistId: string, userId: s
 }
 
 export async function renamePlaylist(db: Db, playlistId: string, userId: string, name: string): Promise<void> {
-	await getOwnedPlaylist(db, playlistId, userId);
+	const playlist = await getOwnedPlaylist(db, playlistId, userId);
 
 	// Same reasoning as the delete guard below: this is the one playlist
 	// guaranteed to hold the user's whole library, not an arbitrary
@@ -236,11 +241,19 @@ export async function renamePlaylist(db: Db, playlistId: string, userId: string,
 		throw new LibraryError('The default library playlist cannot be renamed', 'default_playlist_protected');
 	}
 
+	// A system-generated playlist (auto_tag/artist/recommendation) is
+	// wholesale replaced by its own job on its next run, not edited in
+	// place — a rename here would just be silently overwritten the next
+	// time that job runs, which is worse than refusing it outright.
+	if (playlist.type !== 'custom') {
+		throw new LibraryError('System-generated playlists cannot be renamed', 'system_playlist_protected');
+	}
+
 	await db.update(playlists).set({ name }).where(eq(playlists.id, playlistId));
 }
 
 export async function deletePlaylist(db: Db, playlistId: string, userId: string): Promise<void> {
-	await getOwnedPlaylist(db, playlistId, userId);
+	const playlist = await getOwnedPlaylist(db, playlistId, userId);
 
 	// The default playlist is the one place a user's whole library is
 	// guaranteed reachable from (every import links into it — see
@@ -250,6 +263,11 @@ export async function deletePlaylist(db: Db, playlistId: string, userId: string)
 	// playlist" the user asked for, so it's simply not allowed.
 	if (playlistId === (await getDefaultPlaylistId(db, userId))) {
 		throw new LibraryError('The default library playlist cannot be deleted', 'default_playlist_protected');
+	}
+
+	// Same reasoning as renamePlaylist's own guard above.
+	if (playlist.type !== 'custom') {
+		throw new LibraryError('System-generated playlists cannot be deleted', 'system_playlist_protected');
 	}
 
 	// Same story for import_jobs.target_playlist_id: it has no ON DELETE
@@ -272,7 +290,17 @@ export async function deletePlaylist(db: Db, playlistId: string, userId: string)
 
 /** Appends a song to the end of a playlist. Assumes the song already exists in `songs`. */
 export async function addSongToPlaylist(db: Db, playlistId: string, userId: string, videoId: string): Promise<void> {
-	await getOwnedPlaylist(db, playlistId, userId);
+	const playlist = await getOwnedPlaylist(db, playlistId, userId);
+
+	// A system-generated playlist's membership is wholesale replaced by
+	// its own job on its next run — see the same guard on
+	// renamePlaylist/deletePlaylist for the full reasoning. Checked here
+	// rather than only in the route layer so every caller (including
+	// moveSongToPlaylist/linkImportedSongToLibrary, if either is ever
+	// pointed at one) gets the same protection.
+	if (playlist.type !== 'custom') {
+		throw new LibraryError('Cannot add songs to a system-generated playlist', 'system_playlist_protected');
+	}
 
 	const song = await db.query.songs.findFirst({ where: eq(songs.videoId, videoId) });
 	if (!song) throw new LibraryError('Song not found in library', 'song_not_in_library');
@@ -294,7 +322,7 @@ export async function removeSongFromPlaylist(
 	userId: string,
 	videoId: string
 ): Promise<void> {
-	await getOwnedPlaylist(db, playlistId, userId);
+	const playlist = await getOwnedPlaylist(db, playlistId, userId);
 
 	// The default playlist has to contain every song the user's ever
 	// imported (see linkImportedSongToLibrary) — removing one from just
@@ -306,6 +334,11 @@ export async function removeSongFromPlaylist(
 			'Cannot remove a song from the default library playlist — delete it from your library instead',
 			'default_playlist_protected'
 		);
+	}
+
+	// Same reasoning as addSongToPlaylist's own guard.
+	if (playlist.type !== 'custom') {
+		throw new LibraryError('Cannot remove songs from a system-generated playlist', 'system_playlist_protected');
 	}
 
 	await db
@@ -342,7 +375,14 @@ export async function reorderPlaylist(
 	userId: string,
 	orderedVideoIds: string[]
 ): Promise<void> {
-	await getOwnedPlaylist(db, playlistId, userId);
+	const playlist = await getOwnedPlaylist(db, playlistId, userId);
+
+	// Same reasoning as addSongToPlaylist's own guard — a system-generated
+	// playlist's order is recomputed from scratch on its next job run, not
+	// something a user's manual reorder here would survive anyway.
+	if (playlist.type !== 'custom') {
+		throw new LibraryError('Cannot reorder a system-generated playlist', 'system_playlist_protected');
+	}
 
 	const current = await db.query.playlistSongs.findMany({
 		where: eq(playlistSongs.playlistId, playlistId)

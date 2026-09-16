@@ -30,7 +30,9 @@ export const PATCH: RequestHandler = async (event) => {
 		await renamePlaylist(db, event.params.playlistId, session.userId, fields.name);
 	} catch (err) {
 		if (err instanceof LibraryError) {
-			if (err.code === 'default_playlist_protected') error(400, err.message);
+			if (err.code === 'default_playlist_protected' || err.code === 'system_playlist_protected') {
+				error(400, err.message);
+			}
 			error(404, err.message);
 		}
 		throw err;
@@ -47,7 +49,9 @@ export const DELETE: RequestHandler = async (event) => {
 		await deletePlaylist(db, event.params.playlistId, session.userId);
 	} catch (err) {
 		if (err instanceof LibraryError) {
-			if (err.code === 'default_playlist_protected') error(400, err.message);
+			if (err.code === 'default_playlist_protected' || err.code === 'system_playlist_protected') {
+				error(400, err.message);
+			}
 			error(404, err.message);
 		}
 		throw err;

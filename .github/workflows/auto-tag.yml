@@ -22,8 +22,18 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Run auto-tag batch
+      - name: Stage one — score songs against the tag vocabulary
         run: python3 tag_songs.py
+        working-directory: .github/scripts/auto-tag
+        env:
+          WORKER_BASE_URL: ${{ secrets.WORKER_BASE_URL }}
+          EMBEDDING_WEBHOOK_SECRET: ${{ secrets.EMBEDDING_WEBHOOK_SECRET }}
+
+      # Runs right after stage one within the same job, not as a separate
+      # workflow: stage two only has anything new to work with once stage
+      # one has actually written fresh songs.autoTags this run.
+      - name: Stage two — rebuild each user's Auto-tagged playlists
+        run: python3 rebuild_playlists.py
         working-directory: .github/scripts/auto-tag
         env:
           WORKER_BASE_URL: ${{ secrets.WORKER_BASE_URL }}
