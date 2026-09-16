@@ -1,3 +1,12 @@
+import { chunk } from '../../shared/chunk';
+
+// Vectorize's own getByIds caps a single call at 20 ids (confirmed live:
+// "VECTOR_GET_ERROR (code = 40007): too many ids in payload; max id count
+// is 20" for a 92-id request) — an entirely different limit from D1's own
+// ~100-bound-parameter cap (see chunk.ts's own docstring), so this can't
+// reuse that constant even though the shape of the problem is identical.
+const VECTORIZE_GET_BY_IDS_BATCH_SIZE = 20;
+
 /**
  * Thin wrapper around the Vectorize binding, kept behind an interface for
  * the same reason as ObjectStorage in storage/s3.ts — business logic can be
@@ -18,8 +27,13 @@ export class VectorizeSongStore implements VectorStore {
 
 	async getSongEmbeddings(videoIds: string[]): Promise<Map<string, number[]>> {
 		if (videoIds.length === 0) return new Map();
-		const vectors = await this.index.getByIds(videoIds);
-		return new Map(vectors.map((v) => [v.id, Array.from(v.values)]));
+
+		const result = new Map<string, number[]>();
+		for (const batch of chunk(videoIds, VECTORIZE_GET_BY_IDS_BATCH_SIZE)) {
+			const vectors = await this.index.getByIds(batch);
+			for (const v of vectors) result.set(v.id, Array.from(v.values));
+		}
+		return result;
 	}
 }
 
