@@ -12,7 +12,6 @@
 	import * as Select from '$lib/components/ui/select/index.js';
 	import LinkIcon from '@lucide/svelte/icons/link';
 	import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle';
-	import ListChecksIcon from '@lucide/svelte/icons/list-checks';
 	import CircleXIcon from '@lucide/svelte/icons/circle-x';
 	import SkipForwardIcon from '@lucide/svelte/icons/skip-forward';
 	import type { PageProps } from './$types';
@@ -183,35 +182,25 @@
 								<div class="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
 									<div
 										class="h-full bg-foreground transition-all duration-300"
-										style="width: {job.totalCount
+										style="width: {job.previewEntries?.length
 											? Math.min(
 													100,
-													((job.completedCount + job.knownCount + job.failedCount) / job.totalCount) * 100
+													((job.completedCount + job.failedCount) / job.previewEntries.length) * 100
 												)
 											: 0}%"
 									></div>
 								</div>
 								<span class="shrink-0 text-xs text-muted-foreground">
-									{job.completedCount + job.knownCount + job.failedCount} / {job.totalCount ?? '?'}
+									{job.completedCount + job.failedCount} / {job.previewEntries?.length ?? '?'}
 								</span>
 								<Button size="sm" variant="ghost" onclick={() => importStore.cancel(job.jobId)}>
 									Cancel
 								</Button>
 							</div>
-							{#if job.previewEntries || job.knownCount > 0}
-								<div class="flex items-center gap-3 text-xs text-muted-foreground">
-									{#if job.previewEntries}
-										<div class="flex items-center gap-1.5">
-											<ListChecksIcon class="size-4" />
-											{job.previewEntries.length} new {job.previewEntries.length === 1 ? 'song' : 'songs'} to download
-										</div>
-									{/if}
-									{#if job.knownCount > 0}
-										<div class="flex items-center gap-1.5">
-											<SkipForwardIcon class="size-4" />
-											{job.knownCount} skipped (already in library)
-										</div>
-									{/if}
+							{#if job.knownCount > 0}
+								<div class="flex items-center gap-1.5 text-xs text-muted-foreground">
+									<SkipForwardIcon class="size-4" />
+									{job.knownCount} already in library — skipped, no download needed
 								</div>
 							{/if}
 						{/if}
