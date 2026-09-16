@@ -1,6 +1,7 @@
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import type { Db } from '../db';
 import { embeddingJobs, playlists, playlistSongs, songs, users } from '../db/schema';
+import { chunk } from '../../shared/chunk';
 
 /**
  * Songs that have a completed embedding (so a Vectorize entry actually
@@ -129,9 +130,18 @@ export async function rebuildAutoTagPlaylists(db: Db, userId: string, playlistsI
 			.returning({ id: playlists.id });
 
 		if (videoIds.length === 0) continue;
-		await db.insert(playlistSongs).values(
-			videoIds.map((videoId, position) => ({ playlistId, videoId, position }))
-		);
+		// D1 caps bound parameters per statement at ~100 (see chunk.ts's own
+		// docstring) — this insert binds 3 params/row (playlistId, videoId,
+		// position), so a tag with more than ~33 songs in one unchunked
+		// insert would exceed that. Confirmed live: a 46-song tag failed
+		// with "too many SQL variables" against production the first time
+		// this ran. 30 rows x 3 params = 90, safely under the limit.
+		for (const batch of chunk(
+			videoIds.map((videoId, position) => ({ playlistId, videoId, position })),
+			30
+		)) {
+			await db.insert(playlistSongs).values(batch);
+		}
 	}
 }
 

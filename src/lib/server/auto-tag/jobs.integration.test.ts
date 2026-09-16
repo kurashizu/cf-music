@@ -271,6 +271,30 @@ describe('rebuildAutoTagPlaylists / countAutoTagPlaylists', () => {
 		expect(songRows.map((r) => r.videoId)).toEqual(['a', 'b', 'c']);
 	});
 
+	// Regression: a real rebuild against production failed with a D1
+	// "too many SQL variables" error for a 46-song tag — this insert binds
+	// 3 params/row (playlistId, videoId, position), so one unchunked
+	// insert() call for a tag with more than ~33 songs exceeds D1's own
+	// ~100-bound-parameter cap. Seeds enough songs to exercise the
+	// multi-chunk path (30-row batches — see rebuildAutoTagPlaylists'
+	// own comment), not just confirm it doesn't crash at a small scale.
+	it('links every song for a tag whose song count spans multiple insert batches', async () => {
+		await seedUser('u1');
+		const videoIds = Array.from({ length: 65 }, (_, i) => `v${i}`);
+		for (const videoId of videoIds) await seedBareSong(videoId);
+
+		await rebuildAutoTagPlaylists(db, 'u1', [{ tag: 'jazz', facet: 'genre', videoIds }]);
+
+		const [playlist] = await db.query.playlists.findMany({
+			where: and(eq(playlists.userId, 'u1'), eq(playlists.type, 'auto_tag'))
+		});
+		const songRows = await db.query.playlistSongs.findMany({
+			where: eq(playlistSongs.playlistId, playlist.id)
+		});
+		expect(songRows).toHaveLength(65);
+		expect(songRows.map((r) => r.videoId).sort()).toEqual([...videoIds].sort());
+	});
+
 	it('deletes every one of the user\'s prior auto_tag playlists before inserting the new set', async () => {
 		await seedUser('u1');
 		await rebuildAutoTagPlaylists(db, 'u1', [{ tag: 'jazz', facet: 'genre', videoIds: [] }]);
