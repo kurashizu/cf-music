@@ -251,7 +251,7 @@
 			{#each [...navItems, settingsItem] as item (item.href)}
 				<a
 					href={item.href}
-					class="flex flex-col items-center gap-0.5 rounded-lg px-3 py-1 text-[11px] text-muted-foreground transition-colors {isActive(
+					class="flex flex-col items-center gap-0.5 rounded-lg px-3 py-1 text-[11px] text-muted-foreground transition-all active:scale-90 active:text-foreground {isActive(
 						item.href
 					)
 						? 'text-foreground'

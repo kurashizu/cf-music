@@ -88,8 +88,14 @@
      whatever's otherwise at the bottom of the viewport; not needed on
      desktop, where that nav doesn't exist. Always rendered (not gated on
      currentTrack) so the queue is reachable — e.g. to start playback from
-     songs added to it — even before anything's actually playing yet. -->
-<div class="mb-14 shrink-0 border-t border-border bg-card/95 backdrop-blur-sm md:mb-0">
+     songs added to it — even before anything's actually playing yet.
+     shadow-[...] (mobile only) gives it visible elevation over the fixed
+     bottom nav sitting right below it — the two share a near-identical
+     bg-card/95 background, and without a shadow they read as one merged
+     bar instead of two stacked layers. -->
+<div
+	class="relative z-10 mb-14 shrink-0 border-t border-border bg-card shadow-[0_-6px_16px_rgba(0,0,0,0.45)] backdrop-blur-sm md:mb-0 md:bg-card/95 md:shadow-none"
+>
 	<!-- Custom seek track (not a native <input type="range">, whose
 	     browser-default styling looked out of place against the rest of
 	     the app's own progress-bar visual language elsewhere — e.g. the

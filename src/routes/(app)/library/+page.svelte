@@ -228,11 +228,11 @@
 		<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
 			{#each filteredPlaylists as playlist (playlist.id)}
 				<Card.Root
-					class="group relative overflow-hidden py-0 transition-colors hover:border-ring/50"
+					class="group relative overflow-hidden py-0 transition-colors active:border-ring/50 hover:border-ring/50"
 				>
 					<a href="/library/{playlist.id}" class="flex flex-col gap-3 p-4">
 						<div
-							class="flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-muted transition-transform duration-200 group-hover:scale-[1.02]"
+							class="flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-muted transition-transform duration-200 group-active:scale-[1.02] group-hover:scale-[1.02]"
 						>
 							<PlaylistCover coverUrls={playlist.coverUrls}>
 								{#snippet fallback()}
@@ -295,7 +295,7 @@
 			{#each matchingSongs as song (song.videoId)}
 				<button
 					type="button"
-					class="flex items-center gap-3 rounded-lg px-2 py-2 text-left hover:bg-muted"
+					class="flex items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors active:bg-muted hover:bg-muted"
 					onclick={() => playSong(song)}
 					animate:flip={motionParams({ duration: 200 })}
 				>
@@ -318,10 +318,10 @@
 		<h2 class="mt-10 mb-4 text-sm font-medium text-muted-foreground">Auto-categorized</h2>
 		<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
 			{#each filteredSmartPlaylists as group (group.id)}
-				<Card.Root class="group relative overflow-hidden py-0 transition-colors hover:border-ring/50">
+				<Card.Root class="group relative overflow-hidden py-0 transition-colors active:border-ring/50 hover:border-ring/50">
 					<a href="/library/smart/{encodeURIComponent(group.id)}" class="flex flex-col gap-3 p-4">
 						<div
-							class="flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-muted transition-transform duration-200 group-hover:scale-[1.02]"
+							class="flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-muted transition-transform duration-200 group-active:scale-[1.02] group-hover:scale-[1.02]"
 						>
 							<PlaylistCover coverUrls={group.coverUrls}>
 								{#snippet fallback()}

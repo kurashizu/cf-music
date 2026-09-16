@@ -606,7 +606,7 @@
 					<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
 					<div
-						class="group relative flex flex-col gap-2 rounded-xl border border-transparent p-2 transition-colors hover:bg-muted {selected.has(
+						class="group relative flex flex-col gap-2 rounded-xl border border-transparent p-2 transition-colors active:bg-muted hover:bg-muted {selected.has(
 							entry.videoId
 						)
 							? 'border-ring/50 bg-muted'
@@ -639,7 +639,7 @@
 							{/if}
 							<button
 								type="button"
-								class="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors sm:group-hover:bg-black/40"
+								class="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors active:bg-black/40 sm:group-hover:bg-black/40"
 								onclick={(e) => {
 									e.stopPropagation();
 									playEntry(entry);
@@ -717,7 +717,7 @@
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 				<li
-					class="flex items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-muted {selected.has(
+					class="flex items-center gap-3 rounded-lg px-2 py-2 transition-colors active:bg-muted hover:bg-muted {selected.has(
 						entry.videoId
 					)
 						? 'bg-muted ring-1 ring-inset ring-ring/50'

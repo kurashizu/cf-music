@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { scale } from 'svelte/transition';
+	import { scale, fade } from 'svelte/transition';
 	import { flip } from 'svelte/animate';
 	import { player } from '$lib/client/player.svelte';
 	import { queuePanelState } from '$lib/client/queue-panel-state.svelte';
@@ -24,11 +24,17 @@
 	// below the player bar), so it could open a full nav-bar's-height too
 	// high floating detached above the button instead of sitting right
 	// next to it.
+	//
+	// Below `sm`, this anchored-popover positioning is skipped entirely —
+	// a bottom sheet is used instead (see the markup) since a small
+	// screen has no good spot to anchor a floating popover to without it
+	// covering half the content or clipping off-screen.
 	const PANEL_WIDTH = 320;
 	const GAP_PX = 8;
+	const MOBILE_BREAKPOINT_PX = 640;
 	const style = $derived.by(() => {
 		const rect = queuePanelState.anchorRect;
-		if (!rect) return '';
+		if (!rect || window.innerWidth < MOBILE_BREAKPOINT_PX) return '';
 		const right = Math.max(12, window.innerWidth - rect.right);
 		const top = rect.top - GAP_PX;
 		return `right: ${right}px; top: ${top}px; transform: translateY(-100%); width: min(${PANEL_WIDTH}px, calc(100vw - 24px));`;
@@ -43,16 +49,28 @@
 </script>
 
 {#if queuePanelState.open}
+	<!-- Mobile-only backdrop: dims and blocks the page behind the sheet,
+	     and doubles as a tap-outside-to-close target — the popover variant
+	     doesn't need this since it's small enough to leave the rest of the
+	     page visibly interactive around it. -->
+	<button
+		type="button"
+		class="fixed inset-0 z-40 bg-black/50 sm:hidden"
+		transition:fade={motionParams({ duration: 150 })}
+		onclick={() => (queuePanelState.open = false)}
+		aria-label="Close queue"
+		tabindex="-1"
+	></button>
 	<div
 		{style}
-		class="fixed z-40 origin-bottom-right overflow-hidden rounded-xl border border-border bg-card shadow-lg"
-		transition:scale={{ duration: 150, start: 0.95, opacity: 0 }}
+		class="fixed inset-x-0 bottom-0 z-40 flex max-h-[70vh] origin-bottom flex-col overflow-hidden rounded-t-xl border border-border bg-card shadow-lg sm:inset-x-auto sm:bottom-auto sm:origin-bottom-right sm:rounded-xl"
+		transition:scale={motionParams({ duration: 150, start: 0.95, opacity: 0 })}
 	>
-		<div class="flex items-center justify-between border-b border-border px-3 py-2.5">
+		<div class="flex shrink-0 items-center justify-between border-b border-border px-3 py-2.5">
 			<p class="text-sm font-medium">Queue</p>
 			<button
 				type="button"
-				class="rounded p-2.5 text-muted-foreground transition-colors hover:text-foreground sm:p-1"
+				class="rounded p-2.5 text-muted-foreground transition-colors active:scale-90 hover:text-foreground sm:p-1"
 				onclick={() => (queuePanelState.open = false)}
 				aria-label="Close queue"
 			>
@@ -63,7 +81,7 @@
 			<div class="border-b border-border">
 				<button
 					type="button"
-					class="flex w-full items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-muted"
+					class="flex w-full items-center gap-2 px-3 py-2.5 text-left transition-colors active:bg-muted hover:bg-muted"
 					onclick={() => (nowPlayingExpanded = !nowPlayingExpanded)}
 					aria-expanded={nowPlayingExpanded}
 				>
@@ -98,7 +116,7 @@
 				</p>
 				{#each player.upcoming as { track, queueArrayIndex }, position (queueArrayIndex)}
 					<div
-						class="group flex items-center gap-2.5 rounded-md px-1.5 py-1.5 transition-colors hover:bg-muted"
+						class="group flex items-center gap-2.5 rounded-md px-1.5 py-1.5 transition-colors active:bg-muted hover:bg-muted"
 						animate:flip={motionParams({ duration: 200 })}
 						transition:scale={motionParams({ duration: 150, start: 0.9, opacity: 0 })}
 					>
@@ -117,7 +135,7 @@
 						{/if}
 						<button
 							type="button"
-							class="shrink-0 rounded p-2 text-muted-foreground opacity-100 transition-opacity hover:text-foreground sm:p-1 sm:opacity-0 sm:group-hover:opacity-100"
+							class="shrink-0 rounded p-2 text-muted-foreground opacity-100 transition-opacity active:scale-90 hover:text-foreground sm:p-1 sm:opacity-0 sm:group-hover:opacity-100"
 							onclick={() => player.removeFromQueue(queueArrayIndex)}
 							aria-label="Remove {track.title} from queue"
 						>
