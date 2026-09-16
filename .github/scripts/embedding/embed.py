@@ -26,6 +26,7 @@ import hashlib
 import hmac
 import json
 import os
+import random
 import subprocess
 import sys
 import tempfile
@@ -39,7 +40,13 @@ from google.genai.errors import APIError
 
 WORKER_BASE_URL = os.environ["WORKER_BASE_URL"]
 EMBEDDING_WEBHOOK_SECRET = os.environ["EMBEDDING_WEBHOOK_SECRET"]
-# GEMINI_API_KEY is read implicitly by genai.Client() from the environment.
+# GEMINI_API_KEY is read implicitly by genai.Client() from the environment
+# (not read directly here) — unused entirely when DRY_RUN is set.
+
+# Skips the real Gemini API call, returning a deterministic fake vector
+# instead (see embed_segment) — for exercising the rest of the pipeline
+# (claim/download/ffmpeg/complete/Vectorize) without spending API quota.
+DRY_RUN = os.environ.get("EMBEDDING_DRY_RUN") == "1"
 
 CLAIM_LIMIT = 50  # server clamps to its own MAX_CLAIM_LIMIT regardless
 
@@ -142,7 +149,16 @@ def extract_segment(audio_path: Path, output_path: Path) -> None:
         raise NonRetryableError(f"ffmpeg failed: {result.stderr[:500]}")
 
 
-def embed_segment(client: genai.Client, segment_path: Path) -> list[float]:
+def embed_segment(client: genai.Client | None, video_id: str, segment_path: Path) -> list[float]:
+    if DRY_RUN:
+        # Deterministic per-video pseudo-random vector — exercises every
+        # other part of the pipeline (download, ffmpeg, HMAC calls, D1
+        # writes, Vectorize upsert) without spending real Gemini quota. Seeded
+        # by video_id so re-running the same job produces the same "embedding"
+        # rather than a fresh random vector each time.
+        rng = random.Random(video_id)
+        return [rng.uniform(-1.0, 1.0) for _ in range(OUTPUT_DIMENSIONALITY)]
+
     with open(segment_path, "rb") as f:
         audio_bytes = f.read()
 
@@ -163,7 +179,7 @@ def is_retryable_api_error(exc: Exception) -> bool:
     return isinstance(exc, APIError) and (exc.code == 429 or exc.code >= 500)
 
 
-def process_job(client: genai.Client, job: dict) -> None:
+def process_job(client: genai.Client | None, job: dict) -> None:
     job_id = job["jobId"]
     video_id = job["videoId"]
 
@@ -175,7 +191,7 @@ def process_job(client: genai.Client, job: dict) -> None:
         try:
             download_audio(job["audioUrl"], audio_path)
             extract_segment(audio_path, segment_path)
-            embedding = embed_segment(client, segment_path)
+            embedding = embed_segment(client, video_id, segment_path)
         except NonRetryableError as exc:
             print(f"{video_id}: non-retryable failure: {exc}", file=sys.stderr)
             fail_job(job_id, str(exc), retryable=False)
@@ -191,12 +207,18 @@ def process_job(client: genai.Client, job: dict) -> None:
 
 
 def main() -> None:
+    if DRY_RUN:
+        print("DRY RUN: skipping real Gemini calls, using seeded fake embeddings", file=sys.stderr)
+
     jobs = claim_jobs()
     print(f"Claimed {len(jobs)} job(s)")
     if not jobs:
         return
 
-    client = genai.Client()
+    # Constructing genai.Client() reads GEMINI_API_KEY from the environment
+    # immediately, even though DRY_RUN never actually calls it — skip
+    # constructing it at all so a dry run doesn't need a real key present.
+    client = genai.Client() if not DRY_RUN else None
     for job in jobs:
         process_job(client, job)
 
