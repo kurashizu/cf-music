@@ -67,6 +67,7 @@
 	let unreferencedScan = $state<UnreferencedSongScanResult | null>(null);
 	let unreferencedScanLoading = $state(false);
 	let unreferencedResolving = $state<string | null>(null);
+
 	// Deleting an unreferenced song is just as irreversible as deleting one
 	// for a dead audioKey — same confirm-before-destroy treatment.
 	let deleteUnreferencedTarget = $state<UnreferencedSong | null>(null);

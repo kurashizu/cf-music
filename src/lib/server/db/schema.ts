@@ -73,7 +73,36 @@ export const songs = sqliteTable('songs', {
 	coverWidth: integer('cover_width'),
 	coverHeight: integer('cover_height'),
 
+	// Zero-shot classification: cosine similarity between this song's own
+	// audio embedding (in Vectorize, keyed by video_id) and every tag in
+	// tagVectors' text embeddings — computed by the separate auto-tag CI
+	// pipeline (distinct from the embedding pipeline itself: a song must
+	// already have a Vectorize entry before this can run at all). JSON
+	// object mapping tag -> similarity score for EVERY tag in tagVectors,
+	// not a pre-filtered top-k — thresholding/sorting into an actual
+	// "Auto-Cat" browsing view is left to whatever reads this, so changing
+	// the display cutoff never requires recomputing anything. Null until
+	// the auto-tag pipeline has processed this song at least once. Named
+	// distinctly from the existing `tags` column above (that's raw
+	// yt-dlp/import metadata, not related to this at all).
+	autoTags: text('auto_tags'),
+
 	importedAt: text('imported_at')
+		.notNull()
+		.default(sql`(current_timestamp)`)
+});
+
+// The fixed candidate vocabulary for zero-shot song classification (see
+// songs.autoTags) — each tag's own text embedding, computed once via the
+// same gemini-embedding-2 model used for song audio, so the two vector
+// spaces are comparable by cosine similarity. A plain table (not a
+// hardcoded constant in code) so re-tuning the vocabulary is a data change,
+// not a deploy — the auto-tag CI script reads this fresh every run.
+export const tagVectors = sqliteTable('tag_vectors', {
+	tag: text('tag').primaryKey(),
+	facet: text('facet').notNull(), // genre / mood / instrumentation — informational grouping, not used in the similarity math itself
+	embedding: text('embedding').notNull(), // JSON array of 768 floats
+	createdAt: text('created_at')
 		.notNull()
 		.default(sql`(current_timestamp)`)
 });

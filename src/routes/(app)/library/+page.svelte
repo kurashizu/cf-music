@@ -315,7 +315,7 @@
 	{/if}
 
 	{#if filteredSmartPlaylists.length > 0}
-		<h2 class="mt-10 mb-4 text-sm font-medium text-muted-foreground">Auto-categorized</h2>
+		<h2 class="mt-10 mb-4 text-sm font-medium text-muted-foreground">Auto-tagged</h2>
 		<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
 			{#each filteredSmartPlaylists as group (group.id)}
 				<Card.Root class="group relative overflow-hidden py-0 transition-colors active:border-ring/50 hover:border-ring/50">
