@@ -203,7 +203,7 @@
 									{#if job.previewEntries}
 										<div class="flex items-center gap-1.5">
 											<ListChecksIcon class="size-4" />
-											{job.previewEntries.length} {job.previewEntries.length === 1 ? 'song' : 'songs'} found
+											{job.previewEntries.length} new {job.previewEntries.length === 1 ? 'song' : 'songs'} to download
 										</div>
 									{/if}
 									{#if job.knownCount > 0}
