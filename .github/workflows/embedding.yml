@@ -23,6 +23,8 @@ jobs:
     # run — a job that somehow runs this long is stuck, not just slow.
     timeout-minutes: 60
     steps:
+      - uses: actions/checkout@v7
+
       - name: Install dependencies
         run: pip install --upgrade google-genai
 
