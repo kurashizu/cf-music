@@ -4,6 +4,19 @@ import { getPlaylistWithSongs, listPlaylists, ensureDefaultPlaylist, LibraryErro
 import { getObjectStorage } from '$lib/server/storage/factory';
 import type { PageServerLoad } from './$types';
 
+// Matches the client's own PAGE_SIZE (windowedIndices) — only the songs
+// that actually render on first paint get a presigned coverUrl here.
+// Presigning is real per-call AWS SigV4 work (aws4fetch's hmac() does 4
+// chained crypto.subtle.importKey calls per sign — the key derivation
+// ladder, not the final signature alone), so presigning the whole
+// playlist unconditionally made this load scale with library size: a
+// confirmed live regression where a 365-song "All Imported" playlist
+// took ~200ms of pure signing work before the page could render at all.
+// Everything past this window gets coverUrl: null here and is presigned
+// on demand instead, see /api/playlists/[playlistId]/songs and this
+// page's own loadMore().
+const INITIAL_PRESIGN_COUNT = 20;
+
 export const load: PageServerLoad = async ({ platform, locals, params }) => {
 	if (!locals.session) {
 		redirect(303, '/');
@@ -24,9 +37,10 @@ export const load: PageServerLoad = async ({ platform, locals, params }) => {
 		// only exist on the server.
 		const storage = getObjectStorage(platform!.env);
 		const songsWithCovers = await Promise.all(
-			playlist.songs.map(async (song) => ({
+			playlist.songs.map(async (song, index) => ({
 				...song,
-				coverUrl: song.coverKey ? await storage.presignGetUrl(song.coverKey) : null
+				coverUrl:
+					song.coverKey && index < INITIAL_PRESIGN_COUNT ? await storage.presignGetUrl(song.coverKey) : null
 			}))
 		);
 

@@ -120,10 +120,6 @@
 
 	const PAGE_SIZE = 20;
 	let visibleCount = $state(PAGE_SIZE);
-	$effect(() => {
-		visibleIndices;
-		visibleCount = PAGE_SIZE;
-	});
 	// What's actually rendered — a further slice of visibleIndices. Drag
 	// stays index-correct either way (visualOrder/handleDragOver work off
 	// real indices into `songs`, not the windowed render position), but
@@ -131,9 +127,81 @@
 	// dragging a song past the last *rendered* row while more remain
 	// unloaded below it would be confusing.
 	const windowedIndices = $derived(visibleIndices.slice(0, visibleCount));
-	function loadMore() {
-		visibleCount = Math.min(visibleIndices.length, visibleCount + PAGE_SIZE);
+
+	// The server only presigns the first INITIAL_PRESIGN_COUNT songs'
+	// covers on initial load (see +page.server.ts) — everything past that
+	// arrives with coverUrl: null and gets presigned here, on demand, the
+	// moment it's actually about to render. Keyed on `songs`' own
+	// (unfiltered) index, same basis the /songs endpoint's offset/limit
+	// use, since that's the playlist's real position order — a search's
+	// filtered view still only ever reveals a subset of those same real
+	// indices, never a different order.
+	const coverFetchInFlight = new Set<string>();
+	async function fetchMissingCovers(indices: number[]) {
+		const missing = indices.filter((i) => {
+			const song = songs[i];
+			return song.coverKey && song.coverUrl === null && !coverFetchInFlight.has(song.videoId);
+		});
+		if (missing.length === 0) return;
+
+		// One range request per contiguous run of missing indices, rather
+		// than one per song — loadMore() always reveals one contiguous
+		// block at a time, so this is normally a single request, not N.
+		missing.sort((a, b) => a - b);
+		const ranges: [number, number][] = [];
+		let start = missing[0];
+		let prev = missing[0];
+		for (const i of missing.slice(1)) {
+			if (i !== prev + 1) {
+				ranges.push([start, prev]);
+				start = i;
+			}
+			prev = i;
+		}
+		ranges.push([start, prev]);
+
+		for (const i of missing) coverFetchInFlight.add(songs[i].videoId);
+		try {
+			const results = await Promise.all(
+				ranges.map(([from, to]) =>
+					fetch(`/api/playlists/${data.playlist.id}/songs?offset=${from}&limit=${to - from + 1}`).then(
+						(r) => (r.ok ? r.json() : { covers: [] }) as Promise<{
+							covers: { videoId: string; coverUrl: string | null }[];
+						}>
+					)
+				)
+			);
+			const coverByVideoId = new Map<string, string | null>();
+			for (const { covers } of results) {
+				for (const c of covers) {
+					coverByVideoId.set(c.videoId, c.coverUrl);
+				}
+			}
+			songs = songs.map((song) =>
+				coverByVideoId.has(song.videoId) ? { ...song, coverUrl: coverByVideoId.get(song.videoId)! } : song
+			);
+		} finally {
+			for (const i of missing) coverFetchInFlight.delete(songs[i].videoId);
+		}
 	}
+
+	function loadMore() {
+		const nextCount = Math.min(visibleIndices.length, visibleCount + PAGE_SIZE);
+		const newlyVisible = visibleIndices.slice(visibleCount, nextCount);
+		visibleCount = nextCount;
+		fetchMissingCovers(newlyVisible);
+	}
+
+	// A search resets the window back to the first PAGE_SIZE of whatever
+	// now matches — which can easily be a set of real indices the initial
+	// server-side presign never covered (e.g. searching for a song that's
+	// #200 in the playlist), so this re-checks covers for the reset
+	// window every time, not just on loadMore().
+	$effect(() => {
+		visibleIndices;
+		visibleCount = PAGE_SIZE;
+		fetchMissingCovers(visibleIndices.slice(0, PAGE_SIZE));
+	});
 
 	let lastSelectedIndex = $state<number | null>(null);
 

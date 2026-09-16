@@ -6,6 +6,7 @@ import {
 	createPlaylist,
 	listPlaylists,
 	getPlaylistWithSongs,
+	getPlaylistSongCoverKeysInRange,
 	renamePlaylist,
 	deletePlaylist,
 	addSongToPlaylist,
@@ -145,6 +146,66 @@ describe('getPlaylistWithSongs', () => {
 
 		const playlist = await getPlaylistWithSongs(db, id, 'u1');
 		expect(playlist.songs.map((s) => s.videoId)).toEqual(['a', 'b', 'c']);
+	});
+});
+
+describe('getPlaylistSongCoverKeysInRange', () => {
+	it('throws not_found for a nonexistent playlist', async () => {
+		await seedUser('u1');
+		await expect(getPlaylistSongCoverKeysInRange(db, 'does-not-exist', 'u1', 0, 20)).rejects.toThrow(LibraryError);
+	});
+
+	it('throws not_found when the playlist belongs to a different user', async () => {
+		await seedUser('u1');
+		await seedUser('u2');
+		const { id } = await createPlaylist(db, { userId: 'u1', name: 'Private' });
+
+		await expect(getPlaylistSongCoverKeysInRange(db, id, 'u2', 0, 20)).rejects.toThrow(LibraryError);
+	});
+
+	it('returns only the requested offset/limit slice, in position order', async () => {
+		await seedUser('u1');
+		await seedSong('a', { coverKey: 'covers/a.avif' });
+		await seedSong('b', { coverKey: 'covers/b.avif' });
+		await seedSong('c', { coverKey: 'covers/c.avif' });
+		await seedSong('d', { coverKey: 'covers/d.avif' });
+		const { id } = await createPlaylist(db, { userId: 'u1', name: 'Ordered' });
+		await addSongToPlaylist(db, id, 'u1', 'a');
+		await addSongToPlaylist(db, id, 'u1', 'b');
+		await addSongToPlaylist(db, id, 'u1', 'c');
+		await addSongToPlaylist(db, id, 'u1', 'd');
+
+		const page1 = await getPlaylistSongCoverKeysInRange(db, id, 'u1', 0, 2);
+		expect(page1).toEqual([
+			{ videoId: 'a', coverKey: 'covers/a.avif' },
+			{ videoId: 'b', coverKey: 'covers/b.avif' }
+		]);
+
+		const page2 = await getPlaylistSongCoverKeysInRange(db, id, 'u1', 2, 2);
+		expect(page2).toEqual([
+			{ videoId: 'c', coverKey: 'covers/c.avif' },
+			{ videoId: 'd', coverKey: 'covers/d.avif' }
+		]);
+	});
+
+	it('returns null coverKey for a song with none set', async () => {
+		await seedUser('u1');
+		await seedSong('a', { coverKey: null });
+		const { id } = await createPlaylist(db, { userId: 'u1', name: 'Mix' });
+		await addSongToPlaylist(db, id, 'u1', 'a');
+
+		const result = await getPlaylistSongCoverKeysInRange(db, id, 'u1', 0, 20);
+		expect(result).toEqual([{ videoId: 'a', coverKey: null }]);
+	});
+
+	it('returns an empty array when offset is past the end of the playlist', async () => {
+		await seedUser('u1');
+		await seedSong('a');
+		const { id } = await createPlaylist(db, { userId: 'u1', name: 'Mix' });
+		await addSongToPlaylist(db, id, 'u1', 'a');
+
+		const result = await getPlaylistSongCoverKeysInRange(db, id, 'u1', 10, 20);
+		expect(result).toEqual([]);
 	});
 });
 

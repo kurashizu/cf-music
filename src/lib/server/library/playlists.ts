@@ -225,6 +225,33 @@ export async function getPlaylistWithSongs(db: Db, playlistId: string, userId: s
 	return { ...playlist, songs: entries.map((e) => ({ ...e.song, embeddingStatus: e.embeddingStatus })) };
 }
 
+/**
+ * A page's worth of (videoId, coverKey) by position order — the on-
+ * demand counterpart to getPlaylistWithSongs' own initial-page presign
+ * in +page.server.ts (see INITIAL_PRESIGN_COUNT there for why that one
+ * doesn't just presign everything up front). Callers presign coverKey
+ * into a real URL themselves; this only reads the bare key, since
+ * signing needs storage credentials this module has no reason to hold.
+ */
+export async function getPlaylistSongCoverKeysInRange(
+	db: Db,
+	playlistId: string,
+	userId: string,
+	offset: number,
+	limit: number
+): Promise<{ videoId: string; coverKey: string | null }[]> {
+	await getOwnedPlaylist(db, playlistId, userId);
+
+	return db
+		.select({ videoId: songs.videoId, coverKey: songs.coverKey })
+		.from(playlistSongs)
+		.innerJoin(songs, eq(playlistSongs.videoId, songs.videoId))
+		.where(eq(playlistSongs.playlistId, playlistId))
+		.orderBy(playlistSongs.position)
+		.limit(limit)
+		.offset(offset);
+}
+
 export async function renamePlaylist(db: Db, playlistId: string, userId: string, name: string): Promise<void> {
 	await getOwnedPlaylist(db, playlistId, userId);
 
