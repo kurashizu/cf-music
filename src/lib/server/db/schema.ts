@@ -105,7 +105,12 @@ export const playlistSongs = sqliteTable('playlist_songs', {
 		.default(sql`(current_timestamp)`)
 }, (t) => [
 	primaryKey({ columns: [t.playlistId, t.videoId] }),
-	index('idx_playlist_songs_video_id').on(t.videoId)
+	index('idx_playlist_songs_video_id').on(t.videoId),
+	// addSongToPlaylist's `max(position) where playlist_id = ?` was a full
+	// table scan of the whole playlist without this — the (playlistId,
+	// videoId) primary key is ordered by videoId second, not position, so
+	// it couldn't help SQLite jump straight to the max row.
+	index('idx_playlist_songs_playlist_id_position').on(t.playlistId, t.position)
 ]);
 
 // One row per (user, song) relationship: play history (the LFU+LRU blended

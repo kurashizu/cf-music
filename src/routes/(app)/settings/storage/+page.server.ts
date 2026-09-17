@@ -1,7 +1,7 @@
 import { redirect } from '@sveltejs/kit';
 import { getDb } from '$lib/server/db';
 import { listUserLibrarySongs, listPlaylists } from '$lib/server/library/playlists';
-import { getUserQuotaBytes, getUserStorageUsageBytes } from '$lib/server/eviction/usage';
+import { getUserQuotaBytes } from '$lib/server/eviction/usage';
 import { getObjectStorage } from '$lib/server/storage/factory';
 import type { PageServerLoad } from './$types';
 
@@ -11,12 +11,16 @@ export const load: PageServerLoad = async ({ platform, locals }) => {
 	}
 
 	const db = getDb(platform!.env.DB);
-	const [songs, quotaBytes, usageBytes, playlists] = await Promise.all([
+	const [songs, quotaBytes, playlists] = await Promise.all([
 		listUserLibrarySongs(db, locals.session.userId),
 		getUserQuotaBytes(db, locals.session.userId),
-		getUserStorageUsageBytes(db, locals.session.userId),
 		listPlaylists(db, locals.session.userId)
 	]);
+	// listUserLibrarySongs already reads every distinct song's fileSizeBytes
+	// for this page's own table — getUserStorageUsageBytes would just run
+	// the exact same playlist_songs⋈playlists⋈songs join a second time to
+	// sum a column already sitting right here.
+	const usageBytes = songs.reduce((total, song) => total + song.fileSizeBytes, 0);
 
 	const storage = getObjectStorage(platform!.env);
 	const entries = await Promise.all(

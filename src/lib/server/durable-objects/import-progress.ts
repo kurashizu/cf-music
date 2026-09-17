@@ -52,10 +52,28 @@ function isCiSocket(tags: string[]): boolean {
  * hibernation without needing a separate lookup table.
  */
 export class ImportProgressDurableObject implements DurableObject {
+	// handleCiProgress previously re-fetched the whole import_jobs row on
+	// every single progress message just to read this one immutable field
+	// (userId is set at job creation and never updated) — a long import
+	// sends one message per song, so this turned a several-hundred-song
+	// import into several hundred redundant full-row reads. Scoped to this
+	// DO instance's in-memory lifetime only: a rare cache miss after
+	// hibernation just re-fetches once, which is correct either way since
+	// userId can't have changed.
+	private readonly jobUserIdCache = new Map<string, string>();
+
 	constructor(
 		private readonly ctx: DurableObjectState,
 		private readonly env: Env
 	) {}
+
+	private async getJobUserId(db: ReturnType<typeof getDb>, jobId: string): Promise<string> {
+		const cached = this.jobUserIdCache.get(jobId);
+		if (cached) return cached;
+		const job = await getImportJobUnchecked(db, jobId);
+		this.jobUserIdCache.set(jobId, job.userId);
+		return job.userId;
+	}
 
 	async fetch(request: Request): Promise<Response> {
 		if (request.headers.get('Upgrade') !== 'websocket') {
@@ -103,41 +121,58 @@ export class ImportProgressDurableObject implements DurableObject {
 		}
 
 		const db = getDb(this.env.DB);
-		let job;
+
+		// 'start' can arrive before this job's userId has ever been looked up
+		// (it's the very first message a CI connection sends), and startImportJob
+		// itself doesn't need it — so the cache is only populated lazily, from
+		// whichever message actually needs userId first.
+		if (message.event.type === 'start') {
+			try {
+				await startImportJob(db, message.jobId, message.event.totalCount);
+			} catch (err) {
+				if (err instanceof ImportJobError) return;
+				throw err;
+			}
+			this.broadcastToBrowsers(raw);
+			return;
+		}
+
+		let userId: string;
 		try {
-			job = await getImportJobUnchecked(db, message.jobId);
+			userId = await this.getJobUserId(db, message.jobId);
 		} catch (err) {
 			if (err instanceof ImportJobError) return;
 			throw err;
 		}
 
 		switch (message.event.type) {
-			case 'start':
-				await startImportJob(db, message.jobId, message.event.totalCount);
-				break;
 			case 'preview':
 				await submitImportPreview(db, message.jobId, message.event.entries);
 				break;
 			case 'song_success':
-				await recordSongImported(db, message.jobId, job.userId, message.event.song);
+				await recordSongImported(db, message.jobId, userId, message.event.song);
 				break;
 			case 'song_known':
-				await recordKnownSongLinked(db, message.jobId, job.userId, message.event.videoId);
+				await recordKnownSongLinked(db, message.jobId, userId, message.event.videoId);
 				break;
 			case 'song_failed':
-				await recordSongFailed(db, message.jobId, job.userId, message.event.failure);
+				await recordSongFailed(db, message.jobId, userId, message.event.failure);
 				break;
 			case 'complete':
-				await completeImportJob(db, message.jobId, job.userId);
+				await completeImportJob(db, message.jobId, userId);
 				break;
 			case 'fatal_error':
-				await failImportJob(db, message.jobId, job.userId, message.event.reason);
+				await failImportJob(db, message.jobId, userId, message.event.reason);
 				break;
 		}
 
-		// Broadcast the raw event straight through to every browser tab —
-		// the frontend re-fetches full job state via GET /api/import/[jobId]
-		// on (re)connect, so this only needs to carry "something changed".
+		this.broadcastToBrowsers(raw);
+	}
+
+	// Broadcast the raw event straight through to every browser tab — the
+	// frontend re-fetches full job state via GET /api/import/[jobId] on
+	// (re)connect, so this only needs to carry "something changed".
+	private broadcastToBrowsers(raw: string): void {
 		for (const browserWs of this.ctx.getWebSockets()) {
 			if (!isCiSocket(this.ctx.getTags(browserWs))) {
 				browserWs.send(raw);

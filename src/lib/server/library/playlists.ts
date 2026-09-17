@@ -1,4 +1,4 @@
-import { eq, and, isNull, max, inArray } from 'drizzle-orm';
+import { eq, and, isNull, max, inArray, sql } from 'drizzle-orm';
 import type { Db } from '../db';
 import { playlists, playlistSongs, songs, users, importJobs, userSongs, embeddingJobs } from '../db/schema';
 
@@ -114,36 +114,36 @@ export async function listPlaylistsWithCovers(db: Db, userId: string): Promise<P
 	const rows = await listPlaylists(db, userId);
 	if (rows.length === 0) return [];
 
-	// Every song+position in these playlists, not just the first — a 2x2
-	// mosaic thumbnail needs up to PLAYLIST_MOSAIC_COVER_COUNT, unlike the
-	// old single-cover thumbnail. Sorted client-side (in JS below) rather
-	// than with an SQL ORDER BY, since this needs to be grouped by
-	// playlist first anyway.
-	const coverRows = await db
-		.select({
-			playlistId: playlistSongs.playlistId,
-			coverKey: songs.coverKey,
-			position: playlistSongs.position
-		})
-		.from(playlistSongs)
-		.innerJoin(songs, eq(playlistSongs.videoId, songs.videoId))
-		.where(inArray(playlistSongs.playlistId, rows.map((p) => p.id)));
-
-	const rowsByPlaylist = new Map<string, { coverKey: string | null; position: number }[]>();
-	for (const row of coverRows) {
-		const existing = rowsByPlaylist.get(row.playlistId);
-		if (existing) existing.push(row);
-		else rowsByPlaylist.set(row.playlistId, [row]);
-	}
+	// Only ever need the first PLAYLIST_MOSAIC_COVER_COUNT non-null covers
+	// per playlist, by position — this used to fetch every song in every
+	// playlist just to slice down to 4 in JS, which meant a 365-song
+	// playlist cost 365 rows read for a 4-cover thumbnail. The window
+	// function ranks each playlist's covered songs by position and the
+	// outer query only keeps the top N, so D1 only ever returns (and only
+	// needs to have read) a handful of rows per playlist.
+	const coverRows = await db.all<{ playlistId: string; coverKey: string }>(sql`
+		select "playlist_id" as "playlistId", "cover_key" as "coverKey"
+		from (
+			select
+				${playlistSongs.playlistId} as "playlist_id",
+				${songs.coverKey} as "cover_key",
+				row_number() over (
+					partition by ${playlistSongs.playlistId}
+					order by ${playlistSongs.position}
+				) as "rank"
+			from ${playlistSongs}
+			inner join ${songs} on ${playlistSongs.videoId} = ${songs.videoId}
+			where ${inArray(playlistSongs.playlistId, rows.map((p) => p.id))}
+				and ${songs.coverKey} is not null
+		) ranked
+		where "rank" <= ${PLAYLIST_MOSAIC_COVER_COUNT}
+	`);
 
 	const coverKeysByPlaylist = new Map<string, string[]>();
-	for (const [playlistId, songRows] of rowsByPlaylist) {
-		const coverKeys = songRows
-			.sort((a, b) => a.position - b.position)
-			.map((r) => r.coverKey)
-			.filter((k): k is string => k !== null)
-			.slice(0, PLAYLIST_MOSAIC_COVER_COUNT);
-		coverKeysByPlaylist.set(playlistId, coverKeys);
+	for (const row of coverRows) {
+		const existing = coverKeysByPlaylist.get(row.playlistId);
+		if (existing) existing.push(row.coverKey);
+		else coverKeysByPlaylist.set(row.playlistId, [row.coverKey]);
 	}
 
 	return rows.map((playlist) => ({
@@ -406,11 +406,12 @@ export async function reorderPlaylist(
 	const current = await db.query.playlistSongs.findMany({
 		where: eq(playlistSongs.playlistId, playlistId)
 	});
-	const currentIds = new Set(current.map((c) => c.videoId));
+	const currentPositionByVideoId = new Map(current.map((c) => [c.videoId, c.position]));
 	const requestedIds = new Set(orderedVideoIds);
 
 	const sameSet =
-		currentIds.size === requestedIds.size && [...currentIds].every((id) => requestedIds.has(id));
+		currentPositionByVideoId.size === requestedIds.size &&
+		[...currentPositionByVideoId.keys()].every((id) => requestedIds.has(id));
 	if (!sameSet) {
 		throw new LibraryError(
 			'Reorder must include exactly the songs currently in the playlist',
@@ -418,10 +419,17 @@ export async function reorderPlaylist(
 		);
 	}
 
+	// A drag-to-reorder always resends every song's new position, but only
+	// the ones actually between the drag's start and end index ever change —
+	// writing the rest back unchanged used to cost one full-playlist-length
+	// batch of UPDATEs (and D1 bills by rows written) for what's usually a
+	// single-item move.
 	for (let position = 0; position < orderedVideoIds.length; position++) {
+		const videoId = orderedVideoIds[position];
+		if (currentPositionByVideoId.get(videoId) === position) continue;
 		await db
 			.update(playlistSongs)
 			.set({ position })
-			.where(and(eq(playlistSongs.playlistId, playlistId), eq(playlistSongs.videoId, orderedVideoIds[position])));
+			.where(and(eq(playlistSongs.playlistId, playlistId), eq(playlistSongs.videoId, videoId)));
 	}
 }

@@ -1,0 +1,1 @@
+CREATE INDEX `idx_playlist_songs_playlist_id_position` ON `playlist_songs` (`playlist_id`,`position`);
