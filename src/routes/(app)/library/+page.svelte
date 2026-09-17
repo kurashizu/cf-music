@@ -338,10 +338,10 @@
 		</div>
 	{/if}
 
-	{#if filteredArtistPlaylists.length > 0}
-		<h2 class="mt-10 mb-4 text-sm font-medium text-muted-foreground">Artists</h2>
+	{#if filteredRecommendedPlaylists.length > 0}
+		<h2 class="mt-10 mb-4 text-sm font-medium text-muted-foreground">Smart Playlists</h2>
 		<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
-			{#each filteredArtistPlaylists as playlist (playlist.id)}
+			{#each filteredRecommendedPlaylists as playlist (playlist.id)}
 				<Card.Root class="group relative overflow-hidden py-0 transition-colors active:border-ring/50 hover:border-ring/50">
 					<a href="/library/{playlist.id}" class="flex flex-col gap-3 p-4">
 						<div
@@ -349,7 +349,7 @@
 						>
 							<PlaylistCover coverUrls={playlist.coverUrls}>
 								{#snippet fallback()}
-									<UserIcon class="size-8 text-muted-foreground" />
+									<SparklesIcon class="size-8 text-muted-foreground" />
 								{/snippet}
 							</PlaylistCover>
 						</div>
@@ -365,10 +365,10 @@
 		</div>
 	{/if}
 
-	{#if filteredRecommendedPlaylists.length > 0}
-		<h2 class="mt-10 mb-4 text-sm font-medium text-muted-foreground">Smart Playlists</h2>
+	{#if filteredArtistPlaylists.length > 0}
+		<h2 class="mt-10 mb-4 text-sm font-medium text-muted-foreground">Artists</h2>
 		<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
-			{#each filteredRecommendedPlaylists as playlist (playlist.id)}
+			{#each filteredArtistPlaylists as playlist (playlist.id)}
 				<Card.Root class="group relative overflow-hidden py-0 transition-colors active:border-ring/50 hover:border-ring/50">
 					<a href="/library/{playlist.id}" class="flex flex-col gap-3 p-4">
 						<div
@@ -376,7 +376,7 @@
 						>
 							<PlaylistCover coverUrls={playlist.coverUrls}>
 								{#snippet fallback()}
-									<SparklesIcon class="size-8 text-muted-foreground" />
+									<UserIcon class="size-8 text-muted-foreground" />
 								{/snippet}
 							</PlaylistCover>
 						</div>

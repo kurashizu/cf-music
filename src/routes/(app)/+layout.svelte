@@ -11,6 +11,7 @@
 	import SettingsIcon from '@lucide/svelte/icons/settings';
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import ListMusicIcon from '@lucide/svelte/icons/list-music';
+	import SparklesIcon from '@lucide/svelte/icons/sparkles';
 	import PanelLeftCloseIcon from '@lucide/svelte/icons/panel-left-close';
 	import PanelLeftOpenIcon from '@lucide/svelte/icons/panel-left-open';
 	import { sidebar } from '$lib/client/sidebar.svelte';
@@ -97,7 +98,7 @@
 								<item.icon class="size-4" />
 								{item.label}
 							</a>
-							{#if data.sidebarPlaylists.length > 0}
+							{#if data.sidebarPlaylists.length > 0 || data.sidebarSmartPlaylists.length > 0}
 								<button
 									type="button"
 									class="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
@@ -114,6 +115,19 @@
 					</div>
 					{#if playlistsExpanded && !sidebar.collapsed}
 						<div class="flex flex-col gap-0.5 pl-4">
+							{#each data.sidebarSmartPlaylists as playlist (playlist.id)}
+								<a
+									href="/library/{playlist.id}"
+									class="flex items-center gap-2 truncate rounded-lg px-2.5 py-1.5 text-[13px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground {isActive(
+										`/library/${playlist.id}`
+									)
+										? 'bg-muted text-foreground'
+										: ''}"
+								>
+									<SparklesIcon class="size-3.5 shrink-0" />
+									<span class="truncate">{playlist.name}</span>
+								</a>
+							{/each}
 							{#each data.sidebarPlaylists as playlist (playlist.id)}
 								<a
 									href="/library/{playlist.id}"
