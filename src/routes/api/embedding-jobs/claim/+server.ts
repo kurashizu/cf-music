@@ -11,7 +11,7 @@ import { recordAuditEvent } from '$lib/server/audit/log';
 // single GitHub Actions job (60-minute timeout, same backstop as import.yml)
 // comfortably within its time budget even if every song needs several
 // audio-chunk embedding calls.
-const MAX_CLAIM_LIMIT = 50;
+const MAX_CLAIM_LIMIT = 200;
 
 /**
  * Called by the embedding GitHub Actions workflow at the start of each run

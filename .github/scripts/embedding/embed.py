@@ -52,7 +52,7 @@ EMBEDDING_WEBHOOK_SECRET = os.environ["EMBEDDING_WEBHOOK_SECRET"]
 # (claim/download/ffmpeg/complete/Vectorize) without spending API quota.
 DRY_RUN = os.environ.get("EMBEDDING_DRY_RUN") == "1"
 
-CLAIM_LIMIT = 50  # server clamps to its own MAX_CLAIM_LIMIT regardless
+CLAIM_LIMIT = 200  # server clamps to its own MAX_CLAIM_LIMIT regardless
 
 MODEL_NAME = "gemini-embedding-2"
 OUTPUT_DIMENSIONALITY = 768  # must match the Vectorize index's configured dimensions
