@@ -9,7 +9,7 @@ import { listUserLibrarySongs, type LibrarySongSummary } from '../library/playli
 // binds 1 param per videoId.
 const VIDEO_ID_BATCH_SIZE = 90;
 
-async function getVectorsByVideoIds(db: Db, videoIds: string[]): Promise<Map<string, Float32Array>> {
+export async function getVectorsByVideoIds(db: Db, videoIds: string[]): Promise<Map<string, Float32Array>> {
 	if (videoIds.length === 0) return new Map();
 	const batches = await Promise.all(
 		chunk(videoIds, VIDEO_ID_BATCH_SIZE).map((batch) =>
