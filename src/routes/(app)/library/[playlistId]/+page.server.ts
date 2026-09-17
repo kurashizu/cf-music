@@ -1,21 +1,25 @@
 import { error, redirect } from '@sveltejs/kit';
 import { getDb } from '$lib/server/db';
-import { getPlaylistWithSongs, listPlaylists, ensureDefaultPlaylist, LibraryError } from '$lib/server/library/playlists';
+import {
+	getPlaylistMeta,
+	getPlaylistSongsInRange,
+	listPlaylists,
+	ensureDefaultPlaylist,
+	LibraryError
+} from '$lib/server/library/playlists';
 import { getObjectStorage } from '$lib/server/storage/factory';
 import type { PageServerLoad } from './$types';
 
-// Matches the client's own PAGE_SIZE (windowedIndices) — only the songs
-// that actually render on first paint get a presigned coverUrl here.
-// Presigning is real per-call AWS SigV4 work (aws4fetch's hmac() does 4
-// chained crypto.subtle.importKey calls per sign — the key derivation
-// ladder, not the final signature alone), so presigning the whole
-// playlist unconditionally made this load scale with library size: a
-// confirmed live regression where a 365-song "All Imported" playlist
-// took ~200ms of pure signing work before the page could render at all.
-// Everything past this window gets coverUrl: null here and is presigned
-// on demand instead, see /api/playlists/[playlistId]/songs and this
-// page's own loadMore().
-const INITIAL_PRESIGN_COUNT = 20;
+// Matches the client's own PAGE_SIZE (windowedIndices) — only this many
+// songs are fetched from D1 and have covers presigned here; everything
+// past it is fetched (full row data, not just a cover) on demand as the
+// user scrolls or searches, via GET /api/playlists/[playlistId]/songs —
+// see this page's own fetchMissingSongs/loadMore. Reading every song in
+// a large playlist unconditionally on every page load was a confirmed
+// live cost driver (see this file's git history) well before it was ever
+// the presign work itself; both the D1 read and the presign signing now
+// scale with what's actually visible, not with playlist size.
+const INITIAL_PAGE_SIZE = 20;
 
 export const load: PageServerLoad = async ({ platform, locals, params }) => {
 	if (!locals.session) {
@@ -25,8 +29,9 @@ export const load: PageServerLoad = async ({ platform, locals, params }) => {
 	const db = getDb(platform!.env.DB);
 
 	try {
-		const [playlist, allPlaylists, { id: defaultPlaylistId }] = await Promise.all([
-			getPlaylistWithSongs(db, params.playlistId, locals.session.userId),
+		const [playlistMeta, firstPage, allPlaylists, { id: defaultPlaylistId }] = await Promise.all([
+			getPlaylistMeta(db, params.playlistId, locals.session.userId),
+			getPlaylistSongsInRange(db, params.playlistId, locals.session.userId, 0, INITIAL_PAGE_SIZE),
 			listPlaylists(db, locals.session.userId),
 			ensureDefaultPlaylist(db, locals.session.userId)
 		]);
@@ -37,15 +42,18 @@ export const load: PageServerLoad = async ({ platform, locals, params }) => {
 		// only exist on the server.
 		const storage = getObjectStorage(platform!.env);
 		const songsWithCovers = await Promise.all(
-			playlist.songs.map(async (song, index) => ({
+			firstPage.map(async (song) => ({
 				...song,
-				coverUrl:
-					song.coverKey && index < INITIAL_PRESIGN_COUNT ? await storage.presignGetUrl(song.coverKey) : null
+				coverUrl: song.coverKey ? await storage.presignGetUrl(song.coverKey) : null
 			}))
 		);
 
 		return {
-			playlist: { ...playlist, songs: songsWithCovers },
+			playlist: { ...playlistMeta, songs: songsWithCovers },
+			// The client renders this many placeholder slots beyond what's
+			// actually loaded, so scrolling/searching has something to
+			// resolve against before its own fetch for that range returns.
+			totalSongCount: playlistMeta.songCount,
 			isDefaultPlaylist: params.playlistId === defaultPlaylistId,
 			// Other playlists a song from this page can be copied into — the
 			// current one is excluded, copying a song into the playlist it's

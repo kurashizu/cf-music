@@ -239,13 +239,42 @@ async function getOwnedPlaylist(db: Db, playlistId: string, userId: string) {
 	return playlist;
 }
 
-export async function getPlaylistWithSongs(db: Db, playlistId: string, userId: string) {
+/** Just the playlist row itself plus its total song count — cheap, O(1) metadata for a page's header, not the (potentially hundreds of rows) song list itself. See getPlaylistSongsInRange for that. */
+export async function getPlaylistMeta(db: Db, playlistId: string, userId: string) {
 	const playlist = await getOwnedPlaylist(db, playlistId, userId);
+	const [{ count }] = await db
+		.select({ count: sql<number>`count(*)` })
+		.from(playlistSongs)
+		.where(eq(playlistSongs.playlistId, playlistId));
+	return { ...playlist, songCount: count };
+}
+
+export type PlaylistSongRow = typeof songs.$inferSelect & {
+	addedAt: string;
+	embeddingStatus: string | null;
+};
+
+/**
+ * A page's worth of full song rows (title, artist, duration, cover key,
+ * everything the UI renders a row from) by position order — only the
+ * playlist detail page's own first-screen window is fetched server-side
+ * on load (see INITIAL_PRESIGN_COUNT in +page.server.ts); everything past
+ * that, and anything a search/sort/filter needs beyond what's already been
+ * fetched, is pulled through this same range query on demand from the
+ * client instead of the whole playlist being read into memory up front.
+ */
+export async function getPlaylistSongsInRange(
+	db: Db,
+	playlistId: string,
+	userId: string,
+	offset: number,
+	limit: number
+): Promise<PlaylistSongRow[]> {
+	await getOwnedPlaylist(db, playlistId, userId);
 
 	const entries = await db
 		.select({
 			song: songs,
-			position: playlistSongs.position,
 			addedAt: playlistSongs.addedAt,
 			embeddingStatus: embeddingJobs.status
 		})
@@ -253,42 +282,14 @@ export async function getPlaylistWithSongs(db: Db, playlistId: string, userId: s
 		.innerJoin(songs, eq(playlistSongs.videoId, songs.videoId))
 		.leftJoin(embeddingJobs, eq(embeddingJobs.videoId, songs.videoId))
 		.where(eq(playlistSongs.playlistId, playlistId))
-		.orderBy(playlistSongs.position);
+		.orderBy(playlistSongs.position)
+		.limit(limit)
+		.offset(offset);
 
 	// embeddingStatus is null when no embedding_jobs row exists yet (e.g. a
 	// song imported before the pipeline, not yet backfilled) — treated the
 	// same as any non-'done' status: not embedded.
-	return {
-		...playlist,
-		songs: entries.map((e) => ({ ...e.song, addedAt: e.addedAt, embeddingStatus: e.embeddingStatus }))
-	};
-}
-
-/**
- * A page's worth of (videoId, coverKey) by position order — the on-
- * demand counterpart to getPlaylistWithSongs' own initial-page presign
- * in +page.server.ts (see INITIAL_PRESIGN_COUNT there for why that one
- * doesn't just presign everything up front). Callers presign coverKey
- * into a real URL themselves; this only reads the bare key, since
- * signing needs storage credentials this module has no reason to hold.
- */
-export async function getPlaylistSongCoverKeysInRange(
-	db: Db,
-	playlistId: string,
-	userId: string,
-	offset: number,
-	limit: number
-): Promise<{ videoId: string; coverKey: string | null }[]> {
-	await getOwnedPlaylist(db, playlistId, userId);
-
-	return db
-		.select({ videoId: songs.videoId, coverKey: songs.coverKey })
-		.from(playlistSongs)
-		.innerJoin(songs, eq(playlistSongs.videoId, songs.videoId))
-		.where(eq(playlistSongs.playlistId, playlistId))
-		.orderBy(playlistSongs.position)
-		.limit(limit)
-		.offset(offset);
+	return entries.map((e) => ({ ...e.song, addedAt: e.addedAt, embeddingStatus: e.embeddingStatus }));
 }
 
 export async function renamePlaylist(db: Db, playlistId: string, userId: string, name: string): Promise<void> {

@@ -138,10 +138,46 @@
 			maxDurationMinutes.trim() === ''
 	);
 
-	// Indices into `songs`, filtered by title/artist/duration and reordered
-	// by the active sort — see isCustomUnfilteredView above for why drag is
+	// A large playlist's own song *data* (not just covers — title, artist,
+	// duration, everything) is only loaded a page at a time, same idea as
+	// the cover presigning further down — see totalSongCount/loadMore.
+	// Search, sort, and any filter besides "custom order" all need to see
+	// every song to give correct results, not just whatever's scrolled
+	// into view so far, so leaving the plain custom-order view loads
+	// everything still missing up front rather than searching/sorting a
+	// partial list.
+	const allSongsLoaded = $derived(songs.length >= data.totalSongCount);
+	let loadingAllSongs = $state(false);
+	async function ensureAllSongsLoaded() {
+		if (allSongsLoaded || loadingAllSongs) return;
+		loadingAllSongs = true;
+		try {
+			await fetchMissingSongData(
+				Array.from({ length: data.totalSongCount - songs.length }, (_, i) => songs.length + i)
+			);
+		} finally {
+			loadingAllSongs = false;
+		}
+	}
+	$effect(() => {
+		if (!isCustomUnfilteredView) ensureAllSongsLoaded();
+	});
+
+	// Indices, filtered by title/artist/duration and reordered by the
+	// active sort — see isCustomUnfilteredView above for why drag is
 	// disabled whenever this diverges from the plain identity order.
+	//
+	// The plain custom-order case (no search/sort/filter engaged) is the
+	// only one that can run before every song is loaded — ensureAllSongsLoaded
+	// guarantees `songs.length === data.totalSongCount` for every other
+	// case, so it's the only branch that needs to reach past `songs`' own
+	// current length up to the playlist's real size, letting loadMore/the
+	// scroll sentinel keep revealing (and thus fetching) indices beyond
+	// what's loaded so far instead of stopping dead at songs.length.
 	const visibleIndices = $derived.by(() => {
+		if (isCustomUnfilteredView) {
+			return Array.from({ length: data.totalSongCount }, (_, i) => i);
+		}
 		const query = searchQuery.trim().toLowerCase();
 		const minSeconds = minDurationMinutes.trim() === '' ? null : Number(minDurationMinutes) * 60;
 		const maxSeconds = maxDurationMinutes.trim() === '' ? null : Number(maxDurationMinutes) * 60;
@@ -159,28 +195,28 @@
 
 	const PAGE_SIZE = 20;
 	let visibleCount = $state(PAGE_SIZE);
-	// What's actually rendered — a further slice of visibleIndices. Drag
-	// stays index-correct either way (visualOrder/handleDragOver work off
-	// real indices into `songs`, not the windowed render position), but
-	// it's disabled while windowed anyway (see `draggable` below) since
-	// dragging a song past the last *rendered* row while more remain
-	// unloaded below it would be confusing.
-	const windowedIndices = $derived(visibleIndices.slice(0, visibleCount));
+	// What's actually rendered — a further slice of visibleIndices, clamped
+	// to indices `songs` actually has data for yet. In the custom-order
+	// case, visibleIndices can extend past songs.length (see its own
+	// comment) purely so loadMore has real indices to request — but until
+	// that fetch resolves and songs grows, rendering one would be reading
+	// past the array. Drag stays index-correct either way
+	// (visualOrder/handleDragOver work off real indices into `songs`, not
+	// the windowed render position), but it's disabled while windowed
+	// anyway (see `draggable` below) since dragging a song past the last
+	// *rendered* row while more remain unloaded below it would be
+	// confusing.
+	const windowedIndices = $derived(visibleIndices.slice(0, visibleCount).filter((i) => i < songs.length));
 
-	// The server only presigns the first INITIAL_PRESIGN_COUNT songs'
-	// covers on initial load (see +page.server.ts) — everything past that
-	// arrives with coverUrl: null and gets presigned here, on demand, the
-	// moment it's actually about to render. Keyed on `songs`' own
-	// (unfiltered) index, same basis the /songs endpoint's offset/limit
-	// use, since that's the playlist's real position order — a search's
-	// filtered view still only ever reveals a subset of those same real
-	// indices, never a different order.
-	const coverFetchInFlight = new Set<string>();
-	async function fetchMissingCovers(indices: number[]) {
-		const missing = indices.filter((i) => {
-			const song = songs[i];
-			return song.coverKey && song.coverUrl === null && !coverFetchInFlight.has(song.videoId);
-		});
+	// The server only loads+presigns the first INITIAL_PAGE_SIZE songs on
+	// initial load (see +page.server.ts) — `songs` starts shorter than the
+	// playlist actually is, and grows in place as more real rows are
+	// fetched here, rather than every song's full data being read from D1
+	// (and its cover presigned) on every visit regardless of how much of
+	// the playlist is ever actually scrolled to.
+	const songFetchInFlight = new Set<number>();
+	async function fetchMissingSongData(indices: number[]) {
+		const missing = indices.filter((i) => i >= songs.length && !songFetchInFlight.has(i));
 		if (missing.length === 0) return;
 
 		// One range request per contiguous run of missing indices, rather
@@ -199,28 +235,29 @@
 		}
 		ranges.push([start, prev]);
 
-		for (const i of missing) coverFetchInFlight.add(songs[i].videoId);
+		for (const i of missing) songFetchInFlight.add(i);
 		try {
 			const results = await Promise.all(
 				ranges.map(([from, to]) =>
 					fetch(`/api/playlists/${data.playlist.id}/songs?offset=${from}&limit=${to - from + 1}`).then(
-						(r) => (r.ok ? r.json() : { covers: [] }) as Promise<{
-							covers: { videoId: string; coverUrl: string | null }[];
+						(r) => (r.ok ? r.json() : { songs: [], offset: from }) as Promise<{
+							songs: (typeof songs)[number][];
+							offset: number;
 						}>
 					)
 				)
 			);
-			const coverByVideoId = new Map<string, string | null>();
-			for (const { covers } of results) {
-				for (const c of covers) {
-					coverByVideoId.set(c.videoId, c.coverUrl);
-				}
-			}
-			songs = songs.map((song) =>
-				coverByVideoId.has(song.videoId) ? { ...song, coverUrl: coverByVideoId.get(song.videoId)! } : song
-			);
+			// Fetched ranges only ever extend `songs` contiguously from its
+			// current end (see the `i >= songs.length` filter above) — sorting
+			// by offset before appending keeps that contiguous even when
+			// multiple ranges resolve out of request order.
+			const bySongsOrder = results
+				.filter((r) => r.songs.length > 0)
+				.sort((a, b) => a.offset - b.offset)
+				.flatMap((r) => r.songs);
+			songs = [...songs, ...bySongsOrder];
 		} finally {
-			for (const i of missing) coverFetchInFlight.delete(songs[i].videoId);
+			for (const i of missing) songFetchInFlight.delete(i);
 		}
 	}
 
@@ -228,27 +265,34 @@
 		const nextCount = Math.min(visibleIndices.length, visibleCount + PAGE_SIZE);
 		const newlyVisible = visibleIndices.slice(visibleCount, nextCount);
 		visibleCount = nextCount;
-		fetchMissingCovers(newlyVisible);
+		fetchMissingSongData(newlyVisible);
 	}
 
-	// A search resets the window back to the first PAGE_SIZE of whatever
-	// now matches — which can easily be a set of real indices the initial
-	// server-side presign never covered (e.g. searching for a song that's
-	// #200 in the playlist), so this re-checks covers for the reset
-	// window every time, not just on loadMore().
+	// A search/sort/filter change resets the window back to the first
+	// PAGE_SIZE of whatever now matches — by the time this runs, either
+	// everything is already loaded (ensureAllSongsLoaded, for any
+	// non-custom-order view) or this is the plain scrolling case, where
+	// the reset window may reach indices loadMore hasn't fetched yet.
 	$effect(() => {
 		visibleIndices;
 		visibleCount = PAGE_SIZE;
-		fetchMissingCovers(visibleIndices.slice(0, PAGE_SIZE));
+		fetchMissingSongData(visibleIndices.slice(0, PAGE_SIZE));
 	});
 
 	let lastSelectedIndex = $state<number | null>(null);
 
 	// "Select all" only ever targets what's actually visible (the filtered/
 	// searched view) — selecting rows hidden by a search would be
-	// surprising, since the toolbar's count wouldn't match what's on screen.
+	// surprising, since the toolbar's count wouldn't match what's on
+	// screen. Scoped to `windowedIndices`, not the full `visibleIndices`,
+	// for the plain custom-order/scrolling case specifically: those can
+	// include indices past what's loaded yet (see windowedIndices' own
+	// comment), which selected.has()/videoId lookups can't resolve until
+	// they're actually fetched. Every other view (search/sort/filter) has
+	// already loaded everything by the time this runs (ensureAllSongsLoaded),
+	// so windowedIndices and visibleIndices agree there regardless.
 	const allVisibleSelected = $derived(
-		visibleIndices.length > 0 && visibleIndices.every((i) => selected.has(songs[i].videoId))
+		windowedIndices.length > 0 && windowedIndices.every((i) => selected.has(songs[i].videoId))
 	);
 
 	function toggleSelectAll() {
@@ -256,8 +300,8 @@
 			clearSelection();
 			return;
 		}
-		selected = new Set(visibleIndices.map((i) => songs[i].videoId));
-		lastSelectedIndex = visibleIndices[visibleIndices.length - 1] ?? null;
+		selected = new Set(windowedIndices.map((i) => songs[i].videoId));
+		lastSelectedIndex = windowedIndices[windowedIndices.length - 1] ?? null;
 	}
 
 	function toggleSelected(videoId: string) {
@@ -321,7 +365,10 @@
 	}
 
 	async function playAll(shuffle = false) {
-		if (songs.length === 0) return;
+		if (data.totalSongCount === 0) return;
+		// The queue needs every track, not just whatever's loaded so far —
+		// see ensureAllSongsLoaded's own comment.
+		await ensureAllSongsLoaded();
 		await player.playQueue(toQueueTracks(), 0, shuffle);
 	}
 
@@ -330,6 +377,7 @@
 			await player.togglePlayPause();
 			return;
 		}
+		await ensureAllSongsLoaded();
 		await player.playQueue(toQueueTracks(), index);
 	}
 
@@ -630,7 +678,7 @@
 		<div class="min-w-0">
 			<h1 class="truncate text-lg font-medium">{data.playlist.name}</h1>
 			<p class="text-sm text-muted-foreground">
-				{songs.length} {songs.length === 1 ? 'song' : 'songs'}
+				{data.totalSongCount} {data.totalSongCount === 1 ? 'song' : 'songs'}
 				{data.isDefaultPlaylist ? '· Your whole library' : ''}
 			</p>
 		</div>
@@ -1038,7 +1086,11 @@
 
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
 					<span onclick={(e) => e.stopPropagation()}>
-						<DropdownMenu.Root>
+						<DropdownMenu.Root
+							onOpenChange={(open) => {
+								if (open && unfiltered) ensureAllSongsLoaded();
+							}}
+						>
 							<DropdownMenu.Trigger>
 								{#snippet child({ props })}
 									<Button
@@ -1058,12 +1110,17 @@
 							     these two menu items are the only way to reorder a song
 							     on a phone. Always shown (not sm:-gated) since desktop
 							     users can use them too, drag is just the faster path there.
-							     Gated on `unfiltered`, not `draggable` — a plain adjacent
-							     swap doesn't care whether every row below has scrolled
-							     into view yet (unlike drag, see draggable's own comment),
-							     it only needs songs[index-1]/[index+1] to exist, which is
-							     always true against the real (not windowed) songs array. -->
-							{#if unfiltered}
+							     Gated on `unfiltered && allSongsLoaded`, not `draggable` —
+							     a plain adjacent swap doesn't care whether every row below
+							     has scrolled into *view* yet (unlike drag, see draggable's
+							     own comment), but persistReorder submits the *entire*
+							     songs array as the playlist's new full order, which the
+							     server rejects unless it's exactly every song currently in
+							     the playlist — so this still needs everything loaded, just
+							     not necessarily windowed/rendered. The dropdown's own
+							     onOpenChange above kicks off that load the moment it opens,
+							     same as ensureAllSongsLoaded's other callers. -->
+							{#if unfiltered && allSongsLoaded}
 								<DropdownMenu.Item disabled={index === 0} onclick={() => moveSong(index, index - 1)}>
 									<ArrowUpIcon class="size-4" />
 									Move up

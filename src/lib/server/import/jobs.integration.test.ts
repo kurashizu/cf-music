@@ -22,9 +22,24 @@ import {
 	type SongImportSuccess
 } from './jobs';
 import { reserveQuota } from './quota-reservations';
-import { getPlaylistWithSongs, createPlaylist, ensureDefaultPlaylist } from '../library/playlists';
+import {
+	getPlaylistMeta,
+	getPlaylistSongsInRange,
+	createPlaylist,
+	ensureDefaultPlaylist,
+	type PlaylistSongRow
+} from '../library/playlists';
 
 const db = getDb(env.DB);
+
+// Test-only convenience — see the same helper's comment in
+// playlists.integration.test.ts for why this composes the two real,
+// separately-paginated functions rather than a production-only full fetch.
+async function fetchWholePlaylist(playlistId: string, userId: string): Promise<{ songs: PlaylistSongRow[] }> {
+	const meta = await getPlaylistMeta(db, playlistId, userId);
+	const songs = await getPlaylistSongsInRange(db, playlistId, userId, 0, Math.max(meta.songCount, 1));
+	return { songs };
+}
 
 async function seedUser(id: string, quotaBytes = 1_073_741_824) {
 	await db
@@ -111,7 +126,7 @@ describe('recordSongImported', () => {
 
 		await recordSongImported(db, id, 'u1', makeSong('a'));
 
-		const playlist = await getPlaylistWithSongs(db, 'p1', 'u1');
+		const playlist = await fetchWholePlaylist('p1', 'u1');
 		expect(playlist.songs.map((s) => s.videoId)).toEqual(['a']);
 	});
 
@@ -123,8 +138,8 @@ describe('recordSongImported', () => {
 
 		await recordSongImported(db, id, 'u1', makeSong('a'));
 
-		const targetPlaylist = await getPlaylistWithSongs(db, 'p1', 'u1');
-		const defaultPlaylist = await getPlaylistWithSongs(db, defaultPlaylistId, 'u1');
+		const targetPlaylist = await fetchWholePlaylist('p1', 'u1');
+		const defaultPlaylist = await fetchWholePlaylist(defaultPlaylistId, 'u1');
 		expect(targetPlaylist.songs.map((s) => s.videoId)).toEqual(['a']);
 		expect(defaultPlaylist.songs.map((s) => s.videoId)).toEqual(['a']);
 	});
@@ -140,7 +155,7 @@ describe('recordSongImported', () => {
 
 		await recordSongImported(db, id, 'u1', makeSong('a'));
 
-		const defaultPlaylist = await getPlaylistWithSongs(db, defaultPlaylistId, 'u1');
+		const defaultPlaylist = await fetchWholePlaylist(defaultPlaylistId, 'u1');
 		expect(defaultPlaylist.songs.map((s) => s.videoId)).toEqual(['a']);
 	});
 
@@ -199,7 +214,7 @@ describe('recordKnownSongLinked', () => {
 
 		await recordKnownSongLinked(db, jobId, 'u1', 'already-owned');
 
-		const playlist = await getPlaylistWithSongs(db, playlistId, 'u1');
+		const playlist = await fetchWholePlaylist(playlistId, 'u1');
 		expect(playlist.songs.map((s) => s.videoId)).toEqual(['already-owned']);
 	});
 

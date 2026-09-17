@@ -2,15 +2,19 @@ import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getDb } from '$lib/server/db';
 import { requireSession } from '$lib/server/auth/guard';
-import { getPlaylistWithSongs, renamePlaylist, deletePlaylist, LibraryError } from '$lib/server/library/playlists';
+import { getPlaylistMeta, renamePlaylist, deletePlaylist, LibraryError } from '$lib/server/library/playlists';
 import { pickStrings } from '$lib/server/http/validate';
 
+// Metadata only (name, owner, song count) — no client code actually
+// consumes this route's songs (the playlist detail page fetches those
+// itself, paginated, via GET .../songs), so returning the full list here
+// would just be a second, unused, full-playlist read.
 export const GET: RequestHandler = async (event) => {
 	const session = requireSession(event);
 	const db = getDb(event.platform!.env.DB);
 
 	try {
-		return json(await getPlaylistWithSongs(db, event.params.playlistId, session.userId));
+		return json(await getPlaylistMeta(db, event.params.playlistId, session.userId));
 	} catch (err) {
 		if (err instanceof LibraryError) error(404, err.message);
 		throw err;

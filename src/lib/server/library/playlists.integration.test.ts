@@ -6,8 +6,8 @@ import {
 	createPlaylist,
 	listPlaylists,
 	listPlaylistsWithCovers,
-	getPlaylistWithSongs,
-	getPlaylistSongCoverKeysInRange,
+	getPlaylistMeta,
+	getPlaylistSongsInRange,
 	renamePlaylist,
 	deletePlaylist,
 	addSongToPlaylist,
@@ -17,11 +17,29 @@ import {
 	isSongInUserLibrary,
 	ensureDefaultPlaylist,
 	listUserLibrarySongs,
-	LibraryError
+	LibraryError,
+	type PlaylistSongRow
 } from './playlists';
 import { recordSongPlay } from './plays';
 
 const db = getDb(env.DB);
+
+// Test-only convenience: most of this file's tests just want "every song
+// currently in this playlist, in order" to assert on after some mutation —
+// they aren't testing pagination itself (see the dedicated
+// getPlaylistSongsInRange describe block for that), so this composes the
+// same two real, separately-paginated functions the app itself uses
+// (getPlaylistMeta + getPlaylistSongsInRange) rather than adding a third,
+// test-only, unpaginated production function just to make assertions
+// shorter.
+async function fetchWholePlaylist(
+	playlistId: string,
+	userId: string
+): Promise<{ name: string; songs: PlaylistSongRow[] }> {
+	const meta = await getPlaylistMeta(db, playlistId, userId);
+	const songs = await getPlaylistSongsInRange(db, playlistId, userId, 0, Math.max(meta.songCount, 1));
+	return { name: meta.name, songs };
+}
 
 async function seedUser(id: string) {
 	await db.insert(users).values({ id, username: `user-${id}`, passwordHash: 'x' }).onConflictDoNothing();
@@ -120,10 +138,10 @@ describe('createPlaylist / listPlaylists', () => {
 	});
 });
 
-describe('getPlaylistWithSongs', () => {
+describe('getPlaylistMeta', () => {
 	it('throws not_found for a nonexistent playlist', async () => {
 		await seedUser('u1');
-		await expect(getPlaylistWithSongs(db, 'does-not-exist', 'u1')).rejects.toThrow(LibraryError);
+		await expect(getPlaylistMeta(db, 'does-not-exist', 'u1')).rejects.toThrow(LibraryError);
 	});
 
 	it('throws not_found when the playlist belongs to a different user', async () => {
@@ -131,7 +149,34 @@ describe('getPlaylistWithSongs', () => {
 		await seedUser('u2');
 		const { id } = await createPlaylist(db, { userId: 'u1', name: 'Private' });
 
-		await expect(getPlaylistWithSongs(db, id, 'u2')).rejects.toThrow(LibraryError);
+		await expect(getPlaylistMeta(db, id, 'u2')).rejects.toThrow(LibraryError);
+	});
+
+	it('reports the playlist\'s total song count', async () => {
+		await seedUser('u1');
+		await seedSong('a');
+		await seedSong('b');
+		const { id } = await createPlaylist(db, { userId: 'u1', name: 'Ordered' });
+		await addSongToPlaylist(db, id, 'u1', 'a');
+		await addSongToPlaylist(db, id, 'u1', 'b');
+
+		const meta = await getPlaylistMeta(db, id, 'u1');
+		expect(meta.songCount).toBe(2);
+	});
+});
+
+describe('getPlaylistSongsInRange', () => {
+	it('throws not_found for a nonexistent playlist', async () => {
+		await seedUser('u1');
+		await expect(getPlaylistSongsInRange(db, 'does-not-exist', 'u1', 0, 20)).rejects.toThrow(LibraryError);
+	});
+
+	it('throws not_found when the playlist belongs to a different user', async () => {
+		await seedUser('u1');
+		await seedUser('u2');
+		const { id } = await createPlaylist(db, { userId: 'u1', name: 'Private' });
+
+		await expect(getPlaylistSongsInRange(db, id, 'u2', 0, 20)).rejects.toThrow(LibraryError);
 	});
 
 	it('returns songs in position order', async () => {
@@ -145,23 +190,8 @@ describe('getPlaylistWithSongs', () => {
 		await addSongToPlaylist(db, id, 'u1', 'b');
 		await addSongToPlaylist(db, id, 'u1', 'c');
 
-		const playlist = await getPlaylistWithSongs(db, id, 'u1');
-		expect(playlist.songs.map((s) => s.videoId)).toEqual(['a', 'b', 'c']);
-	});
-});
-
-describe('getPlaylistSongCoverKeysInRange', () => {
-	it('throws not_found for a nonexistent playlist', async () => {
-		await seedUser('u1');
-		await expect(getPlaylistSongCoverKeysInRange(db, 'does-not-exist', 'u1', 0, 20)).rejects.toThrow(LibraryError);
-	});
-
-	it('throws not_found when the playlist belongs to a different user', async () => {
-		await seedUser('u1');
-		await seedUser('u2');
-		const { id } = await createPlaylist(db, { userId: 'u1', name: 'Private' });
-
-		await expect(getPlaylistSongCoverKeysInRange(db, id, 'u2', 0, 20)).rejects.toThrow(LibraryError);
+		const result = await getPlaylistSongsInRange(db, id, 'u1', 0, 20);
+		expect(result.map((s) => s.videoId)).toEqual(['a', 'b', 'c']);
 	});
 
 	it('returns only the requested offset/limit slice, in position order', async () => {
@@ -176,17 +206,11 @@ describe('getPlaylistSongCoverKeysInRange', () => {
 		await addSongToPlaylist(db, id, 'u1', 'c');
 		await addSongToPlaylist(db, id, 'u1', 'd');
 
-		const page1 = await getPlaylistSongCoverKeysInRange(db, id, 'u1', 0, 2);
-		expect(page1).toEqual([
-			{ videoId: 'a', coverKey: 'covers/a.avif' },
-			{ videoId: 'b', coverKey: 'covers/b.avif' }
-		]);
+		const page1 = await getPlaylistSongsInRange(db, id, 'u1', 0, 2);
+		expect(page1.map((s) => s.videoId)).toEqual(['a', 'b']);
 
-		const page2 = await getPlaylistSongCoverKeysInRange(db, id, 'u1', 2, 2);
-		expect(page2).toEqual([
-			{ videoId: 'c', coverKey: 'covers/c.avif' },
-			{ videoId: 'd', coverKey: 'covers/d.avif' }
-		]);
+		const page2 = await getPlaylistSongsInRange(db, id, 'u1', 2, 2);
+		expect(page2.map((s) => s.videoId)).toEqual(['c', 'd']);
 	});
 
 	it('returns null coverKey for a song with none set', async () => {
@@ -195,8 +219,8 @@ describe('getPlaylistSongCoverKeysInRange', () => {
 		const { id } = await createPlaylist(db, { userId: 'u1', name: 'Mix' });
 		await addSongToPlaylist(db, id, 'u1', 'a');
 
-		const result = await getPlaylistSongCoverKeysInRange(db, id, 'u1', 0, 20);
-		expect(result).toEqual([{ videoId: 'a', coverKey: null }]);
+		const result = await getPlaylistSongsInRange(db, id, 'u1', 0, 20);
+		expect(result).toEqual([expect.objectContaining({ videoId: 'a', coverKey: null })]);
 	});
 
 	it('returns an empty array when offset is past the end of the playlist', async () => {
@@ -205,7 +229,7 @@ describe('getPlaylistSongCoverKeysInRange', () => {
 		const { id } = await createPlaylist(db, { userId: 'u1', name: 'Mix' });
 		await addSongToPlaylist(db, id, 'u1', 'a');
 
-		const result = await getPlaylistSongCoverKeysInRange(db, id, 'u1', 10, 20);
+		const result = await getPlaylistSongsInRange(db, id, 'u1', 10, 20);
 		expect(result).toEqual([]);
 	});
 });
@@ -217,7 +241,7 @@ describe('renamePlaylist', () => {
 
 		await renamePlaylist(db, id, 'u1', 'New Name');
 
-		const playlist = await getPlaylistWithSongs(db, id, 'u1');
+		const playlist = await fetchWholePlaylist(id, 'u1');
 		expect(playlist.name).toBe('New Name');
 	});
 
@@ -235,7 +259,7 @@ describe('renamePlaylist', () => {
 
 		await expect(renamePlaylist(db, id, 'u1', 'My Library')).rejects.toThrow(LibraryError);
 
-		const playlist = await getPlaylistWithSongs(db, id, 'u1');
+		const playlist = await fetchWholePlaylist(id, 'u1');
 		expect(playlist.name).toBe('All Imported');
 	});
 
@@ -250,7 +274,7 @@ describe('deletePlaylist', () => {
 
 		await deletePlaylist(db, id, 'u1');
 
-		await expect(getPlaylistWithSongs(db, id, 'u1')).rejects.toThrow(LibraryError);
+		await expect(fetchWholePlaylist(id, 'u1')).rejects.toThrow(LibraryError);
 		const song = await db.query.songs.findFirst({ where: (t, { eq }) => eq(t.videoId, 'a') });
 		expect(song).not.toBeUndefined();
 	});
@@ -308,7 +332,7 @@ describe('ensureDefaultPlaylist', () => {
 
 		const { id } = await ensureDefaultPlaylist(db, 'u1');
 
-		const playlist = await getPlaylistWithSongs(db, id, 'u1');
+		const playlist = await fetchWholePlaylist(id, 'u1');
 		expect(playlist.name).toBe('All Imported');
 		const user = await db.query.users.findFirst({ where: (t, { eq }) => eq(t.id, 'u1') });
 		expect(user?.defaultPlaylistId).toBe(id);
@@ -357,7 +381,7 @@ describe('addSongToPlaylist', () => {
 		await addSongToPlaylist(db, id, 'u1', 'a');
 		await addSongToPlaylist(db, id, 'u1', 'a');
 
-		const playlist = await getPlaylistWithSongs(db, id, 'u1');
+		const playlist = await fetchWholePlaylist(id, 'u1');
 		expect(playlist.songs).toHaveLength(1);
 	});
 
@@ -370,7 +394,7 @@ describe('addSongToPlaylist', () => {
 		await addSongToPlaylist(db, id, 'u1', 'a');
 		await addSongToPlaylist(db, id, 'u1', 'b');
 
-		const playlist = await getPlaylistWithSongs(db, id, 'u1');
+		const playlist = await fetchWholePlaylist(id, 'u1');
 		expect(playlist.songs.map((s) => s.videoId)).toEqual(['a', 'b']);
 	});
 
@@ -383,8 +407,8 @@ describe('addSongToPlaylist', () => {
 		await addSongToPlaylist(db, playlistA, 'u1', 'shared');
 		await addSongToPlaylist(db, playlistB, 'u1', 'shared');
 
-		const a = await getPlaylistWithSongs(db, playlistA, 'u1');
-		const b = await getPlaylistWithSongs(db, playlistB, 'u1');
+		const a = await fetchWholePlaylist(playlistA, 'u1');
+		const b = await fetchWholePlaylist(playlistB, 'u1');
 		expect(a.songs.map((s) => s.videoId)).toEqual(['shared']);
 		expect(b.songs.map((s) => s.videoId)).toEqual(['shared']);
 	});
@@ -401,8 +425,8 @@ describe('removeSongFromPlaylist', () => {
 
 		await removeSongFromPlaylist(db, playlistA, 'u1', 'shared');
 
-		const a = await getPlaylistWithSongs(db, playlistA, 'u1');
-		const b = await getPlaylistWithSongs(db, playlistB, 'u1');
+		const a = await fetchWholePlaylist(playlistA, 'u1');
+		const b = await fetchWholePlaylist(playlistB, 'u1');
 		expect(a.songs).toHaveLength(0);
 		expect(b.songs).toHaveLength(1);
 	});
@@ -415,7 +439,7 @@ describe('removeSongFromPlaylist', () => {
 
 		await expect(removeSongFromPlaylist(db, id, 'u1', 'a')).rejects.toThrow(LibraryError);
 
-		const playlist = await getPlaylistWithSongs(db, id, 'u1');
+		const playlist = await fetchWholePlaylist(id, 'u1');
 		expect(playlist.songs).toHaveLength(1);
 	});
 
@@ -431,8 +455,8 @@ describe('moveSongToPlaylist', () => {
 
 		await moveSongToPlaylist(db, 'u1', from, to, 'a');
 
-		const fromPlaylist = await getPlaylistWithSongs(db, from, 'u1');
-		const toPlaylist = await getPlaylistWithSongs(db, to, 'u1');
+		const fromPlaylist = await fetchWholePlaylist(from, 'u1');
+		const toPlaylist = await fetchWholePlaylist(to, 'u1');
 		expect(fromPlaylist.songs).toHaveLength(0);
 		expect(toPlaylist.songs.map((s) => s.videoId)).toEqual(['a']);
 	});
@@ -446,8 +470,8 @@ describe('moveSongToPlaylist', () => {
 
 		await expect(moveSongToPlaylist(db, 'u1', defaultPlaylistId, to, 'a')).rejects.toThrow(LibraryError);
 
-		const defaultPlaylist = await getPlaylistWithSongs(db, defaultPlaylistId, 'u1');
-		const toPlaylist = await getPlaylistWithSongs(db, to, 'u1');
+		const defaultPlaylist = await fetchWholePlaylist(defaultPlaylistId, 'u1');
+		const toPlaylist = await fetchWholePlaylist(to, 'u1');
 		expect(defaultPlaylist.songs.map((s) => s.videoId)).toEqual(['a']);
 		// addSongToPlaylist ran (into `to`) before the removal from the
 		// default playlist was rejected — the song ends up copied into
@@ -473,7 +497,7 @@ describe('reorderPlaylist', () => {
 
 		await reorderPlaylist(db, id, 'u1', ['c', 'a', 'b']);
 
-		const playlist = await getPlaylistWithSongs(db, id, 'u1');
+		const playlist = await fetchWholePlaylist(id, 'u1');
 		expect(playlist.songs.map((s) => s.videoId)).toEqual(['c', 'a', 'b']);
 	});
 
