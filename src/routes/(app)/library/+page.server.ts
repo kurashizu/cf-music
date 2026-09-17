@@ -1,6 +1,6 @@
 import { redirect } from '@sveltejs/kit';
 import { getDb } from '$lib/server/db';
-import { listPlaylists, ensureDefaultPlaylist, listUserLibrarySongs } from '$lib/server/library/playlists';
+import { listPlaylistsWithCovers, ensureDefaultPlaylist, listUserLibrarySongs } from '$lib/server/library/playlists';
 import { listSmartPlaylists } from '$lib/server/library/smart-playlists';
 import { getObjectStorage } from '$lib/server/storage/factory';
 import type { PageServerLoad } from './$types';
@@ -18,7 +18,7 @@ export const load: PageServerLoad = async ({ platform, locals }) => {
 
 	const db = getDb(platform!.env.DB);
 	const [playlists, smartPlaylists, { id: defaultPlaylistId }, librarySongs] = await Promise.all([
-		listPlaylists(db, locals.session.userId),
+		listPlaylistsWithCovers(db, locals.session.userId),
 		listSmartPlaylists(db, locals.session.userId),
 		ensureDefaultPlaylist(db, locals.session.userId),
 		listUserLibrarySongs(db, locals.session.userId)

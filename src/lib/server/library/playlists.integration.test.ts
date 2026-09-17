@@ -5,6 +5,7 @@ import { users, songs, playlists, playlistSongs, importJobs } from '../db/schema
 import {
 	createPlaylist,
 	listPlaylists,
+	listPlaylistsWithCovers,
 	getPlaylistWithSongs,
 	getPlaylistSongCoverKeysInRange,
 	renamePlaylist,
@@ -106,7 +107,7 @@ describe('createPlaylist / listPlaylists', () => {
 			await addSongToPlaylist(db, id, 'u1', videoId);
 		}
 
-		const list = await listPlaylists(db, 'u1');
+		const list = await listPlaylistsWithCovers(db, 'u1');
 		expect(list[0].coverKeys).toEqual(['covers/a.avif', 'covers/c.avif', 'covers/d.avif', 'covers/e.avif']);
 	});
 
@@ -114,7 +115,7 @@ describe('createPlaylist / listPlaylists', () => {
 		await seedUser('u1');
 		await createPlaylist(db, { userId: 'u1', name: 'Empty' });
 
-		const list = await listPlaylists(db, 'u1');
+		const list = await listPlaylistsWithCovers(db, 'u1');
 		expect(list[0].coverKeys).toEqual([]);
 	});
 });

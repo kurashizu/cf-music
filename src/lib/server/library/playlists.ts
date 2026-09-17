@@ -83,11 +83,35 @@ export interface PlaylistSummary {
 	coverKeys: string[];
 }
 
-export async function listPlaylists(db: Db, userId: string): Promise<PlaylistSummary[]> {
-	const rows = await db.query.playlists.findMany({
+export interface PlaylistRow {
+	id: string;
+	userId: string;
+	name: string;
+	sourceUrl: string | null;
+	createdAt: string;
+}
+
+/**
+ * Just the playlist rows themselves — id/name/etc, no member songs. Most
+ * callers (the sidebar layout on every single page, playlist/smart-group
+ * detail pages, stats, storage settings) only ever need this much; only the
+ * library grid's own mosaic thumbnails need coverKeys, which is why that's
+ * a separate, heavier call (listPlaylistsWithCovers) instead of bolted onto
+ * every caller here. The mosaic join used to run unconditionally inside
+ * this function — on every navigation, since the (app) layout calls this —
+ * which was reading the user's entire playlist_songs↔songs join on every
+ * page view for a result nobody but the library grid displayed.
+ */
+export async function listPlaylists(db: Db, userId: string): Promise<PlaylistRow[]> {
+	return db.query.playlists.findMany({
 		where: eq(playlists.userId, userId),
 		orderBy: (t, { desc }) => desc(t.createdAt)
 	});
+}
+
+/** listPlaylists, plus up to PLAYLIST_MOSAIC_COVER_COUNT member songs' coverKeys per playlist for a 2x2 mosaic thumbnail — see listPlaylists for why this is kept separate. */
+export async function listPlaylistsWithCovers(db: Db, userId: string): Promise<PlaylistSummary[]> {
+	const rows = await listPlaylists(db, userId);
 	if (rows.length === 0) return [];
 
 	// Every song+position in these playlists, not just the first — a 2x2
