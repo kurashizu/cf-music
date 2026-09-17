@@ -24,7 +24,6 @@ export interface AudioSpec {
 }
 
 const VOLUME_STORAGE_KEY = 'krsz-music:volume';
-const OUTPUT_DEVICE_STORAGE_KEY = 'krsz-music:output-device-id';
 const SESSION_STORAGE_KEY = 'krsz-music:player-session';
 // Rewriting localStorage on every timeupdate (multiple times/second) would
 // be wasteful for a value only ever read back after a full page reload —
@@ -37,12 +36,6 @@ function readStoredVolume(): number {
 	if (raw === null) return 1;
 	const parsed = Number(raw);
 	return Number.isFinite(parsed) ? Math.min(1, Math.max(0, parsed)) : 1;
-}
-
-/** null means "Auto" — follow the OS/browser default device, i.e. never call setSinkId at all. */
-function readStoredOutputDeviceId(): string | null {
-	if (typeof localStorage === 'undefined') return null;
-	return localStorage.getItem(OUTPUT_DEVICE_STORAGE_KEY);
 }
 
 interface PersistedSession {
@@ -89,13 +82,6 @@ class PlayerStore {
 	audioSpec = $state<AudioSpec | null>(null);
 	volume = $state(readStoredVolume());
 	muted = $state(false);
-	// null = "Auto" (OS/browser default device — setSinkId is simply never
-	// called). Sink switching is Chromium-only (setSinkId doesn't exist in
-	// Safari/Firefox as of when this was written); outputDeviceSupported
-	// lets the UI hide the picker entirely rather than offering a control
-	// that would silently do nothing everywhere else.
-	outputDeviceId = $state<string | null>(readStoredOutputDeviceId());
-	outputDeviceError = $state<string | null>(null);
 
 	private audio: HTMLAudioElement | null = null;
 	private shuffleIndices: number[] = [];
@@ -175,58 +161,8 @@ class PlayerStore {
 			this.audio.addEventListener('canplay', () => (this.isLoading = false));
 			this.audio.addEventListener('progress', () => this.maybeAutoCache());
 			this.audio.volume = this.muted ? 0 : this.volume;
-			this.applyOutputDevice();
 		}
 		return this.audio;
-	}
-
-	/** True only in browsers that actually implement setSinkId (Chromium-based, as of when this was written) — used to hide the device picker where it would just silently do nothing. */
-	get outputDeviceSupported(): boolean {
-		return typeof HTMLMediaElement !== 'undefined' && 'setSinkId' in HTMLMediaElement.prototype;
-	}
-
-	private applyOutputDevice(): void {
-		if (!this.audio || !this.outputDeviceSupported || this.outputDeviceId === null) return;
-		// setSinkId('') would also mean "default", but the id is never
-		// actually stored as '' here — this only runs at all once
-		// outputDeviceId is non-null (a real, previously-enumerated device).
-		(this.audio as HTMLMediaElement & { setSinkId(id: string): Promise<void> })
-			.setSinkId(this.outputDeviceId)
-			.then(() => {
-				this.outputDeviceError = null;
-			})
-			.catch(() => {
-				// The saved device id can go stale (unplugged since last
-				// visit) — falling back to Auto is safer than leaving audio
-				// silently routed nowhere, and the UI surfaces this via
-				// outputDeviceError so it's not just a silent revert.
-				this.outputDeviceError = 'Selected output device is unavailable; using default.';
-				this.outputDeviceId = null;
-				if (typeof localStorage !== 'undefined') localStorage.removeItem(OUTPUT_DEVICE_STORAGE_KEY);
-			});
-	}
-
-	/** Switches audio output to `deviceId`, or back to the OS/browser default when null ("Auto"). Applies immediately, including to whatever's already playing. */
-	async setOutputDevice(deviceId: string | null): Promise<void> {
-		this.outputDeviceId = deviceId;
-		this.outputDeviceError = null;
-		if (typeof localStorage !== 'undefined') {
-			if (deviceId === null) localStorage.removeItem(OUTPUT_DEVICE_STORAGE_KEY);
-			else localStorage.setItem(OUTPUT_DEVICE_STORAGE_KEY, deviceId);
-		}
-
-		const audio = this.getAudio();
-		if (!this.outputDeviceSupported) return;
-		const sinkAudio = audio as HTMLMediaElement & { setSinkId(id: string): Promise<void> };
-		try {
-			// '' is setSinkId's own spelling of "the default device" — not
-			// the same value outputDeviceId uses for Auto (null), since
-			// null also means "don't call setSinkId at all" for the
-			// lazy-init path in getAudio() above.
-			await sinkAudio.setSinkId(deviceId ?? '');
-		} catch {
-			this.outputDeviceError = 'Could not switch output device.';
-		}
 	}
 
 	setVolume(volume: number): void {

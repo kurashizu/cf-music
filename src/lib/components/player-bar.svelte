@@ -13,7 +13,6 @@
 	import VolumeControl from '$lib/components/volume-control.svelte';
 	import QueuePanel from '$lib/components/queue-panel.svelte';
 	import QueueTriggerButton from '$lib/components/queue-trigger-button.svelte';
-	import OutputDeviceMenu from '$lib/components/output-device-menu.svelte';
 	import { fade } from 'svelte/transition';
 	import { motionParams } from '$lib/client/motion';
 
@@ -169,8 +168,6 @@
 		</div>
 
 		<VolumeControl />
-
-		<OutputDeviceMenu />
 
 		<div class="hidden items-center gap-1 sm:flex">
 			<Tooltip.Root>
