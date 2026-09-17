@@ -1,7 +1,6 @@
 import { redirect } from '@sveltejs/kit';
 import { getDb } from '$lib/server/db';
 import { listPlaylistsWithCovers, ensureDefaultPlaylist, listUserLibrarySongs } from '$lib/server/library/playlists';
-import { listSmartPlaylists } from '$lib/server/library/smart-playlists';
 import { getObjectStorage } from '$lib/server/storage/factory';
 import type { PageServerLoad } from './$types';
 
@@ -17,36 +16,31 @@ export const load: PageServerLoad = async ({ platform, locals }) => {
 	}
 
 	const db = getDb(platform!.env.DB);
-	const [playlists, smartPlaylists, { id: defaultPlaylistId }, librarySongs] = await Promise.all([
-		listPlaylistsWithCovers(db, locals.session.userId),
-		listSmartPlaylists(db, locals.session.userId),
+	const [allPlaylists, { id: defaultPlaylistId }, librarySongs] = await Promise.all([
+		listPlaylistsWithCovers(db, locals.session.userId, 'all'),
 		ensureDefaultPlaylist(db, locals.session.userId),
 		listUserLibrarySongs(db, locals.session.userId)
 	]);
 
-	// Playlists/smart playlists carry up to 4 member songs' raw coverKeys
-	// (see listPlaylists/listSmartPlaylists) for a 2x2 mosaic thumbnail —
-	// same presign-on-the-server pattern as the playlist detail page, since
-	// only the server has the storage credentials to sign them.
+	// Playlists carry up to 4 member songs' raw coverKeys (see
+	// listPlaylistsWithCovers) for a 2x2 mosaic thumbnail — same
+	// presign-on-the-server pattern as the playlist detail page, since only
+	// the server has the storage credentials to sign them.
 	const storage = getObjectStorage(platform!.env);
-	const [playlistsWithCovers, smartPlaylistsWithCovers] = await Promise.all([
-		Promise.all(
-			playlists.map(async (playlist) => ({
-				...playlist,
-				coverUrls: await Promise.all(playlist.coverKeys.map((key) => storage.presignGetUrl(key)))
-			}))
-		),
-		Promise.all(
-			smartPlaylists.map(async (group) => ({
-				...group,
-				coverUrls: await Promise.all(group.coverKeys.map((key) => storage.presignGetUrl(key)))
-			}))
-		)
-	]);
+	const allPlaylistsWithCoverUrls = await Promise.all(
+		allPlaylists.map(async (playlist) => ({
+			...playlist,
+			coverUrls: await Promise.all(playlist.coverKeys.map((key) => storage.presignGetUrl(key)))
+		}))
+	);
 
 	return {
-		playlists: playlistsWithCovers,
-		smartPlaylists: smartPlaylistsWithCovers,
+		playlists: allPlaylistsWithCoverUrls.filter((p) => p.kind === 'user'),
+		// Auto-generated playlists (Artists groupings, play-history
+		// recommendations — see the CI job in embedding/smart-playlists.ts)
+		// are rebuilt from scratch on each scheduled run and read-only —
+		// see assertPlaylistMutable in library/playlists.ts.
+		smartPlaylists: allPlaylistsWithCoverUrls.filter((p) => p.kind === 'auto_generated'),
 		defaultPlaylistId,
 		// videoId/title/artist/durationSeconds is all the global search
 		// needs to both match and immediately start playback — it doesn't

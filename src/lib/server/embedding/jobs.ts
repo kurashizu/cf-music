@@ -11,10 +11,10 @@ import { chunk } from '../../shared/chunk';
 // the limit. 20 rows × 4 params = 80, safely under it.
 const MISSING_JOBS_INSERT_BATCH_SIZE = 20;
 
-// Same D1 ~100-bound-parameter cap as above, but this UPDATE only binds 1
-// param per row (id), so a much larger batch than the insert above still
-// fits comfortably under the limit.
-const CLAIM_UPDATE_BATCH_SIZE = 90;
+// Same D1 ~100-bound-parameter cap as above, but these queries only bind 1
+// param per row (id/videoId), so a much larger batch than the insert above
+// still fits comfortably under the limit.
+const SINGLE_PARAM_BATCH_SIZE = 90;
 
 // Non-retryable failures (bad/corrupt audio, unsupported format, model
 // rejected the input) go straight to 'failed'. Retryable ones (rate limit,
@@ -57,7 +57,7 @@ export async function claimEmbeddingJobs(db: Db, limit: number): Promise<Claimed
 	if (candidates.length === 0) return [];
 
 	const ids = candidates.map((c) => c.id);
-	for (const batch of chunk(ids, CLAIM_UPDATE_BATCH_SIZE)) {
+	for (const batch of chunk(ids, SINGLE_PARAM_BATCH_SIZE)) {
 		await db
 			.update(embeddingJobs)
 			.set({ status: 'processing', updatedAt: sql`(current_timestamp)` })
@@ -117,9 +117,10 @@ export async function enqueueEmbeddingJob(db: Db, videoId: string): Promise<void
 /** Lists videoIds for a batch of claimed jobs, joined with their songs row — the audio key CI needs to fetch each one. */
 export async function getSongsForEmbeddingJobs(db: Db, videoIds: string[]) {
 	if (videoIds.length === 0) return [];
-	return db.query.songs.findMany({
-		where: inArray(songs.videoId, videoIds)
-	});
+	const batches = await Promise.all(
+		chunk(videoIds, SINGLE_PARAM_BATCH_SIZE).map((batch) => db.query.songs.findMany({ where: inArray(songs.videoId, batch) }))
+	);
+	return batches.flat();
 }
 
 /**

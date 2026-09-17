@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, primaryKey, index, type AnySQLiteColumn } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, blob, primaryKey, index, type AnySQLiteColumn } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
 
 export const users = sqliteTable('users', {
@@ -79,6 +79,15 @@ export const songs = sqliteTable('songs', {
 });
 
 // Playlists: independent local entities disconnected from their source after import; also supports app-native playlists (sourceUrl is null)
+//
+// kind distinguishes user-owned playlists (fully editable — rename, delete,
+// reorder, add/remove songs; this includes the default "All Imported"
+// playlist, which is otherwise-editable but protected from being renamed/
+// deleted itself, see assertPlaylistMutable) from ones a scheduled CI job
+// generates (Artists groupings, play-history-based recommendations) —
+// those are wholly read-only, rebuilt from scratch on each run rather than
+// incrementally updated, so allowing any user edit on them would just be
+// silently undone by the next run anyway.
 export const playlists = sqliteTable('playlists', {
 	id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
 	userId: text('user_id')
@@ -86,10 +95,14 @@ export const playlists = sqliteTable('playlists', {
 		.references(() => users.id, { onDelete: 'cascade' }),
 	name: text('name').notNull(),
 	sourceUrl: text('source_url'), // import source; null for app-native playlists
+	kind: text('kind', { enum: ['user', 'auto_generated'] }).notNull().default('user'),
 	createdAt: text('created_at')
 		.notNull()
 		.default(sql`(current_timestamp)`)
-}, (t) => [index('idx_playlists_user_id').on(t.userId)]);
+}, (t) => [
+	index('idx_playlists_user_id').on(t.userId),
+	index('idx_playlists_user_id_kind').on(t.userId, t.kind)
+]);
 
 // Playlist<->song many-to-many; the same song can be referenced by multiple playlists, sharing one S3 object
 export const playlistSongs = sqliteTable('playlist_songs', {
@@ -246,6 +259,23 @@ export const embeddingJobs = sqliteTable('embedding_jobs', {
 }, (t) => [
 	index('idx_embedding_jobs_status').on(t.status),
 ]);
+
+// Stores the raw embedding vector itself (768-dim float32, serialized as a
+// blob — see src/lib/server/embedding/vector-codec.ts). Kept in D1 rather
+// than Vectorize: similarity ranking only ever needs to run within one
+// user's library (a few hundred songs), which Vectorize's ANN search isn't
+// suited for (no way to scope a query to an arbitrary per-user song set),
+// so the only thing Vectorize was buying us was billed-by-dimension reads
+// we didn't need. Global (not per-user), same rationale as embeddingJobs.
+export const songEmbeddings = sqliteTable('song_embeddings', {
+	videoId: text('video_id')
+		.primaryKey()
+		.references(() => songs.videoId, { onDelete: 'cascade' }),
+	vector: blob('vector', { mode: 'buffer' }).notNull(),
+	updatedAt: text('updated_at')
+		.notNull()
+		.default(sql`(current_timestamp)`)
+});
 
 // Audit log: storage/auth/admin actions, admin-only visibility. No
 // retention/cleanup mechanism exists — rows accumulate indefinitely (no

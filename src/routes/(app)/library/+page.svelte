@@ -58,7 +58,7 @@
 	const filteredSmartPlaylists = $derived(
 		normalizedQuery.length === 0
 			? data.smartPlaylists
-			: data.smartPlaylists.filter((g) => g.value.toLowerCase().includes(normalizedQuery))
+			: data.smartPlaylists.filter((p) => p.name.toLowerCase().includes(normalizedQuery))
 	);
 	// Song results only show once there's an actual query or artist filter —
 	// with neither active, every one of potentially hundreds of library
@@ -278,7 +278,7 @@
 							{/snippet}
 						</DropdownMenu.Trigger>
 						<DropdownMenu.Content align="end">
-							{#if playlist.id !== data.defaultPlaylistId}
+							{#if playlist.kind === 'user' && playlist.id !== data.defaultPlaylistId}
 								<DropdownMenu.Item onclick={() => openRename(playlist)}>
 									<PencilIcon class="size-4" />
 									Rename
@@ -332,25 +332,22 @@
 	{/if}
 
 	{#if filteredSmartPlaylists.length > 0}
-		<h2 class="mt-10 mb-4 text-sm font-medium text-muted-foreground">Artists</h2>
+		<h2 class="mt-10 mb-4 text-sm font-medium text-muted-foreground">Smart Playlists</h2>
 		<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
-			{#each filteredSmartPlaylists as group (group.id)}
+			{#each filteredSmartPlaylists as playlist (playlist.id)}
 				<Card.Root class="group relative overflow-hidden py-0 transition-colors active:border-ring/50 hover:border-ring/50">
-					<a href="/library/smart/{encodeURIComponent(group.id)}" class="flex flex-col gap-3 p-4">
+					<a href="/library/{playlist.id}" class="flex flex-col gap-3 p-4">
 						<div
 							class="flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-muted transition-transform duration-200 group-active:scale-[1.02] group-hover:scale-[1.02]"
 						>
-							<PlaylistCover coverUrls={group.coverUrls}>
+							<PlaylistCover coverUrls={playlist.coverUrls}>
 								{#snippet fallback()}
 									<UserIcon class="size-8 text-muted-foreground" />
 								{/snippet}
 							</PlaylistCover>
 						</div>
 						<div class="min-w-0">
-							<p class="truncate text-sm font-medium">{group.value}</p>
-							<p class="truncate text-xs text-muted-foreground">
-								{group.songCount} {group.songCount === 1 ? 'song' : 'songs'}
-							</p>
+							<p class="truncate text-sm font-medium">{playlist.name}</p>
 						</div>
 					</a>
 				</Card.Root>

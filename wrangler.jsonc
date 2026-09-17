@@ -33,12 +33,6 @@
 			"preview_id": "d299a8b14f4a4fc0993a319e091111e9"
 		}
 	],
-	"vectorize": [
-		{
-			"binding": "VECTORIZE",
-			"index_name": "cf-music-song-embeddings"
-		}
-	],
 	"durable_objects": {
 		"bindings": [
 			{

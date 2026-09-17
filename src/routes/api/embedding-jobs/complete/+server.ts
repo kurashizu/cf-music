@@ -4,14 +4,12 @@ import { getDb } from '$lib/server/db';
 import { markEmbeddingJobDone } from '$lib/server/embedding/jobs';
 import { verifyWebhookSignature } from '$lib/server/import/webhook-auth';
 import { pickStrings, pickPositiveNumber } from '$lib/server/http/validate';
-import { getVectorStore } from '$lib/server/embedding/vector-store';
+import { upsertSongEmbedding } from '$lib/server/embedding/vector-store';
 import { recordAuditEvent } from '$lib/server/audit/log';
 
 /**
  * Called by the embedding GitHub Actions workflow once it has computed a
- * song's embedding — writes the vector to Vectorize (the only thing in this
- * app that holds a binding to it) and marks the job done. CI never talks to
- * Vectorize directly.
+ * song's embedding — writes the vector to D1 and marks the job done.
  */
 export const POST: RequestHandler = async (event) => {
 	const rawBody = await event.request.text();
@@ -38,10 +36,8 @@ export const POST: RequestHandler = async (event) => {
 	const totalAudioSeconds = pickPositiveNumber(body, 'totalAudioSeconds');
 	const embedMillis = pickPositiveNumber(body, 'embedMillis');
 
-	const vectorStore = getVectorStore(event.platform!.env);
-	await vectorStore.upsertSongEmbedding(fields.videoId, embedding);
-
 	const db = getDb(event.platform!.env.DB);
+	await upsertSongEmbedding(db, fields.videoId, embedding);
 	await markEmbeddingJobDone(db, fields.jobId);
 
 	await recordAuditEvent(db, {

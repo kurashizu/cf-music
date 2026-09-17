@@ -1,0 +1,29 @@
+name: Smart Playlists
+
+on:
+  schedule:
+    # 4 times a day, per the product decision this generation cadence is
+    # based on — matches embedding.yml's own interval for the same reason
+    # neither job needs finer granularity than that.
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Trigger smart playlist generation
+        run: |
+          body='{}'
+          signature="sha256=$(printf '%s' "$body" | openssl dgst -sha256 -hmac "$EMBEDDING_WEBHOOK_SECRET" | sed 's/^.* //')"
+          curl -sf -X POST "$WORKER_BASE_URL/api/smart-playlists/generate" \
+            -H "Content-Type: application/json" \
+            -H "X-Signature-256: $signature" \
+            -d "$body"
+        env:
+          WORKER_BASE_URL: ${{ secrets.WORKER_BASE_URL }}
+          EMBEDDING_WEBHOOK_SECRET: ${{ secrets.EMBEDDING_WEBHOOK_SECRET }}

@@ -1,7 +1,6 @@
 import { redirect } from '@sveltejs/kit';
 import { getDb } from '$lib/server/db';
 import { listUserLibrarySongs, listPlaylists } from '$lib/server/library/playlists';
-import { listSmartPlaylists } from '$lib/server/library/smart-playlists';
 import { getUserQuotaBytes } from '$lib/server/eviction/usage';
 import type { PageServerLoad } from './$types';
 
@@ -11,10 +10,9 @@ export const load: PageServerLoad = async ({ platform, locals }) => {
 	}
 
 	const db = getDb(platform!.env.DB);
-	const [songs, playlists, smartPlaylists, quotaBytes] = await Promise.all([
+	const [songs, allPlaylists, quotaBytes] = await Promise.all([
 		listUserLibrarySongs(db, locals.session.userId),
-		listPlaylists(db, locals.session.userId),
-		listSmartPlaylists(db, locals.session.userId),
+		listPlaylists(db, locals.session.userId, 'all'),
 		getUserQuotaBytes(db, locals.session.userId)
 	]);
 	// usageBytes is just a sum of what listUserLibrarySongs already fetched —
@@ -41,8 +39,8 @@ export const load: PageServerLoad = async ({ platform, locals }) => {
 			playCount: s.playCount,
 			lastPlayedAt: s.lastPlayedAt
 		})),
-		playlistCount: playlists.length,
-		smartPlaylistCount: smartPlaylists.length,
+		playlistCount: allPlaylists.filter((p) => p.kind === 'user').length,
+		smartPlaylistCount: allPlaylists.filter((p) => p.kind === 'auto_generated').length,
 		quotaBytes,
 		usageBytes
 	};

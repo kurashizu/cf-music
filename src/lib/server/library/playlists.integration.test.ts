@@ -263,6 +263,12 @@ describe('renamePlaylist', () => {
 		expect(playlist.name).toBe('All Imported');
 	});
 
+	it('rejects renaming an auto_generated playlist', async () => {
+		await seedUser('u1');
+		const { id } = await createPlaylist(db, { userId: 'u1', name: 'Radiohead', kind: 'auto_generated' });
+
+		await expect(renamePlaylist(db, id, 'u1', 'Renamed')).rejects.toThrow(LibraryError);
+	});
 });
 
 describe('deletePlaylist', () => {
@@ -323,6 +329,13 @@ describe('deletePlaylist', () => {
 
 		const job = await db.query.importJobs.findFirst({ where: (t, { eq }) => eq(t.id, 'job1') });
 		expect(job?.targetPlaylistId).toBeNull();
+	});
+
+	it('rejects deleting an auto_generated playlist', async () => {
+		await seedUser('u1');
+		const { id } = await createPlaylist(db, { userId: 'u1', name: 'Radiohead', kind: 'auto_generated' });
+
+		await expect(deletePlaylist(db, id, 'u1')).rejects.toThrow(LibraryError);
 	});
 });
 
@@ -412,6 +425,14 @@ describe('addSongToPlaylist', () => {
 		expect(a.songs.map((s) => s.videoId)).toEqual(['shared']);
 		expect(b.songs.map((s) => s.videoId)).toEqual(['shared']);
 	});
+
+	it('rejects adding a song to an auto_generated playlist', async () => {
+		await seedUser('u1');
+		await seedSong('a');
+		const { id } = await createPlaylist(db, { userId: 'u1', name: 'Radiohead', kind: 'auto_generated' });
+
+		await expect(addSongToPlaylist(db, id, 'u1', 'a')).rejects.toThrow(LibraryError);
+	});
 });
 
 describe('removeSongFromPlaylist', () => {
@@ -443,6 +464,14 @@ describe('removeSongFromPlaylist', () => {
 		expect(playlist.songs).toHaveLength(1);
 	});
 
+	it('rejects removing a song from an auto_generated playlist', async () => {
+		await seedUser('u1');
+		await seedSong('a');
+		const { id } = await createPlaylist(db, { userId: 'u1', name: 'Radiohead', kind: 'auto_generated' });
+		await db.insert(playlistSongs).values({ playlistId: id, videoId: 'a', position: 0 });
+
+		await expect(removeSongFromPlaylist(db, id, 'u1', 'a')).rejects.toThrow(LibraryError);
+	});
 });
 
 describe('moveSongToPlaylist', () => {
@@ -522,6 +551,18 @@ describe('reorderPlaylist', () => {
 		await expect(reorderPlaylist(db, id, 'u1', ['a', 'intruder'])).rejects.toThrow(LibraryError);
 	});
 
+	it('rejects reordering an auto_generated playlist', async () => {
+		await seedUser('u1');
+		await seedSong('a');
+		await seedSong('b');
+		const { id } = await createPlaylist(db, { userId: 'u1', name: 'Radiohead', kind: 'auto_generated' });
+		await db.insert(playlistSongs).values([
+			{ playlistId: id, videoId: 'a', position: 0 },
+			{ playlistId: id, videoId: 'b', position: 1 }
+		]);
+
+		await expect(reorderPlaylist(db, id, 'u1', ['b', 'a'])).rejects.toThrow(LibraryError);
+	});
 });
 
 describe('isSongInUserLibrary', () => {

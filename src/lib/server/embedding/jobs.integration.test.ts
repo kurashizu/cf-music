@@ -220,6 +220,17 @@ describe('getSongsForEmbeddingJobs', () => {
 
 		expect(result.map((s) => s.videoId).sort()).toEqual(['a', 'b']);
 	});
+
+	it('handles a batch larger than the D1 bound-parameter chunk size', async () => {
+		const videoIds = Array.from({ length: 200 }, (_, i) => `v${i}`);
+		for (const videoId of videoIds) {
+			await seedSongWithoutEmbeddingJob(videoId);
+		}
+
+		const result = await getSongsForEmbeddingJobs(db, videoIds);
+
+		expect(result.length).toBe(200);
+	});
 });
 
 describe('enqueueMissingEmbeddingJobs', () => {
