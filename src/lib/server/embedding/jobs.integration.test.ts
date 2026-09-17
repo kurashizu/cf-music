@@ -133,6 +133,20 @@ describe('claimEmbeddingJobs', () => {
 
 		expect(claimed).toEqual([]);
 	});
+
+	it('claims a batch larger than the D1 bound-parameter chunk size', async () => {
+		const videoIds = Array.from({ length: 200 }, (_, i) => `v${i}`);
+		for (const videoId of videoIds) {
+			await seedSongWithoutEmbeddingJob(videoId);
+			await enqueueEmbeddingJob(db, videoId);
+		}
+
+		const claimed = await claimEmbeddingJobs(db, 200);
+
+		expect(claimed.length).toBe(200);
+		const rows = await db.query.embeddingJobs.findMany();
+		expect(rows.every((r) => r.status === 'processing')).toBe(true);
+	});
 });
 
 describe('markEmbeddingJobDone', () => {

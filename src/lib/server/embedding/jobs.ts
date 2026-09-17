@@ -11,6 +11,11 @@ import { chunk } from '../../shared/chunk';
 // the limit. 20 rows × 4 params = 80, safely under it.
 const MISSING_JOBS_INSERT_BATCH_SIZE = 20;
 
+// Same D1 ~100-bound-parameter cap as above, but this UPDATE only binds 1
+// param per row (id), so a much larger batch than the insert above still
+// fits comfortably under the limit.
+const CLAIM_UPDATE_BATCH_SIZE = 90;
+
 // Non-retryable failures (bad/corrupt audio, unsupported format, model
 // rejected the input) go straight to 'failed'. Retryable ones (rate limit,
 // embedding service unavailable) are put back to 'pending' instead — see
@@ -52,10 +57,12 @@ export async function claimEmbeddingJobs(db: Db, limit: number): Promise<Claimed
 	if (candidates.length === 0) return [];
 
 	const ids = candidates.map((c) => c.id);
-	await db
-		.update(embeddingJobs)
-		.set({ status: 'processing', updatedAt: sql`(current_timestamp)` })
-		.where(inArray(embeddingJobs.id, ids));
+	for (const batch of chunk(ids, CLAIM_UPDATE_BATCH_SIZE)) {
+		await db
+			.update(embeddingJobs)
+			.set({ status: 'processing', updatedAt: sql`(current_timestamp)` })
+			.where(inArray(embeddingJobs.id, batch));
+	}
 
 	return candidates.map((c) => ({ id: c.id, videoId: c.videoId, attempts: c.attempts }));
 }
