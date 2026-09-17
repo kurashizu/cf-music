@@ -127,14 +127,16 @@ describe('createPlaylist / listPlaylists', () => {
 
 		const list = await listPlaylistsWithCovers(db, 'u1');
 		expect(list[0].coverKeys).toEqual(['covers/a.avif', 'covers/c.avif', 'covers/d.avif', 'covers/e.avif']);
+		expect(list[0].songCount).toBe(6);
 	});
 
-	it('returns an empty coverKeys array for a playlist with no songs (or none with a cover)', async () => {
+	it('returns an empty coverKeys array and a zero songCount for a playlist with no songs', async () => {
 		await seedUser('u1');
 		await createPlaylist(db, { userId: 'u1', name: 'Empty' });
 
 		const list = await listPlaylistsWithCovers(db, 'u1');
 		expect(list[0].coverKeys).toEqual([]);
+		expect(list[0].songCount).toBe(0);
 	});
 });
 

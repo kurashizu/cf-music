@@ -15,6 +15,7 @@
 	import PencilIcon from '@lucide/svelte/icons/pencil';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import UserIcon from '@lucide/svelte/icons/user';
+	import SparklesIcon from '@lucide/svelte/icons/sparkles';
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import MusicIcon from '@lucide/svelte/icons/music';
 	import PlaylistCover from '$lib/components/playlist-cover.svelte';
@@ -55,10 +56,15 @@
 			? data.playlists
 			: data.playlists.filter((p) => p.name.toLowerCase().includes(normalizedQuery))
 	);
-	const filteredSmartPlaylists = $derived(
+	const filteredArtistPlaylists = $derived(
 		normalizedQuery.length === 0
-			? data.smartPlaylists
-			: data.smartPlaylists.filter((p) => p.name.toLowerCase().includes(normalizedQuery))
+			? data.artistPlaylists
+			: data.artistPlaylists.filter((p) => p.name.toLowerCase().includes(normalizedQuery))
+	);
+	const filteredRecommendedPlaylists = $derived(
+		normalizedQuery.length === 0
+			? data.recommendedPlaylists
+			: data.recommendedPlaylists.filter((p) => p.name.toLowerCase().includes(normalizedQuery))
 	);
 	// Song results only show once there's an actual query or artist filter —
 	// with neither active, every one of potentially hundreds of library
@@ -185,7 +191,7 @@
 </svelte:head>
 
 <div class="mx-auto max-w-screen-2xl p-4 md:p-8">
-	{#if data.playlists.length > 0 || data.smartPlaylists.length > 0}
+	{#if data.playlists.length > 0 || data.artistPlaylists.length > 0 || data.recommendedPlaylists.length > 0}
 		<div class="mb-6 flex flex-wrap items-center gap-2">
 			<div class="relative min-w-48 flex-1">
 				<SearchIcon class="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -259,9 +265,10 @@
 						</div>
 						<div class="min-w-0">
 							<p class="truncate text-sm font-medium">{playlist.name}</p>
-							{#if playlist.id === data.defaultPlaylistId}
-								<p class="truncate text-xs text-muted-foreground">Your whole library</p>
-							{/if}
+							<p class="truncate text-xs text-muted-foreground">
+								{playlist.id === data.defaultPlaylistId ? 'Your whole library · ' : ''}{playlist.songCount}
+								{playlist.songCount === 1 ? 'song' : 'songs'}
+							</p>
 						</div>
 					</a>
 					<DropdownMenu.Root>
@@ -298,7 +305,7 @@
 		</div>
 	{/if}
 
-	{#if (searchQuery.trim().length > 0 || artistFilter !== 'all' || minDurationMinutes.trim() !== '' || maxDurationMinutes.trim() !== '') && filteredPlaylists.length === 0 && filteredSmartPlaylists.length === 0 && matchingSongs.length === 0}
+	{#if (searchQuery.trim().length > 0 || artistFilter !== 'all' || minDurationMinutes.trim() !== '' || maxDurationMinutes.trim() !== '') && filteredPlaylists.length === 0 && filteredArtistPlaylists.length === 0 && filteredRecommendedPlaylists.length === 0 && matchingSongs.length === 0}
 		<p class="py-8 text-center text-sm text-muted-foreground">
 			{searchQuery.trim().length > 0 ? `No matches for "${searchQuery}".` : 'No songs match the current filters.'}
 		</p>
@@ -331,10 +338,10 @@
 		</div>
 	{/if}
 
-	{#if filteredSmartPlaylists.length > 0}
-		<h2 class="mt-10 mb-4 text-sm font-medium text-muted-foreground">Smart Playlists</h2>
+	{#if filteredArtistPlaylists.length > 0}
+		<h2 class="mt-10 mb-4 text-sm font-medium text-muted-foreground">Artists</h2>
 		<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
-			{#each filteredSmartPlaylists as playlist (playlist.id)}
+			{#each filteredArtistPlaylists as playlist (playlist.id)}
 				<Card.Root class="group relative overflow-hidden py-0 transition-colors active:border-ring/50 hover:border-ring/50">
 					<a href="/library/{playlist.id}" class="flex flex-col gap-3 p-4">
 						<div
@@ -348,6 +355,36 @@
 						</div>
 						<div class="min-w-0">
 							<p class="truncate text-sm font-medium">{playlist.name}</p>
+							<p class="truncate text-xs text-muted-foreground">
+								{playlist.songCount} {playlist.songCount === 1 ? 'song' : 'songs'}
+							</p>
+						</div>
+					</a>
+				</Card.Root>
+			{/each}
+		</div>
+	{/if}
+
+	{#if filteredRecommendedPlaylists.length > 0}
+		<h2 class="mt-10 mb-4 text-sm font-medium text-muted-foreground">Smart Playlists</h2>
+		<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
+			{#each filteredRecommendedPlaylists as playlist (playlist.id)}
+				<Card.Root class="group relative overflow-hidden py-0 transition-colors active:border-ring/50 hover:border-ring/50">
+					<a href="/library/{playlist.id}" class="flex flex-col gap-3 p-4">
+						<div
+							class="flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-muted transition-transform duration-200 group-active:scale-[1.02] group-hover:scale-[1.02]"
+						>
+							<PlaylistCover coverUrls={playlist.coverUrls}>
+								{#snippet fallback()}
+									<SparklesIcon class="size-8 text-muted-foreground" />
+								{/snippet}
+							</PlaylistCover>
+						</div>
+						<div class="min-w-0">
+							<p class="truncate text-sm font-medium">{playlist.name}</p>
+							<p class="truncate text-xs text-muted-foreground">
+								{playlist.songCount} {playlist.songCount === 1 ? 'song' : 'songs'}
+							</p>
 						</div>
 					</a>
 				</Card.Root>

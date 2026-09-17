@@ -122,6 +122,7 @@ export interface PlaylistSummary {
 	createdAt: string;
 	/** Up to PLAYLIST_MOSAIC_COVER_COUNT songs' coverKeys, in playlist order, for a 2x2 mosaic thumbnail — empty if the playlist has no songs with covers. */
 	coverKeys: string[];
+	songCount: number;
 }
 
 export interface PlaylistRow {
@@ -202,9 +203,22 @@ export async function listPlaylistsWithCovers(
 		else coverKeysByPlaylist.set(row.playlistId, [row.coverKey]);
 	}
 
+	// One grouped count query for every playlist in `rows`, rather than a
+	// separate query per playlist (getPlaylistMeta's approach) — this
+	// function already fans out to N playlists at once for the library
+	// grid, so it needs the same one-query shape the cover mosaic above
+	// uses, not an N+1.
+	const countRows = await db
+		.select({ playlistId: playlistSongs.playlistId, songCount: sql<number>`count(*)` })
+		.from(playlistSongs)
+		.where(inArray(playlistSongs.playlistId, rows.map((p) => p.id)))
+		.groupBy(playlistSongs.playlistId);
+	const songCountByPlaylist = new Map(countRows.map((r) => [r.playlistId, r.songCount]));
+
 	return rows.map((playlist) => ({
 		...playlist,
-		coverKeys: coverKeysByPlaylist.get(playlist.id) ?? []
+		coverKeys: coverKeysByPlaylist.get(playlist.id) ?? [],
+		songCount: songCountByPlaylist.get(playlist.id) ?? 0
 	}));
 }
 
