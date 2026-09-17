@@ -1,4 +1,4 @@
-import { eq, and, isNull, max, inArray, sql } from 'drizzle-orm';
+import { eq, and, isNull, max, inArray, sql, exists } from 'drizzle-orm';
 import type { Db } from '../db';
 import { playlists, playlistSongs, songs, users, importJobs, userSongs, embeddingJobs } from '../db/schema';
 
@@ -190,15 +190,19 @@ export interface LibrarySongSummary {
  * playCount/lastPlayedAt: that table only gains a row on a song's first
  * play event (see plays.ts), so a freshly imported, never-played song has
  * no userSongs row at all yet — an inner join would silently drop it from
- * this whole list rather than just reporting it as never played. The join
- * is still at most one row per song despite starting from playlistSongs
- * (which fans out per playlist membership), because selectDistinct
- * collapses that back down and userSongs itself is one row per
- * (userId, videoId).
+ * this whole list rather than just reporting it as never played.
+ *
+ * Starts from `songs` filtered by an EXISTS against playlist_songs⋈playlists,
+ * not from playlistSongs itself — joining from playlistSongs fans out once
+ * per playlist a song belongs to (a song in both "All Imported" and a
+ * user-made playlist would join twice), and D1 bills for rows read during
+ * that fan-out even though selectDistinct collapses it back down afterward.
+ * EXISTS only ever needs to find one matching playlist_songs row per song,
+ * not enumerate every one, so each song is evaluated exactly once.
  */
 export async function listUserLibrarySongs(db: Db, userId: string): Promise<LibrarySongSummary[]> {
 	const rows = await db
-		.selectDistinct({
+		.select({
 			videoId: songs.videoId,
 			title: songs.title,
 			artist: songs.artist,
@@ -211,14 +215,17 @@ export async function listUserLibrarySongs(db: Db, userId: string): Promise<Libr
 			playCount: userSongs.playCount,
 			lastPlayedAt: userSongs.lastPlayedAt
 		})
-		.from(playlistSongs)
-		.innerJoin(playlists, eq(playlistSongs.playlistId, playlists.id))
-		.innerJoin(songs, eq(playlistSongs.videoId, songs.videoId))
-		.leftJoin(
-			userSongs,
-			and(eq(userSongs.userId, playlists.userId), eq(userSongs.videoId, songs.videoId))
-		)
-		.where(eq(playlists.userId, userId));
+		.from(songs)
+		.leftJoin(userSongs, and(eq(userSongs.userId, userId), eq(userSongs.videoId, songs.videoId)))
+		.where(
+			exists(
+				db
+					.select({ one: sql`1` })
+					.from(playlistSongs)
+					.innerJoin(playlists, eq(playlistSongs.playlistId, playlists.id))
+					.where(and(eq(playlists.userId, userId), eq(playlistSongs.videoId, songs.videoId)))
+			)
+		);
 	return rows.map((row) => ({ ...row, playCount: row.playCount ?? 0 }));
 }
 
