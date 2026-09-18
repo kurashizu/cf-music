@@ -160,16 +160,18 @@ async function generatePlayHistoryPlaylists(db: Db, userId: string, library: Lib
  * embedding yet, in which case the two playlists derived from it are
  * skipped for this run (see generateEmbeddingPlaylists).
  */
-async function computeThisWeeksVibeVector(
-	db: Db,
+function computeThisWeeksVibeVector(
 	library: LibrarySongSummary[],
+	vectors: Map<string, Float32Array>,
 	now: Date
-): Promise<Float32Array | null> {
+): Float32Array | null {
 	const recentlyPlayed = library.filter((s) => s.lastPlayedAt !== null && daysSince(s.lastPlayedAt!, now) <= RECENT_WINDOW_DAYS);
 	if (recentlyPlayed.length === 0) return null;
-
-	const vectors = await getVectorsByVideoIds(db, recentlyPlayed.map((s) => s.videoId));
-	if (vectors.size === 0) return null;
+	// vectors covers the whole library, not just recentlyPlayed — checked
+	// per-song below rather than on vectors.size, since a library that has
+	// *some* embeddings doesn't guarantee any of them are for songs played
+	// in this window.
+	if (!recentlyPlayed.some((s) => vectors.has(s.videoId))) return null;
 
 	const dimensions = vectors.values().next().value!.length;
 	const sum = new Float32Array(dimensions);
@@ -199,11 +201,16 @@ async function computeThisWeeksVibeVector(
  * computeThisWeeksVibeVector can't build one (nothing played recently, or
  * no embeddings exist yet for what was played) — see its own comment.
  */
-async function generateEmbeddingPlaylists(db: Db, userId: string, library: LibrarySongSummary[], now: Date): Promise<void> {
-	const vibeVector = await computeThisWeeksVibeVector(db, library, now);
+async function generateEmbeddingPlaylists(
+	db: Db,
+	userId: string,
+	library: LibrarySongSummary[],
+	vectors: Map<string, Float32Array>,
+	now: Date
+): Promise<void> {
+	const vibeVector = computeThisWeeksVibeVector(library, vectors, now);
 	if (!vibeVector) return;
 
-	const vectors = await getVectorsByVideoIds(db, library.map((s) => s.videoId));
 	const scored = library
 		.map((song) => {
 			const vector = vectors.get(song.videoId);
@@ -333,10 +340,13 @@ async function generateSoundClustersPlaylist(
 	db: Db,
 	userId: string,
 	library: LibrarySongSummary[],
+	allVectors: Map<string, Float32Array>,
 	excludeVideoIds: Set<string>
 ): Promise<void> {
 	const candidates = library.filter((s) => !excludeVideoIds.has(s.videoId));
-	const vectors = await getVectorsByVideoIds(db, candidates.map((s) => s.videoId));
+	const vectors = new Map(
+		candidates.map((s) => [s.videoId, allVectors.get(s.videoId)]).filter((entry): entry is [string, Float32Array] => entry[1] !== undefined)
+	);
 	if (vectors.size < MIN_CLUSTERS) return;
 
 	const k = pickClusterCount(vectors.size);
@@ -372,7 +382,12 @@ export async function generateSmartPlaylistsForUser(db: Db, userId: string): Pro
 
 	const now = new Date();
 	await generatePlayHistoryPlaylists(db, userId, library, now);
-	await generateEmbeddingPlaylists(db, userId, library, now);
+
+	// Fetched once and shared across every embedding-based generator below —
+	// they all draw from largely overlapping subsets of the same library, so
+	// re-querying song_embeddings per generator was pure read amplification.
+	const vectors = await getVectorsByVideoIds(db, library.map((s) => s.videoId));
+	await generateEmbeddingPlaylists(db, userId, library, vectors, now);
 
 	// This Week's Vibe already picked its own top slice above, but the
 	// exclusion set for Sound Clusters is "everything played recently
@@ -382,7 +397,7 @@ export async function generateSmartPlaylistsForUser(db: Db, userId: string): Pro
 	const recentlyPlayedIds = new Set(
 		library.filter((s) => s.lastPlayedAt !== null && daysSince(s.lastPlayedAt!, now) <= RECENT_WINDOW_DAYS).map((s) => s.videoId)
 	);
-	await generateSoundClustersPlaylist(db, userId, library, recentlyPlayedIds);
+	await generateSoundClustersPlaylist(db, userId, library, vectors, recentlyPlayedIds);
 }
 
 export async function generateSmartPlaylistsForAllUsers(db: Db): Promise<{ processedUsers: number }> {
