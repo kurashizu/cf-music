@@ -124,6 +124,45 @@ async function isAlreadyCoverCached(url: string): Promise<boolean> {
 	}
 }
 
+/** Largest edge a cover is shown at (a wide-screen grid tile), doubled for 2x displays. */
+const MAX_COVER_EDGE = 320;
+
+/**
+ * Shrinks a cover to roughly the size it is actually displayed at.
+ *
+ * The file on disk is small either way, but the browser holds the *decoded*
+ * bitmap, and covers arrive at whatever the source happened to be — commonly
+ * 1280x720, or ~3.7MB decoded, to fill a 156px tile. A scrolled grid keeps
+ * every row it has rendered, so a hundred covers passed 300MB of bitmaps and
+ * the tab was eventually discarded and reloaded, dropping the reader back at
+ * the top. Downscaling once on the way in bounds that; the stored original is
+ * never touched.
+ *
+ * Returns the original blob if any step is unsupported or fails — a
+ * correctly sized cover matters less than showing one at all.
+ */
+async function downscaleCover(blob: Blob): Promise<Blob> {
+	if (typeof createImageBitmap !== 'function' || typeof OffscreenCanvas !== 'function') return blob;
+	let bitmap: ImageBitmap | null = null;
+	try {
+		bitmap = await createImageBitmap(blob);
+		const scale = MAX_COVER_EDGE / Math.max(bitmap.width, bitmap.height);
+		if (scale >= 1) return blob;
+
+		const width = Math.round(bitmap.width * scale);
+		const height = Math.round(bitmap.height * scale);
+		const canvas = new OffscreenCanvas(width, height);
+		const context = canvas.getContext('2d');
+		if (!context) return blob;
+		context.drawImage(bitmap, 0, 0, width, height);
+		return await canvas.convertToBlob({ type: 'image/webp', quality: 0.85 });
+	} catch {
+		return blob;
+	} finally {
+		bitmap?.close();
+	}
+}
+
 /**
  * Resolves to a local blob URL for `url`, through the shared per-second
  * throttle. Concurrent or repeated calls for the same underlying object
@@ -157,7 +196,7 @@ export async function throttledFetchBlobUrl(url: string): Promise<string> {
 		}
 		const response = await fetch(url);
 		if (!response.ok) throw new Error(`Failed to fetch ${url}: ${response.status}`);
-		const blob = await response.blob();
+		const blob = await downscaleCover(await response.blob());
 		const objectUrl = URL.createObjectURL(blob);
 		blobUrlCache.set(key, { url: objectUrl, refCount: 1 });
 		return objectUrl;
