@@ -38,21 +38,20 @@ describe('window', () => {
 		expect(list.windowIndices[39]).toBe(39);
 	});
 
-	it('stops growing past a cap, releasing what scrolled away', async () => {
-		const { list } = build(365, 20, { maxWindow: 60 });
-		for (let i = 0; i < 6; i++) await list.extend();
-
-		// Held items stay bounded however far the list is scrolled — this is
-		// what keeps a long list from accumulating rows until the browser
-		// discards the page.
-		expect(list.windowIndices.length).toBeLessThanOrEqual(60);
-		expect(list.loadedCount).toBeLessThanOrEqual(60);
-		// The window has moved forward rather than growing from zero.
-		expect(list.windowStart).toBeGreaterThan(0);
+	it('keeps rows that scrolled past, so the content above never collapses', () => {
+		// Releasing them would take their height with them and drag the scroll
+		// position upward, which reads as the page flickering and jumping.
+		const list = build(365).list;
+		return (async () => {
+			for (let i = 0; i < 6; i++) await list.extend();
+			expect(list.windowStart).toBe(0);
+			expect(list.windowIndices[0]).toBe(0);
+			expect(list.windowIndices.length).toBe(140);
+		})();
 	});
 
 	it('never reports an index it cannot render', async () => {
-		const { list } = build(365, 20, { maxWindow: 40 });
+		const { list } = build(365);
 		for (let i = 0; i < 4; i++) await list.extend();
 		for (const i of list.windowIndices) {
 			expect(list.items[i]).toBeDefined();
@@ -100,9 +99,8 @@ describe('fetching', () => {
 	});
 
 	it('keeps everything once the whole list is held', async () => {
-		// Searching and sorting need every item; releasing under them would
-		// make results flicker as the window moved.
-		const { list } = build(120, 20, { maxWindow: 40 });
+		// Searching and sorting need every item to stay available.
+		const { list } = build(120);
 		await list.loadAll();
 		await list.extend();
 		expect(list.loadedCount).toBe(120);

@@ -146,11 +146,20 @@
 		</div>
 
 		<div class="min-w-0 flex-1">
-			{#key player.currentTrack?.videoId}
-				<p class="truncate text-sm font-medium" transition:fade={motionParams({ duration: 150 })}>
-					{player.currentTrack?.title ?? 'Nothing playing'}
-				</p>
-			{/key}
+			<!-- The title crossfades on track change, so both the outgoing and
+			     incoming copy exist for a moment. Stacking them in a box of a
+			     fixed height keeps that from briefly doubling the bar's height
+			     and shifting everything below it. -->
+			<div class="relative h-5">
+				{#key player.currentTrack?.videoId}
+					<p
+						class="absolute inset-0 truncate text-sm font-medium"
+						transition:fade={motionParams({ duration: 150 })}
+					>
+						{player.currentTrack?.title ?? 'Nothing playing'}
+					</p>
+				{/key}
+			</div>
 			<p class="flex items-center gap-1.5 text-xs text-muted-foreground">
 				{#if player.currentTrack}
 					<span>{formatTime(player.currentTimeSeconds)} / {formatTime(player.durationSeconds)}</span>

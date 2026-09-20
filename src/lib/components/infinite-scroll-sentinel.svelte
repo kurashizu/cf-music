@@ -1,6 +1,7 @@
 <script lang="ts">
 	interface Props {
-		onIntersect: () => void;
+		/** Loads the next page. Awaited, so a promise here is honoured. */
+		onIntersect: () => void | Promise<void>;
 	}
 
 	let { onIntersect }: Props = $props();
@@ -9,6 +10,17 @@
 
 	/** How close to the end of the scroll container counts as "reached the end". */
 	const LOAD_THRESHOLD_PX = 400;
+	/**
+	 * How often to look while the end is still in reach.
+	 *
+	 * A tall window can show a whole page without producing any scrollable
+	 * distance, and then no scroll event ever fires to ask for the next one.
+	 * Polling covers that without making each load drive a chain of follow-up
+	 * checks: that chain has to survive a fetch, a re-render and a layout
+	 * pass, and any early return along the way strands the list part-way down
+	 * with no event able to restart it.
+	 */
+	const POLL_INTERVAL_MS = 300;
 
 	/** Nearest scrollable ancestor, or null when the page itself scrolls. */
 	function findScrollParent(node: HTMLElement): HTMLElement | null {
@@ -19,22 +31,20 @@
 		return null;
 	}
 
-	// A scroll listener rather than an IntersectionObserver. An observer is
-	// cheaper in principle, but its notion of "visible" proved unreliable for
-	// a sentinel inside a scrolling `<main class="overflow-y-auto">`: rooted
-	// at the viewport it reports the sentinel permanently visible and fires
-	// only once, and rooted at the container it did not fire at all in this
-	// layout — either way the list stalled on its first page. Measuring the
-	// distance to the end directly is predictable, and the handler is trivial
-	// (two reads and a compare) and rAF-coalesced, so the per-event cost that
-	// motivated the observer does not really apply.
+	// A poll plus a scroll listener rather than an IntersectionObserver. An
+	// observer is cheaper in principle, but its notion of "visible" proved
+	// unreliable for a sentinel inside a scrolling `<main>`: rooted at the
+	// viewport it reported the sentinel permanently visible and fired only
+	// once, and rooted at the container it did not fire at all. Measuring the
+	// distance to the end is predictable, and the check is two reads and a
+	// compare.
 	$effect(() => {
 		if (!element) return;
 		const scrollParent = findScrollParent(element);
 		const target: HTMLElement | Window = scrollParent ?? window;
 
 		let disposed = false;
-		let queued = false;
+		let loading = false;
 
 		function remainingPx(): number {
 			return scrollParent
@@ -42,36 +52,25 @@
 				: document.documentElement.scrollHeight - window.scrollY - window.innerHeight;
 		}
 
-		function check() {
-			queued = false;
-			if (disposed || remainingPx() > LOAD_THRESHOLD_PX) return;
-			onIntersect();
-			// One batch often isn't enough to fill a tall window, and while the
-			// container still can't scroll no further event will ever ask for
-			// the next one — so keep going until it overflows. This terminates:
-			// callers advance monotonically toward a fixed total and stop
-			// rendering this sentinel once everything is shown, which disposes
-			// the effect.
-			schedule();
+		async function maybeLoad(): Promise<void> {
+			if (disposed || loading || remainingPx() > LOAD_THRESHOLD_PX) return;
+			loading = true;
+			try {
+				await onIntersect();
+			} finally {
+				loading = false;
+			}
 		}
 
-		function schedule() {
-			if (queued || disposed) return;
-			queued = true;
-			// Two frames: one for Svelte to render the batch just requested,
-			// one for layout to settle before re-measuring.
-			requestAnimationFrame(() => requestAnimationFrame(check));
-		}
-
-		target.addEventListener('scroll', schedule, { passive: true });
-		window.addEventListener('resize', schedule, { passive: true });
-
-		schedule();
+		const request = () => void maybeLoad();
+		const timer = setInterval(request, POLL_INTERVAL_MS);
+		target.addEventListener('scroll', request, { passive: true });
+		request();
 
 		return () => {
 			disposed = true;
-			target.removeEventListener('scroll', schedule);
-			window.removeEventListener('resize', schedule);
+			clearInterval(timer);
+			target.removeEventListener('scroll', request);
 		};
 	});
 </script>

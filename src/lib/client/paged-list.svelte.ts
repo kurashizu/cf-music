@@ -5,10 +5,8 @@
  * materialised, and fetching the pages that slice needs. It knows nothing
  * about songs, selection, sorting or rendering — callers layer those on top.
  *
- * The window is bounded at both ends. Earlier implementations only ever grew
- * it, so scrolling a few hundred rows left every one of them mounted, and the
- * accumulated DOM (and the decoded cover in each row) was enough for a mobile
- * browser to discard the page. Rows outside the window are released.
+ * The window grows forward and is never trimmed from behind — see extend()
+ * for why recycling rows makes a scrolling list unstable.
  */
 export interface PagedListOptions<T> {
 	/** Total number of items on the server. */
@@ -19,19 +17,11 @@ export interface PagedListOptions<T> {
 	fetchRange: (offset: number, count: number) => Promise<T[]>;
 	/** How many items to add to the window at a time. */
 	pageSize?: number;
-	/** Largest number of items kept materialised; older ones are released. */
-	maxWindow?: number;
 	/** Largest range a single fetch may request, mirroring the endpoint's own cap. */
 	maxFetch?: number;
 }
 
 const DEFAULT_PAGE_SIZE = 20;
-/**
- * Roughly five screenfuls at typical row heights — enough that scrolling
- * never reveals a gap, small enough that memory stays flat however far the
- * list is scrolled.
- */
-const DEFAULT_MAX_WINDOW = 100;
 const DEFAULT_MAX_FETCH = 100;
 
 export class PagedList<T> {
@@ -44,7 +34,6 @@ export class PagedList<T> {
 
 	private readonly total: number;
 	private readonly pageSize: number;
-	private readonly maxWindow: number;
 	private readonly maxFetch: number;
 	private readonly fetchRange: (offset: number, count: number) => Promise<T[]>;
 	private readonly inFlight = new Set<number>();
@@ -52,7 +41,6 @@ export class PagedList<T> {
 	constructor(options: PagedListOptions<T>) {
 		this.total = options.total;
 		this.pageSize = options.pageSize ?? DEFAULT_PAGE_SIZE;
-		this.maxWindow = options.maxWindow ?? DEFAULT_MAX_WINDOW;
 		this.maxFetch = options.maxFetch ?? DEFAULT_MAX_FETCH;
 		this.fetchRange = options.fetchRange;
 		this.reset(options.initial);
@@ -91,16 +79,24 @@ export class PagedList<T> {
 		return this.loadedCount >= this.total;
 	}
 
-	/** Extends the window forward, releasing items that fall off the back. */
+	/**
+	 * Reveals another page.
+	 *
+	 * The window only ever grows. Dropping rows that scrolled off the top is
+	 * tempting — it is where the memory goes in a naive list — but a released
+	 * row takes its height with it, so the content above the viewport
+	 * collapses and the browser drags the scroll position up to compensate.
+	 * That reads as the page flickering and jumping back toward the top, which
+	 * is far worse than holding some rows. Bounding the memory each row costs
+	 * (see the cover downscaling in image-throttle) is the part that actually
+	 * needed solving; recycling rows would additionally require rendering a
+	 * placeholder of the exact height each one left behind.
+	 */
 	async extend(): Promise<void> {
 		if (!this.hasMore) return;
 		const end = Math.min(this.total, this.windowStart + this.windowCount + this.pageSize);
-		const start = Math.max(0, end - this.maxWindow);
-
-		this.windowStart = start;
-		this.windowCount = end - start;
-		this.release();
-		await this.ensure(start, end);
+		this.windowCount = end - this.windowStart;
+		await this.ensure(this.windowStart, end);
 	}
 
 	/** Loads every remaining item — for operations that need the whole list. */
@@ -147,25 +143,4 @@ export class PagedList<T> {
 		}
 	}
 
-	/**
-	 * Drops items outside the window. Skipped once the whole list is held,
-	 * since callers that asked for everything (searching, sorting, queueing)
-	 * need it to stay.
-	 */
-	private release(): void {
-		if (this.isComplete) return;
-		const keepFrom = this.windowStart;
-		const keepTo = this.windowStart + this.windowCount;
-		const next = [...this.items];
-		let released = false;
-		for (let i = 0; i < next.length; i++) {
-			if (i < keepFrom || i >= keepTo) {
-				if (next[i] !== undefined) {
-					next[i] = undefined;
-					released = true;
-				}
-			}
-		}
-		if (released) this.items = next;
-	}
 }
