@@ -11,6 +11,7 @@
 	import DownloadIcon from '@lucide/svelte/icons/download';
 	import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle';
 	import GripVerticalIcon from '@lucide/svelte/icons/grip-vertical';
+	import GlobeIcon from '@lucide/svelte/icons/globe';
 	import { formatDuration, formatAudioSpec } from '$lib/shared/format';
 	import type { SongRowActions, SongRowData, SongRowFlags } from '$lib/components/song-row-types';
 
@@ -40,18 +41,25 @@
 >
 	<!-- Hover-only by design, unlike the other row controls: HTML5 drag never
 	     fires from touch, so this handle is inert on a phone — the menu's Move
-	     up/down items are the reorder path there. -->
-	<button
-		type="button"
-		class="cursor-grab touch-none text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 active:cursor-grabbing {flags.draggable
-			? ''
-			: 'invisible'}"
-		aria-label="Drag to reorder"
-		tabindex={flags.draggable ? 0 : -1}
-		onclick={(e) => e.stopPropagation()}
-	>
-		<GripVerticalIcon class="size-4" />
-	</button>
+	     up/down items are the reorder path there.
+
+	     Kept (invisible) where reordering is merely unavailable right now — a
+	     filter or sort turning it off must not shift every row sideways — but
+	     dropped entirely from a list that has no stored order to begin with,
+	     where there is no alignment to preserve, only wasted width. -->
+	{#if flags.reorderable}
+		<button
+			type="button"
+			class="cursor-grab touch-none text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 active:cursor-grabbing {flags.draggable
+				? ''
+				: 'invisible'}"
+			aria-label="Drag to reorder"
+			tabindex={flags.draggable ? 0 : -1}
+			onclick={(e) => e.stopPropagation()}
+		>
+			<GripVerticalIcon class="size-4" />
+		</button>
+	{/if}
 
 	<button
 		type="button"
@@ -81,6 +89,9 @@
 		<p class="truncate text-sm {flags.current ? 'text-foreground' : 'text-foreground/90'}">
 			{song.title}
 		</p>
+		{#if song.detail}
+			<p class="truncate text-xs text-muted-foreground">{song.detail}</p>
+		{/if}
 	</div>
 
 	{#if flags.cached}
@@ -112,21 +123,31 @@
 		{formatDuration(song.durationSeconds)}
 	</span>
 
+	<!-- One button that swaps meaning once the song is cached, rather than a
+	     second control appearing beside it: the row is already dense, and
+	     "download" has nothing left to do on a cached song. Only offered as a
+	     toggle where the list can clear the cache (see canClearCache) —
+	     elsewhere it stays download-only. -->
 	<Button
 		variant="ghost"
 		size="icon-sm"
 		class="opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100"
-		disabled={flags.downloading}
+		disabled={flags.downloading || flags.busy}
 		onclick={(e) => {
 			e.stopPropagation();
-			actions.onDownload();
+			if (flags.cached && flags.canClearCache) actions.onClearCache();
+			else actions.onDownload();
 		}}
 		aria-label={flags.downloading
 			? 'Downloading for offline playback'
-			: 'Download for offline playback'}
+			: flags.cached && flags.canClearCache
+				? 'Clear from offline cache'
+				: 'Download for offline playback'}
 	>
 		{#if flags.downloading}
 			<LoaderCircleIcon class="size-4 animate-spin" />
+		{:else if flags.cached && flags.canClearCache}
+			<GlobeIcon class="size-4" />
 		{:else}
 			<DownloadIcon class="size-4" />
 		{/if}
@@ -142,6 +163,8 @@
 			isFirst={flags.isFirst}
 			isLast={flags.isLast}
 			hasOtherPlaylists={flags.hasOtherPlaylists}
+			canClearCache={flags.canClearCache}
+			onClearCache={actions.onClearCache}
 			class="opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:data-[state=open]:opacity-100"
 			onOpenChange={actions.onMenuOpenChange}
 			onAddToQueue={actions.onAddToQueue}

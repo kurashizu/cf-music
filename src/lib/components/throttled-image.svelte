@@ -16,7 +16,7 @@
 		let acquired = false;
 		let cancelled = false;
 		// Reset immediately on src change (rather than leaving the old
-		// image up) so switching covers shows the skeleton, not a stale
+		// image up) so switching covers shows the placeholder, not a stale
 		// mismatched thumbnail, while the new blob URL resolves.
 		blobUrl = undefined;
 

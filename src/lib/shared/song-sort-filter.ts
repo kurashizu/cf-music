@@ -1,4 +1,12 @@
-export type SongSortField = 'custom' | 'title' | 'artist' | 'duration' | 'addedAt';
+export type SongSortField =
+	| 'custom'
+	| 'title'
+	| 'artist'
+	| 'duration'
+	| 'addedAt'
+	| 'fileSize'
+	| 'playCount'
+	| 'lastPlayedAt';
 export type SortDirection = 'asc' | 'desc';
 
 export interface SongSortFilterInput {
@@ -7,6 +15,10 @@ export interface SongSortFilterInput {
 	artist?: string | null;
 	durationSeconds: number | null;
 	addedAt?: string | null;
+	/** Storage-page fields; absent on lists that don't sort by them. */
+	fileSizeBytes?: number;
+	playCount?: number;
+	lastPlayedAt?: string | null;
 }
 
 export interface DurationRangeFilter {
@@ -42,6 +54,22 @@ export function compareSongs<T extends SongSortFilterInput>(
 			break;
 		case 'addedAt':
 			cmp = (a.addedAt ?? '').localeCompare(b.addedAt ?? '');
+			break;
+		case 'fileSize':
+			cmp = (a.fileSizeBytes ?? 0) - (b.fileSizeBytes ?? 0);
+			break;
+		case 'playCount':
+			cmp = (a.playCount ?? 0) - (b.playCount ?? 0);
+			break;
+		case 'lastPlayedAt':
+			// Never-played sorts last in both directions rather than as an
+			// earliest date: "not comparable" is the honest reading of null
+			// here, and burying unplayed songs under the oldest played ones
+			// would be misleading either way round.
+			if (!a.lastPlayedAt && !b.lastPlayedAt) return 0;
+			if (!a.lastPlayedAt) return 1;
+			if (!b.lastPlayedAt) return -1;
+			cmp = a.lastPlayedAt.localeCompare(b.lastPlayedAt);
 			break;
 	}
 	return direction === 'asc' ? cmp : -cmp;

@@ -5,6 +5,8 @@
  * using.
  */
 
+import { analyzeTrackIfCached } from '$lib/client/silence-trim.svelte';
+
 interface StreamUrlResponse {
 	audioUrl: string;
 }
@@ -110,17 +112,62 @@ export async function precacheAudio(videoId: string, audioUrl: string): Promise<
 	return postToServiceWorkerAwaitingReply({ type: 'PRECACHE_AUDIO', videoId, audioUrl });
 }
 
-/** Downloads one song into the offline cache on demand — used by explicit "download" actions in the UI. */
+/**
+ * Downloads one song into the offline cache on demand — used by explicit
+ * "download" actions in the UI.
+ *
+ * Measures the track's silence trim points on the way out. A download is
+ * exactly the moment a cache entry a measurement can read becomes available,
+ * and doing it here rather than at each call site means every download path
+ * behaves the same: previously only the player's own auto-cache measured
+ * anything, so a song downloaded from the storage or playlist page still
+ * played its leading silence the first time. Failures are swallowed — an
+ * unmeasured track simply plays untrimmed, which must not make the download
+ * itself report failure.
+ */
 export async function downloadSongForOffline(videoId: string): Promise<boolean> {
 	if (!('serviceWorker' in navigator)) return false;
 	try {
 		const response = await fetch(`/api/stream-url/${videoId}`);
 		if (!response.ok) return false;
 		const { audioUrl }: StreamUrlResponse = await response.json();
-		return await precacheAudio(videoId, audioUrl);
+		const cached = await precacheAudio(videoId, audioUrl);
+		if (cached) await analyzeTrackIfCached(videoId).catch(() => null);
+		return cached;
 	} catch {
 		return false;
 	}
+}
+
+/**
+ * How many downloads run at once in a batch.
+ *
+ * Each one now genuinely waits for the service worker to finish writing, so
+ * a fully serial batch is as slow as the sum of its parts, while an unbounded
+ * one opens a connection per song and starves the audio actually playing.
+ */
+const BATCH_DOWNLOAD_CONCURRENCY = 3;
+
+/**
+ * Downloads several songs, a few at a time, reporting each as it settles so a
+ * caller can show progress. Shared by every batch "download for offline"
+ * action rather than reimplemented per page.
+ */
+export async function downloadSongsForOffline(
+	videoIds: string[],
+	onEachSettled: (videoId: string, ok: boolean) => void
+): Promise<void> {
+	let nextIndex = 0;
+	async function worker(): Promise<void> {
+		while (nextIndex < videoIds.length) {
+			const videoId = videoIds[nextIndex++];
+			const ok = await downloadSongForOffline(videoId);
+			onEachSettled(videoId, ok);
+		}
+	}
+	await Promise.all(
+		Array.from({ length: Math.min(BATCH_DOWNLOAD_CONCURRENCY, videoIds.length) }, worker)
+	);
 }
 
 export interface StorageEstimate {

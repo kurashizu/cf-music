@@ -21,7 +21,8 @@
 		artistOptions = null,
 		minDurationMinutes = $bindable(''),
 		maxDurationMinutes = $bindable(''),
-		showDurationFilter = false
+		showDurationFilter = false,
+		extraActiveFilters = 0
 	}: {
 		sortField: SongSortField;
 		sortDirection: SortDirection;
@@ -31,6 +32,12 @@
 		minDurationMinutes?: string;
 		maxDurationMinutes?: string;
 		showDurationFilter?: boolean;
+		/**
+		 * Filters the owning page keeps outside this bar but which still belong
+		 * in the collapsed toggle's count — otherwise an active filter is
+		 * hidden with no trace on a phone.
+		 */
+		extraActiveFilters?: number;
 	} = $props();
 
 	const sortLabel = $derived(sortOptions.find((o) => o.value === sortField)?.label ?? 'Sort');
@@ -47,7 +54,7 @@
 			artistFilter !== null && artistFilter !== 'all',
 			minDurationMinutes.trim() !== '',
 			maxDurationMinutes.trim() !== ''
-		].filter(Boolean).length
+		].filter(Boolean).length + extraActiveFilters
 	);
 </script>
 

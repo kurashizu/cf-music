@@ -6,6 +6,8 @@
 	import { motionParams } from '$lib/client/motion';
 	import XIcon from '@lucide/svelte/icons/x';
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
+	import PlayIcon from '@lucide/svelte/icons/play';
+	import PauseIcon from '@lucide/svelte/icons/pause';
 	import InfiniteScrollSentinel from '$lib/components/infinite-scroll-sentinel.svelte';
 
 	// Purely visual — collapses the now-playing row's audio-spec detail,
@@ -105,11 +107,18 @@
 					onclick={() => (nowPlayingExpanded = !nowPlayingExpanded)}
 					aria-expanded={nowPlayingExpanded}
 				>
-					<span
-						class="size-1.5 shrink-0 rounded-full {player.isPlaying
-							? 'animate-pulse bg-foreground'
-							: 'bg-muted-foreground'}"
-					></span>
+					<!-- A play/pause glyph rather than a pulsing dot: it is the
+					     same playing/paused vocabulary the player bar and every
+					     song row already use, and it states which of the two it
+					     is instead of relying on motion. A continuously running
+					     animation also costs frames for as long as the panel is
+					     open, which is the reason cover placeholders are a
+					     static fill too (see throttled-image). -->
+					{#if player.isPlaying}
+						<PlayIcon class="size-3 shrink-0 fill-current text-foreground" />
+					{:else}
+						<PauseIcon class="size-3 shrink-0 fill-current text-muted-foreground" />
+					{/if}
 					<p class="min-w-0 flex-1 truncate text-sm font-medium">{player.currentTrack.title}</p>
 					<span class="shrink-0 text-xs text-muted-foreground">
 						{formatTime(player.currentTimeSeconds)}

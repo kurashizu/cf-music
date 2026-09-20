@@ -6,6 +6,7 @@
 	import MusicIcon from '@lucide/svelte/icons/music';
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import SparklesIcon from '@lucide/svelte/icons/sparkles';
+	import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle';
 	import { formatDuration } from '$lib/shared/format';
 	import type { SongRowActions, SongRowData, SongRowFlags } from '$lib/components/song-row-types';
 
@@ -36,7 +37,17 @@
 			</div>
 		{/if}
 
-		{#if flags.cached}
+		<!-- One badge in this corner at a time: a download in progress is the
+		     more urgent of the two to report, and a song can't be mid-download
+		     and already settled as cached. -->
+		{#if flags.downloading}
+			<span
+				class="absolute top-1 left-1 flex items-center gap-0.5 rounded-full bg-black/75 px-1.5 py-0.5 text-[10px] text-white"
+			>
+				<LoaderCircleIcon class="size-2.5 animate-spin" />
+				Downloading
+			</span>
+		{:else if flags.cached}
 			<span
 				class="absolute top-1 left-1 flex items-center gap-0.5 rounded-full bg-black/75 px-1.5 py-0.5 text-[10px] text-white"
 			>
@@ -104,7 +115,7 @@
 			{song.title}
 		</p>
 		<p class="truncate text-xs text-muted-foreground">
-			{formatDuration(song.durationSeconds)}
+			{song.detail ?? formatDuration(song.durationSeconds)}
 		</p>
 	</div>
 </div>

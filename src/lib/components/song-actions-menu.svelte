@@ -7,6 +7,7 @@
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import ArrowUpIcon from '@lucide/svelte/icons/arrow-up';
 	import ArrowDownIcon from '@lucide/svelte/icons/arrow-down';
+	import GlobeIcon from '@lucide/svelte/icons/globe';
 
 	interface Props {
 		/** Whether this row's menu is the open one. */
@@ -17,6 +18,8 @@
 		isFirst: boolean;
 		isLast: boolean;
 		hasOtherPlaylists: boolean;
+		/** Offers "Clear from cache" — only meaningful where the row is cached. */
+		canClearCache?: boolean;
 		variant?: 'ghost' | 'secondary';
 		class?: string;
 		onOpenChange: (open: boolean) => void;
@@ -27,6 +30,7 @@
 		onDelete: () => void;
 		onMoveUp: () => void;
 		onMoveDown: () => void;
+		onClearCache?: () => void;
 	}
 
 	let {
@@ -37,6 +41,7 @@
 		isFirst,
 		isLast,
 		hasOtherPlaylists,
+		canClearCache = false,
 		variant = 'ghost',
 		class: className = '',
 		onOpenChange,
@@ -46,7 +51,8 @@
 		onRemove,
 		onDelete,
 		onMoveUp,
-		onMoveDown
+		onMoveDown,
+		onClearCache
 	}: Props = $props();
 </script>
 
@@ -89,6 +95,12 @@
 						Move to playlist…
 					</DropdownMenu.Item>
 				{/if}
+			{/if}
+			{#if canClearCache && onClearCache}
+				<DropdownMenu.Item onclick={onClearCache}>
+					<GlobeIcon class="size-4" />
+					Clear from cache
+				</DropdownMenu.Item>
 			{/if}
 			{#if canRemove}
 				<DropdownMenu.Item onclick={onRemove}>

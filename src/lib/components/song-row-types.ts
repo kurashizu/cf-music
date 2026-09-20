@@ -7,6 +7,13 @@ export interface SongRowData {
 	codec: string | null;
 	bitrateKbps: number | null;
 	embeddingStatus: string | null;
+	/**
+	 * Extra line under the title, where a list has something to say about the
+	 * song that the shared fields don't cover — the storage page shows each
+	 * song's file size here. Omitted everywhere else, and the row falls back
+	 * to its usual duration line.
+	 */
+	detail?: string;
 }
 
 /**
@@ -24,16 +31,28 @@ export interface SongRowFlags {
 	playing: boolean;
 	cached: boolean;
 	downloading: boolean;
+	/**
+	 * Some operation is running on this song — a delete or a cache clear as
+	 * well as a download. Distinct from `downloading`, which additionally
+	 * means "show a download spinner": a row being deleted should be inert
+	 * without pretending to download.
+	 */
+	busy: boolean;
 	menuOpen: boolean;
 	draggable: boolean;
 	dragging: boolean;
 	/** CSS order during a drag, or null when no drag is in progress. */
 	dragOrder: number | null;
+	/** This list supports reordering at all — false on views with no stored order. */
+	reorderable: boolean;
+	/** Reordering is available right now (not filtered, fully loaded, ...). */
 	canReorder: boolean;
 	canRemove: boolean;
 	hasOtherPlaylists: boolean;
 	isFirst: boolean;
 	isLast: boolean;
+	/** Offers "Clear from cache" in the menu; pairs with actions.onClearCache. */
+	canClearCache: boolean;
 }
 
 /** Everything a row can ask the list to do. */
@@ -52,4 +71,5 @@ export interface SongRowActions {
 	onDragStart: () => void;
 	onDragOver: (event: DragEvent) => void;
 	onDragEnd: () => void;
+	onClearCache: () => void;
 }
