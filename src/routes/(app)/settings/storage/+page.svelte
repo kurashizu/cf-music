@@ -624,14 +624,14 @@
 							{/if}
 							{#if downloadingVideoId === entry.videoId}
 								<span
-									class="absolute top-1 left-1 flex items-center gap-0.5 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] text-white backdrop-blur-sm"
+									class="absolute top-1 left-1 flex items-center gap-0.5 rounded-full bg-black/75 px-1.5 py-0.5 text-[10px] text-white"
 								>
 									<LoaderCircleIcon class="size-2.5 animate-spin" />
 									Downloading
 								</span>
 							{:else if cachedVideoIds.has(entry.videoId)}
 								<span
-									class="absolute top-1 left-1 flex items-center gap-0.5 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] text-white backdrop-blur-sm"
+									class="absolute top-1 left-1 flex items-center gap-0.5 rounded-full bg-black/75 px-1.5 py-0.5 text-[10px] text-white"
 								>
 									<CheckIcon class="size-2.5" />
 									Cached
@@ -649,7 +649,7 @@
 									: 'Play'}
 							>
 								<span
-									class="relative flex size-9 items-center justify-center rounded-full bg-black/50 opacity-100 backdrop-blur-sm transition-opacity sm:bg-black/60 sm:opacity-0 sm:group-hover:opacity-100"
+									class="relative flex size-9 items-center justify-center rounded-full bg-black/65 opacity-100 transition-opacity sm:bg-black/75 sm:opacity-0 sm:group-hover:opacity-100"
 								>
 									{#key player.currentTrack?.videoId === entry.videoId && player.isPlaying}
 										<span
@@ -673,7 +673,7 @@
 												{...props}
 												variant="secondary"
 												size="icon-sm"
-												class="opacity-100 backdrop-blur-sm transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:data-[state=open]:opacity-100"
+												class="opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:data-[state=open]:opacity-100"
 											>
 												<MoreHorizontalIcon class="size-4" />
 											</Button>
