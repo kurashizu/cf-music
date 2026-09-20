@@ -8,44 +8,42 @@
 		readLibrarySnapshot
 	} from '$lib/client/offline-cache';
 	import type { CachedPlaylist, CachedTrackMetadata } from '$lib/shared/audio-cache-key';
+	import AppShell from '$lib/components/app-shell.svelte';
 	import SongRow from '$lib/components/song-row.svelte';
 	import SongCard from '$lib/components/song-card.svelte';
+	import PlaylistCover from '$lib/components/playlist-cover.svelte';
 	import ViewModeToggle from '$lib/components/view-mode-toggle.svelte';
-	import PlayerBar from '$lib/components/player-bar.svelte';
-	import Logo from '$lib/components/logo.svelte';
+	import * as Card from '$lib/components/ui/card/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import CloudOffIcon from '@lucide/svelte/icons/cloud-off';
-	import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
 	import ListMusicIcon from '@lucide/svelte/icons/list-music';
-	import { isTouchDevice } from '$lib/client/motion';
+	import PlayIcon from '@lucide/svelte/icons/play';
+	import ShuffleIcon from '@lucide/svelte/icons/shuffle';
+	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
 	import type { SongRowActions, SongRowData, SongRowFlags } from '$lib/components/song-row-types';
 
-	// The same components the online library uses, so this is the app rather
-	// than a fallback page — the only difference is where the songs come from,
-	// which is the cache instead of the server.
+	// Mirrors the online library: the same shell, the same playlist grid, the
+	// same song rows. Only the source differs — the cache rather than the
+	// server — so this is the app with no connection, not a separate screen.
 	let tracks = $state<CachedTrackMetadata[]>([]);
 	let playlists = $state<CachedPlaylist[]>([]);
-	// Cover blob URLs by videoId. Resolved once and revoked on teardown, since
-	// each createObjectURL holds its blob alive until it is released.
+	// Cover blob URLs by videoId, minted once and revoked on teardown since
+	// each holds its blob alive until released.
 	let coverUrls = $state<Record<string, string>>({});
 	let loaded = $state(false);
 	let searchQuery = $state('');
-	let backOnline = $state(false);
-	/** null means "everything downloaded"; otherwise a playlist id. */
-	let selectedPlaylistId = $state<string | null>(null);
-
-	const tooltipsDisabled = isTouchDevice();
+	/** null is the library index; otherwise the playlist being viewed. */
+	let openPlaylistId = $state<string | null>(null);
 
 	const byVideoId = $derived(new Map(tracks.map((track) => [track.videoId, track])));
 
 	/**
-	 * Only playlists with something actually downloaded, in their own order.
+	 * Playlists with something actually downloaded, keeping their own order.
 	 *
-	 * A playlist whose songs are all still in the cloud would be an empty
-	 * shelf offline, so it isn't offered at all.
+	 * One that is entirely still in the cloud would be an empty shelf here, so
+	 * it isn't offered at all.
 	 */
 	const availablePlaylists = $derived.by(() =>
 		playlists
@@ -56,19 +54,29 @@
 			.filter((playlist) => playlist.videoIds.length > 0)
 	);
 
-	const selectedPlaylist = $derived(
-		availablePlaylists.find((playlist) => playlist.id === selectedPlaylistId) ?? null
+	const userPlaylists = $derived(availablePlaylists.filter((p) => p.kind === 'user'));
+	const smartPlaylists = $derived(availablePlaylists.filter((p) => p.kind !== 'user'));
+
+	const openPlaylist = $derived(
+		availablePlaylists.find((playlist) => playlist.id === openPlaylistId) ?? null
 	);
 
+	/** Up to four covers, for a playlist card's mosaic — same as online. */
+	function mosaicFor(playlist: { videoIds: string[] }): string[] {
+		return playlist.videoIds
+			.map((videoId) => coverUrls[videoId])
+			.filter((url): url is string => url !== undefined)
+			.slice(0, 4);
+	}
+
+	const allDownloaded = $derived([...tracks].sort((a, b) => a.title.localeCompare(b.title)));
+
 	const visibleTracks = $derived.by(() => {
-		// A playlist keeps its own stored order; the all-downloaded view has no
-		// order of its own, so it sorts by title.
-		const base = selectedPlaylist
-			? selectedPlaylist.videoIds
+		const base = openPlaylist
+			? openPlaylist.videoIds
 					.map((videoId) => byVideoId.get(videoId))
 					.filter((track): track is CachedTrackMetadata => track !== undefined)
-			: [...tracks].sort((a, b) => a.title.localeCompare(b.title));
-
+			: allDownloaded;
 		const query = searchQuery.trim().toLowerCase();
 		if (query.length === 0) return base;
 		return base.filter((track) => track.title.toLowerCase().includes(query));
@@ -82,6 +90,18 @@
 		}))
 	);
 
+	/** Playlists matching the search, so the index filters like the online one. */
+	const matchingUserPlaylists = $derived.by(() => {
+		const query = searchQuery.trim().toLowerCase();
+		if (query.length === 0) return userPlaylists;
+		return userPlaylists.filter((p) => p.name.toLowerCase().includes(query));
+	});
+	const matchingSmartPlaylists = $derived.by(() => {
+		const query = searchQuery.trim().toLowerCase();
+		if (query.length === 0) return smartPlaylists;
+		return smartPlaylists.filter((p) => p.name.toLowerCase().includes(query));
+	});
+
 	onMount(() => {
 		let disposed = false;
 		const minted: string[] = [];
@@ -92,8 +112,8 @@
 			playlists = snapshot?.playlists ?? [];
 			loaded = true;
 
-			// Covers resolve after the list is up, so the page appears at once
-			// and fills in rather than waiting on every blob.
+			// Covers fill in after the page is up, so it appears at once rather
+			// than waiting on every blob.
 			for (const track of found) {
 				const url = await cachedCoverUrl(track.videoId);
 				if (!url) continue;
@@ -106,13 +126,8 @@
 			}
 		});
 
-		const onOnline = () => (backOnline = true);
-		window.addEventListener('online', onOnline);
-		if (navigator.onLine) backOnline = true;
-
 		return () => {
 			disposed = true;
-			window.removeEventListener('online', onOnline);
 			for (const url of minted) URL.revokeObjectURL(url);
 		};
 	});
@@ -123,7 +138,7 @@
 			title: track.title,
 			durationSeconds: track.durationSeconds,
 			// The cover comes from the cache, keyed by videoId — a presigned URL
-			// can't be minted offline. No audio spec, though: that arrives with
+			// can't be signed offline. No audio spec, though: that arrives with
 			// the stream URL, which needs a server.
 			coverUrl: coverUrls[track.videoId] ?? null,
 			codec: null,
@@ -137,8 +152,7 @@
 			selected: false,
 			current: player.currentTrack?.videoId === track.videoId,
 			playing: player.isPlaying,
-			// Everything listed is cached by definition — that is the only
-			// reason it appears at all.
+			// Everything listed is cached by definition — that is why it appears.
 			cached: true,
 			downloading: false,
 			busy: false,
@@ -159,8 +173,8 @@
 	function rowActions(index: number): SongRowActions {
 		const noop = () => {};
 		return {
-			// Editing a playlist, copying or deleting all need the server, so
-			// rows are play-only here rather than offering actions that fail.
+			// Editing playlists, copying and deleting all need the server, so
+			// rows are play-only rather than offering actions that would fail.
 			onSelect: noop,
 			onPlay: () => void playFrom(index),
 			onDownload: noop,
@@ -198,140 +212,203 @@
 		if (queueTracks.length === 0) return;
 		await player.playQueue(queueTracks, 0, shuffle);
 	}
+
+	function openPlaylistView(id: string) {
+		openPlaylistId = id;
+		searchQuery = '';
+	}
+
+	function backToIndex() {
+		openPlaylistId = null;
+		searchQuery = '';
+	}
 </script>
 
 <svelte:head>
 	<title>Offline · KRSZ Music</title>
 </svelte:head>
 
-<Tooltip.Provider disabled={tooltipsDisabled}>
-	<div class="flex h-svh flex-col bg-background">
-		<header class="flex shrink-0 items-center gap-2 border-b border-border p-3">
-			<Logo size={22} />
-			<span class="text-sm font-medium">KRSZ Music</span>
-			<span
-				class="ml-auto flex items-center gap-1.5 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground"
+{#snippet offlineBadge()}
+	<span
+		class="flex items-center gap-1.5 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground"
+	>
+		<CloudOffIcon class="size-3" />
+		Offline
+	</span>
+{/snippet}
+
+{#snippet playlistGrid(items: typeof availablePlaylists)}
+	<div
+		class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7"
+	>
+		{#each items as playlist (playlist.id)}
+			<Card.Root
+				class="group relative overflow-hidden py-0 transition-colors active:border-ring/50 hover:border-ring/50"
 			>
-				<CloudOffIcon class="size-3" />
-				Offline
-			</span>
-		</header>
-
-		<main class="min-h-0 flex-1 overflow-y-auto">
-			<div class="mx-auto max-w-screen-2xl p-4 md:p-8">
-				<div class="mb-6 flex flex-wrap items-center justify-between gap-3">
+				<button
+					type="button"
+					class="flex w-full flex-col gap-3 p-3 text-left sm:p-4"
+					onclick={() => openPlaylistView(playlist.id)}
+				>
+					<div
+						class="flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-muted transition-transform duration-200 group-active:scale-[1.02] group-hover:scale-[1.02]"
+					>
+						<PlaylistCover coverUrls={mosaicFor(playlist)}>
+							{#snippet fallback()}
+								<ListMusicIcon class="size-8 text-muted-foreground" />
+							{/snippet}
+						</PlaylistCover>
+					</div>
 					<div class="min-w-0">
-						<h1 class="truncate text-lg font-medium">
-							{selectedPlaylist ? selectedPlaylist.name : 'Downloaded'}
-						</h1>
-						<p class="text-xs text-muted-foreground">
-							{#if !loaded}
-								Looking for downloaded songs…
-							{:else if tracks.length === 0}
-								Nothing on this device yet
-							{:else}
-								{visibleTracks.length}
-								{visibleTracks.length === 1 ? 'song' : 'songs'} · available without a connection
-							{/if}
+						<p class="truncate text-sm font-medium">{playlist.name}</p>
+						<p class="truncate text-xs text-muted-foreground">
+							{playlist.videoIds.length}
+							{playlist.videoIds.length === 1 ? 'song' : 'songs'} downloaded
 						</p>
 					</div>
-					<div class="flex items-center gap-2">
-						{#if loaded && visibleTracks.length > 0}
-							<Button size="sm" class="gap-1.5" onclick={() => playAll()}>Play</Button>
-							<Button size="sm" variant="outline" class="gap-1.5" onclick={() => playAll(true)}>
-								Shuffle
-							</Button>
-						{/if}
-						{#if backOnline}
-							<Button href="/library" size="sm" variant="outline" class="gap-1.5">
-								<RefreshCwIcon class="size-4" />
-								Back online
-							</Button>
-						{/if}
-					</div>
-				</div>
+				</button>
+			</Card.Root>
+		{/each}
+	</div>
+{/snippet}
 
-				{#if loaded && availablePlaylists.length > 0}
-					<!-- Horizontal rather than a sidebar: this page is one column,
-					     and the list is short since only playlists with something
-					     downloaded appear. -->
-					<div class="mb-4 flex gap-2 overflow-x-auto pb-1">
-						<Button
-							size="sm"
-							variant={selectedPlaylistId === null ? 'default' : 'outline'}
-							class="shrink-0 gap-1.5"
-							onclick={() => (selectedPlaylistId = null)}
-						>
-							All downloaded
-						</Button>
-						{#each availablePlaylists as playlist (playlist.id)}
-							<Button
-								size="sm"
-								variant={selectedPlaylistId === playlist.id ? 'default' : 'outline'}
-								class="shrink-0 gap-1.5"
-								onclick={() => (selectedPlaylistId = playlist.id)}
-							>
-								<ListMusicIcon class="size-3.5" />
-								{playlist.name}
-								<span class="text-[11px] opacity-70">{playlist.videoIds.length}</span>
-							</Button>
-						{/each}
-					</div>
-				{/if}
+{#snippet songs()}
+	{#if viewMode.mode === 'grid'}
+		<div
+			class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8"
+		>
+			{#each visibleTracks as track, index (track.videoId)}
+				<SongCard song={toRowData(track)} flags={rowFlags(track)} actions={rowActions(index)} />
+			{/each}
+		</div>
+	{:else}
+		<ul class="flex flex-col">
+			{#each visibleTracks as track, index (track.videoId)}
+				<SongRow song={toRowData(track)} flags={rowFlags(track)} actions={rowActions(index)} />
+			{/each}
+		</ul>
+	{/if}
+{/snippet}
 
-				{#if loaded && tracks.length > 0}
-					<div class="mb-3 flex flex-wrap items-center gap-2">
-						<div class="relative min-w-48 flex-1">
-							<SearchIcon
-								class="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
-							/>
-							<Input placeholder="Search songs…" bind:value={searchQuery} class="pl-9" />
-						</div>
-						<ViewModeToggle />
-					</div>
-				{/if}
+<AppShell
+	sidebarPlaylists={userPlaylists.map((p) => ({ id: p.id, name: p.name }))}
+	sidebarSmartPlaylists={smartPlaylists.map((p) => ({ id: p.id, name: p.name }))}
+	statusBadge={offlineBadge}
+	onPlaylistSelect={openPlaylistView}
+>
+	<div class="mx-auto max-w-screen-2xl p-4 md:p-8">
+		{#if !loaded}
+			<div class="py-16 text-center text-sm text-muted-foreground">Loading…</div>
+		{:else if tracks.length === 0}
+			<div
+				class="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border py-16 text-center"
+			>
+				<CloudOffIcon class="size-8 text-muted-foreground" />
+				<p class="text-sm text-muted-foreground">No songs are downloaded on this device.</p>
+				<p class="max-w-sm text-xs text-muted-foreground">
+					Download songs while you're online — from a playlist, or from Settings → Manage storage —
+					and they'll play here with no connection.
+				</p>
+			</div>
+		{:else if openPlaylist}
+			<!-- A playlist, laid out like its online counterpart. -->
+			<Button variant="ghost" size="sm" class="-ml-2 mb-4 gap-1.5" onclick={backToIndex}>
+				<ArrowLeftIcon class="size-4" />
+				Library
+			</Button>
 
-				{#if !loaded}
-					<div class="py-16 text-center text-sm text-muted-foreground">Loading…</div>
-				{:else if tracks.length === 0}
-					<div
-						class="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border py-16 text-center"
-					>
-						<CloudOffIcon class="size-8 text-muted-foreground" />
-						<p class="text-sm text-muted-foreground">No songs are downloaded on this device.</p>
-						<p class="max-w-sm text-xs text-muted-foreground">
-							Download songs while you're online — from a playlist, or from Settings → Manage
-							storage — and they'll play here with no connection.
-						</p>
-					</div>
-				{:else if visibleTracks.length === 0}
-					<p class="py-8 text-center text-sm text-muted-foreground">
-						{searchQuery.trim().length > 0
-							? `No downloaded songs match "${searchQuery}".`
-							: 'Nothing downloaded from this playlist yet.'}
+			<div class="mb-6 flex flex-wrap items-center justify-between gap-4">
+				<div class="min-w-0">
+					<h1 class="truncate text-lg font-medium">{openPlaylist.name}</h1>
+					<p class="text-xs text-muted-foreground">
+						{openPlaylist.videoIds.length}
+						{openPlaylist.videoIds.length === 1 ? 'song' : 'songs'} downloaded
 					</p>
-				{:else if viewMode.mode === 'grid'}
-					<div
-						class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8"
-					>
-						{#each visibleTracks as track, index (track.videoId)}
-							<SongCard
-								song={toRowData(track)}
-								flags={rowFlags(track)}
-								actions={rowActions(index)}
-							/>
-						{/each}
+				</div>
+				<div class="flex items-center gap-2">
+					<Button size="sm" class="gap-1.5" onclick={() => playAll()}>
+						<PlayIcon class="size-4" />
+						Play
+					</Button>
+					<Button size="sm" variant="outline" class="gap-1.5" onclick={() => playAll(true)}>
+						<ShuffleIcon class="size-4" />
+						Shuffle
+					</Button>
+				</div>
+			</div>
+
+			<div class="mb-3 flex flex-wrap items-center gap-2">
+				<div class="relative min-w-48 flex-1">
+					<SearchIcon class="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+					<Input placeholder="Search songs…" bind:value={searchQuery} class="pl-9" />
+				</div>
+				<ViewModeToggle />
+			</div>
+
+			{#if visibleTracks.length === 0}
+				<p class="py-8 text-center text-sm text-muted-foreground">
+					No downloaded songs match "{searchQuery}".
+				</p>
+			{:else}
+				{@render songs()}
+			{/if}
+		{:else}
+			<!-- The library index, laid out like its online counterpart. -->
+			<div class="mb-6 flex flex-wrap items-center gap-2">
+				<div class="relative min-w-48 flex-1">
+					<SearchIcon class="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+					<Input
+						placeholder="Search playlists and songs…"
+						bind:value={searchQuery}
+						class="pl-9"
+					/>
+				</div>
+				<ViewModeToggle />
+			</div>
+
+			{#if matchingUserPlaylists.length > 0}
+				<h1 class="mb-6 text-lg font-medium">Your playlists</h1>
+				<div class="mb-8">
+					{@render playlistGrid(matchingUserPlaylists)}
+				</div>
+			{/if}
+
+			{#if matchingSmartPlaylists.length > 0}
+				<h2 class="mb-4 text-sm font-medium text-muted-foreground">Smart Playlists</h2>
+				<div class="mb-8">
+					{@render playlistGrid(matchingSmartPlaylists)}
+				</div>
+			{/if}
+
+			<div class="mb-4 flex flex-wrap items-center justify-between gap-4">
+				<div>
+					<h2 class="text-lg font-medium">All downloaded</h2>
+					<p class="text-xs text-muted-foreground">
+						{visibleTracks.length}
+						{visibleTracks.length === 1 ? 'song' : 'songs'} · available without a connection
+					</p>
+				</div>
+				{#if visibleTracks.length > 0}
+					<div class="flex items-center gap-2">
+						<Button size="sm" class="gap-1.5" onclick={() => playAll()}>
+							<PlayIcon class="size-4" />
+							Play
+						</Button>
+						<Button size="sm" variant="outline" class="gap-1.5" onclick={() => playAll(true)}>
+							<ShuffleIcon class="size-4" />
+							Shuffle
+						</Button>
 					</div>
-				{:else}
-					<ul class="flex flex-col">
-						{#each visibleTracks as track, index (track.videoId)}
-							<SongRow song={toRowData(track)} flags={rowFlags(track)} actions={rowActions(index)} />
-						{/each}
-					</ul>
 				{/if}
 			</div>
-		</main>
 
-		<PlayerBar />
+			{#if visibleTracks.length === 0}
+				<p class="py-8 text-center text-sm text-muted-foreground">
+					No downloaded songs match "{searchQuery}".
+				</p>
+			{:else}
+				{@render songs()}
+			{/if}
+		{/if}
 	</div>
-</Tooltip.Provider>
+</AppShell>

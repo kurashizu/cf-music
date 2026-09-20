@@ -159,7 +159,7 @@ test.describe('offline', () => {
 
 		await page.goto('/offline');
 
-		await expect(page.getByRole('heading', { name: 'Downloaded' })).toBeVisible();
+		await expect(page.getByRole('heading', { name: 'All downloaded' })).toBeVisible();
 		await expect(page.getByText('3 songs · available without a connection')).toBeVisible();
 		await expect(page.getByText('Offline Song 1')).toBeVisible();
 
@@ -222,16 +222,39 @@ test.describe('offline', () => {
 
 		await page.goto('/offline');
 
-		// Only playlists with something actually downloaded are offered.
-		await expect(page.getByRole('button', { name: /Evening/ })).toBeVisible();
-		await expect(page.getByRole('button', { name: /Nothing Downloaded/ })).toHaveCount(0);
+		// The library index shows playlist cards, exactly as it does online —
+		// and only those with something actually downloaded.
+		await expect(page.getByRole('heading', { name: 'Your playlists' })).toBeVisible();
+		// Scoped to the grid: the sidebar lists the same playlists, which is
+		// itself the point — offline carries the app's own navigation. (On a
+		// phone the sidebar is hidden, but scoping keeps both cases identical.)
+		const card = page.locator('main').getByText('Evening');
+		await expect(card).toBeVisible();
+		await expect(page.locator('main').getByText('Nothing Downloaded')).toHaveCount(0);
 
-		await page.getByRole('button', { name: /Evening/ }).click();
+		await card.click();
 
 		await expect(page.getByRole('heading', { name: 'Evening' })).toBeVisible();
-		await expect(page.getByText('2 songs · available without a connection')).toBeVisible();
+		await expect(page.getByText('2 songs downloaded')).toBeVisible();
+		// A playlist keeps its stored order, unlike the all-downloaded view.
 		const titles = await page.getByText(/^Offline Song \d$/).allTextContents();
 		expect(titles).toEqual(['Offline Song 3', 'Offline Song 1']);
+	});
+
+	test('carries the app shell, so offline is not a different screen', async ({ page }) => {
+		await registerAndLand(page);
+		await seedDownloads(page, 2);
+
+		await page.goto('/offline');
+
+		// The same navigation the online app has, rather than a bare page —
+		// the sidebar on a wide screen, the bottom bar on a phone.
+		const nav = page.getByRole('navigation', { name: /^Primary/ }).filter({ visible: true });
+		await expect(nav.first()).toBeVisible();
+		await expect(nav.first().getByRole('link', { name: 'Library', exact: true })).toBeVisible();
+		// Rendered in the sidebar footer and the mobile header; only one of
+		// those is on screen at a given width.
+		await expect(page.getByText('Offline').filter({ visible: true }).first()).toBeVisible();
 	});
 
 	test('says so plainly when nothing is downloaded', async ({ page }) => {
@@ -243,7 +266,6 @@ test.describe('offline', () => {
 
 		await page.goto('/offline');
 
-		await expect(page.getByRole('heading', { name: 'Downloaded' })).toBeVisible();
 		await expect(page.getByText('No songs are downloaded on this device.')).toBeVisible();
 	});
 
