@@ -2,9 +2,7 @@
 	import { invalidateAll } from '$app/navigation';
 	import { toast } from 'svelte-sonner';
 	import { untrack, onMount } from 'svelte';
-	import { slide } from 'svelte/transition';
 	import { player } from '$lib/client/player.svelte';
-	import { motionParams } from '$lib/client/motion';
 	import { viewMode } from '$lib/client/view-mode.svelte';
 	import { PagedList } from '$lib/client/paged-list.svelte';
 	import { SongSelection } from '$lib/client/song-selection.svelte';
@@ -20,6 +18,7 @@
 	import ViewModeToggle from '$lib/components/view-mode-toggle.svelte';
 	import InfiniteScrollSentinel from '$lib/components/infinite-scroll-sentinel.svelte';
 	import SongSortFilterBar from '$lib/components/song-sort-filter-bar.svelte';
+	import SelectionToolbar from '$lib/components/selection-toolbar.svelte';
 	import SongRow from '$lib/components/song-row.svelte';
 	import SongCard from '$lib/components/song-card.svelte';
 	import type { SongRowActions, SongRowFlags } from '$lib/components/song-row-types';
@@ -27,12 +26,9 @@
 	import PauseIcon from '@lucide/svelte/icons/pause';
 	import ShuffleIcon from '@lucide/svelte/icons/shuffle';
 	import ListMusicIcon from '@lucide/svelte/icons/list-music';
-	import ListPlusIcon from '@lucide/svelte/icons/list-plus';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
-	import DownloadIcon from '@lucide/svelte/icons/download';
 	import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle';
 	import SearchIcon from '@lucide/svelte/icons/search';
-	import XIcon from '@lucide/svelte/icons/x';
 	import {
 		sortIndices,
 		matchesDurationRange,
@@ -636,46 +632,16 @@
 		</div>
 	{/if}
 
-	<!-- Overlaid rather than inserted into the flow: taking layout space would
-	     push the list down the moment a song is selected, moving the row that
-	     was just clicked out from under the pointer — so a second click lands
-	     on a different song. -->
 	{#if selection.size > 0}
-		<div
-			class="border-border bg-card sticky top-0 z-20 -mb-12 flex h-12 items-center justify-between gap-3 rounded-lg border px-3 shadow-sm"
-			transition:slide={motionParams({ duration: 150 })}
+		<SelectionToolbar
+			count={selection.size}
+			busy={batchWorking}
+			downloadProgress={batchDownloadProgress}
+			onClear={() => selection.clear()}
+			onAddToQueue={addSelectionToQueue}
+			onDownload={handleBatchDownload}
 		>
-			<div class="flex items-center gap-2">
-				<Button
-					variant="ghost"
-					size="icon-sm"
-					onclick={() => selection.clear()}
-					aria-label="Clear selection"
-				>
-					<XIcon class="size-4" />
-				</Button>
-				<span class="text-muted-foreground text-sm">{selection.size} selected</span>
-			</div>
-			<div class="flex items-center gap-2">
-				<Button size="sm" variant="outline" class="gap-1.5" onclick={addSelectionToQueue}>
-					<ListPlusIcon class="size-3.5" />
-					Add to queue
-				</Button>
-				<Button
-					size="sm"
-					variant="outline"
-					class="gap-1.5"
-					disabled={batchWorking}
-					onclick={handleBatchDownload}
-				>
-					{#if batchDownloadProgress}
-						<LoaderCircleIcon class="size-3.5 animate-spin" />
-						Downloading {batchDownloadProgress.completed}/{batchDownloadProgress.total}
-					{:else}
-						<DownloadIcon class="size-3.5" />
-						Download
-					{/if}
-				</Button>
+			{#snippet actions()}
 				{#if data.otherPlaylists.length > 0}
 					<Button
 						size="sm"
@@ -722,8 +688,8 @@
 					<Trash2Icon class="size-3.5" />
 					Delete
 				</Button>
-			</div>
-		</div>
+			{/snippet}
+		</SelectionToolbar>
 	{/if}
 
 	{#if data.totalSongCount === 0}
