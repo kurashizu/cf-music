@@ -8,6 +8,6 @@
 	});
 </script>
 
-<p class="truncate px-2.5 text-[10px] text-muted-foreground/60">
+<p class="truncate text-[10px] text-muted-foreground/60">
 	{__BUILD_COMMIT__} · {buildTime}
 </p>

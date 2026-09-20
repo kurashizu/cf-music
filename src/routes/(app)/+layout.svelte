@@ -250,7 +250,7 @@
 			</Tooltip.Root>
 
 			{#if !sidebar.collapsed}
-				<div transition:fade={motionParams({ duration: 100 })}>
+				<div class="px-2.5" transition:fade={motionParams({ duration: 100 })}>
 					<BuildInfo />
 				</div>
 			{/if}
@@ -262,6 +262,11 @@
 		<header class="flex items-center gap-2 border-b border-border p-3 md:hidden">
 			<Logo size={22} />
 			<span class="text-sm font-medium">KRSZ Music</span>
+			<!-- Build info lives in the desktop sidebar footer, which doesn't
+			     exist on mobile — this is the only place it can surface here. -->
+			<div class="ml-auto min-w-0">
+				<BuildInfo />
+			</div>
 		</header>
 
 		<main class="min-h-0 flex-1 overflow-y-auto pb-16 md:pb-0">
