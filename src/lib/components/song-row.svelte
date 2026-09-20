@@ -109,12 +109,16 @@
 		{formatAudioSpec(song.codec, song.bitrateKbps)}
 	</span>
 
+	<!-- Icon alone: the row is dense, and the word repeated down a long list
+	     said far more than the state is worth. The label moves to the title
+	     attribute so the meaning is still reachable. -->
 	{#if song.embeddingStatus === 'done'}
 		<span
-			class="hidden shrink-0 items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground sm:flex"
+			class="hidden shrink-0 items-center rounded-full bg-muted p-1 text-muted-foreground sm:flex"
+			title="Embedded"
+			aria-label="Embedded"
 		>
 			<SparklesIcon class="size-3" />
-			Embedded
 		</span>
 	{/if}
 

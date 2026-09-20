@@ -1,6 +1,14 @@
 import { hasReachedPlayThreshold } from '$lib/shared/playback';
 import { shuffleOrder, nextQueueIndex, cycleRepeatMode, moveIndexToFront, type RepeatMode } from '$lib/shared/queue';
-import { precacheAudio } from '$lib/client/offline-cache';
+import { precacheAudio, storeTrackMetadata } from '$lib/client/offline-cache';
+import { throttledFetchBlobUrl, releaseBlobUrl } from '$lib/client/image-throttle';
+import {
+	bindMediaSessionHandlers,
+	clearMediaSession,
+	setMediaSessionPlaybackState,
+	setMediaSessionPosition,
+	setMediaSessionTrack
+} from '$lib/client/media-session';
 import { silenceTrim, getTrimPoints, analyzeTrackIfCached } from '$lib/client/silence-trim.svelte';
 
 export interface QueueTrack {
@@ -125,6 +133,8 @@ class PlayerStore {
 	 * end does this mid-track, where the end-of-media check can't help.
 	 */
 	private switchingTrack = false;
+	/** Cover URL whose blob the OS is currently displaying, so it can be released. */
+	private artworkSourceUrl: string | null = null;
 
 	constructor() {
 		this.restoreSession();
@@ -228,6 +238,7 @@ class PlayerStore {
 			this.audio.preload = 'none';
 			this.audio.addEventListener('timeupdate', () => {
 				this.currentTimeSeconds = this.audio!.currentTime;
+				setMediaSessionPosition(this.currentTimeSeconds, this.durationSeconds);
 				this.maybeEndAtTrimPoint();
 				this.maybeRecordPlay();
 				this.maybeSaveSession();
@@ -262,6 +273,25 @@ class PlayerStore {
 			this.audio.addEventListener('canplay', () => (this.isLoading = false));
 			this.audio.addEventListener('progress', () => this.maybeAutoCache());
 			this.audio.volume = this.muted ? 0 : this.volume;
+
+			// Registered alongside the element itself, once: this is what puts
+			// the track in Android's notification shade and on the lock screen,
+			// with buttons that work while the app is in the background.
+			bindMediaSessionHandlers({
+				// The OS sends the action it wants, so these resolve to a
+				// definite play or pause rather than a toggle: a stale
+				// playbackState would otherwise make its button do the opposite
+				// of what it shows.
+				onPlay: () => void this.resume(),
+				onPause: () => void this.pause(),
+				onPreviousTrack: () => void this.previous(),
+				onNextTrack: () => void this.next(),
+				onSeekTo: (seconds) => this.seekTo(seconds),
+				onSeekBackward: (offset) => this.seekTo(Math.max(0, this.currentTimeSeconds - offset)),
+				onSeekForward: (offset) =>
+					this.seekTo(Math.min(this.durationSeconds || Infinity, this.currentTimeSeconds + offset)),
+				onStop: () => void this.pause()
+			});
 		}
 		return this.audio;
 	}
@@ -321,6 +351,39 @@ class PlayerStore {
 		}
 	}
 
+	/**
+	 * Hands the OS a cover it can actually draw.
+	 *
+	 * Not the presigned URL straight from the API: that expires, and offline
+	 * it resolves to nothing at all. Going through the same cache the UI uses
+	 * yields a blob URL backed by bytes already on the device, so the
+	 * notification keeps its artwork with no network. A miss simply leaves the
+	 * track without art rather than blocking playback.
+	 */
+	private async publishArtwork(videoId: string, coverUrl: string | null): Promise<void> {
+		const track = this.currentTrack;
+		if (!coverUrl || !track || track.videoId !== videoId) return;
+		try {
+			const blobUrl = await throttledFetchBlobUrl(coverUrl);
+			// The track may have moved on while this resolved.
+			if (this.currentTrack?.videoId !== videoId) {
+				releaseBlobUrl(coverUrl);
+				return;
+			}
+			if (this.artworkSourceUrl) releaseBlobUrl(this.artworkSourceUrl);
+			this.artworkSourceUrl = coverUrl;
+			setMediaSessionTrack({ title: track.title, artworkUrl: blobUrl });
+		} catch {
+			// No cover to show; the title is already published.
+		}
+	}
+
+	/** Resumes without toggling — for callers that mean "play", such as the OS. */
+	async resume(): Promise<void> {
+		if (!this.currentTrack || this.isPlaying) return;
+		await this.togglePlayPause();
+	}
+
 	async togglePlayPause(): Promise<void> {
 		if (!this.currentTrack) return;
 		if (this.isPlaying) {
@@ -343,6 +406,7 @@ class PlayerStore {
 	private async startPlayback(): Promise<void> {
 		const audio = this.getAudio();
 		this.isPlaying = true;
+		setMediaSessionPlaybackState(true);
 		const playPromise = audio.play().catch(() => {
 			// A play() rejection (e.g. immediately superseded by a pause(),
 			// or the source changed mid-request) isn't a real error to
@@ -366,6 +430,7 @@ class PlayerStore {
 		// because an output device disappeared, and would otherwise resume
 		// playback the moment the user asked for it to stop.
 		this.isPlaying = false;
+		setMediaSessionPlaybackState(false);
 		this.getAudio().pause();
 		this.saveSessionNow();
 	}
@@ -463,6 +528,7 @@ class PlayerStore {
 			await this.loadCurrent(true);
 		} else {
 			this.isPlaying = false;
+			setMediaSessionPlaybackState(false);
 		}
 	}
 
@@ -471,6 +537,7 @@ class PlayerStore {
 		const track = this.currentTrack;
 		if (!track) {
 			this.isPlaying = false;
+			clearMediaSession();
 			return;
 		}
 
@@ -494,6 +561,10 @@ class PlayerStore {
 
 		this.audioUrl = data.audioUrl;
 		this.coverUrl = data.coverUrl;
+		// Title first, so the OS has something to show immediately; the
+		// artwork follows once it resolves from cache (see publishArtwork).
+		setMediaSessionTrack({ title: track.title });
+		void this.publishArtwork(track.videoId, data.coverUrl);
 		this.audioSpec = { codec: data.codec, bitrateKbps: data.bitrateKbps, sampleRate: data.sampleRate };
 		this.urlExpiresAt = Date.now() + data.expiresInSeconds * 1000;
 
@@ -593,14 +664,21 @@ class PlayerStore {
 		if (!fullyBuffered) return;
 
 		this.autoCacheTriggered = true;
-		const videoId = this.currentTrack.videoId;
+		const track = this.currentTrack;
+		const videoId = track.videoId;
 		precacheAudio(videoId, this.audioUrl)
 			.then(async (cached) => {
 				// Measured from the cached copy so the analysis reads from disk
 				// rather than pulling the audio down a second time. This runs as
 				// soon as the track is fully buffered — long before it finishes —
 				// so the result can still be applied to the play in progress.
-				if (!cached || !silenceTrim.enabled) return;
+				if (!cached) return;
+				// Recorded next to the audio so the offline page has a name to
+				// show for it, not just an id.
+				void storeTrackMetadata([
+					{ videoId, title: track.title, durationSeconds: track.durationSeconds }
+				]);
+				if (!silenceTrim.enabled) return;
 				const points = await analyzeTrackIfCached(videoId);
 				if (points) this.applyTrimPoints(videoId, points);
 			})

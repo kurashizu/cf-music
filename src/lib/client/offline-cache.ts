@@ -6,6 +6,7 @@
  */
 
 import { analyzeTrackIfCached } from '$lib/client/silence-trim.svelte';
+import type { CachedTrackMetadata } from '$lib/shared/audio-cache-key';
 
 interface StreamUrlResponse {
 	audioUrl: string;
@@ -125,14 +126,20 @@ export async function precacheAudio(videoId: string, audioUrl: string): Promise<
  * unmeasured track simply plays untrimmed, which must not make the download
  * itself report failure.
  */
-export async function downloadSongForOffline(videoId: string): Promise<boolean> {
+export async function downloadSongForOffline(
+	videoId: string,
+	metadata?: Omit<CachedTrackMetadata, 'videoId'>
+): Promise<boolean> {
 	if (!('serviceWorker' in navigator)) return false;
 	try {
 		const response = await fetch(`/api/stream-url/${videoId}`);
 		if (!response.ok) return false;
 		const { audioUrl }: StreamUrlResponse = await response.json();
 		const cached = await precacheAudio(videoId, audioUrl);
-		if (cached) await analyzeTrackIfCached(videoId).catch(() => null);
+		if (cached) {
+			if (metadata) await storeTrackMetadata([{ videoId, ...metadata }]);
+			await analyzeTrackIfCached(videoId).catch(() => null);
+		}
 		return cached;
 	} catch {
 		return false;
@@ -155,19 +162,37 @@ const BATCH_DOWNLOAD_CONCURRENCY = 3;
  */
 export async function downloadSongsForOffline(
 	videoIds: string[],
-	onEachSettled: (videoId: string, ok: boolean) => void
+	onEachSettled: (videoId: string, ok: boolean) => void,
+	metadataFor?: (videoId: string) => Omit<CachedTrackMetadata, 'videoId'> | undefined
 ): Promise<void> {
 	let nextIndex = 0;
 	async function worker(): Promise<void> {
 		while (nextIndex < videoIds.length) {
 			const videoId = videoIds[nextIndex++];
-			const ok = await downloadSongForOffline(videoId);
+			const ok = await downloadSongForOffline(videoId, metadataFor?.(videoId));
 			onEachSettled(videoId, ok);
 		}
 	}
 	await Promise.all(
 		Array.from({ length: Math.min(BATCH_DOWNLOAD_CONCURRENCY, videoIds.length) }, worker)
 	);
+}
+
+/**
+ * Records what a cached song is called, so the offline page can list and play
+ * it. The audio cache holds opaque media keyed by videoId, with nowhere to
+ * put a title and nothing a reader could recognise.
+ *
+ * Best-effort: a track whose metadata never lands still plays offline, it
+ * just shows its id, so this never fails a download.
+ */
+export async function storeTrackMetadata(tracks: CachedTrackMetadata[]): Promise<void> {
+	if (!('serviceWorker' in navigator) || tracks.length === 0) return;
+	try {
+		await postToServiceWorker({ type: 'STORE_TRACK_METADATA', tracks });
+	} catch {
+		// Nothing to recover: the song is cached either way.
+	}
 }
 
 export interface StorageEstimate {

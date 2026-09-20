@@ -276,7 +276,11 @@
 		workingVideoId = videoId;
 		downloadingVideoId = videoId;
 		try {
-			const ok = await downloadSongForOffline(videoId);
+			const entry = entries.find((e) => e.videoId === videoId);
+			const ok = await downloadSongForOffline(
+				videoId,
+				entry && { title: entry.title, durationSeconds: entry.durationSeconds }
+			);
 			if (ok) cachedVideoIds = new Set([...cachedVideoIds, videoId]);
 			toast[ok ? 'success' : 'error'](
 				ok ? 'Downloaded for offline playback' : 'Failed to download song'
@@ -333,15 +337,23 @@
 		try {
 			let failures = 0;
 			const downloaded = new Set(cachedVideoIds);
-			await downloadSongsForOffline(videoIds, (videoId, ok) => {
-				if (ok) downloaded.add(videoId);
-				else failures++;
-				// A fresh Set each time: reassigning the same reference is not a
-				// change as far as reactivity is concerned, so the rows would
-				// stop updating after the first download landed.
-				cachedVideoIds = new Set(downloaded);
-				if (batchDownloadProgress) batchDownloadProgress.completed++;
-			});
+			const metadataFor = (videoId: string) => {
+				const entry = entries.find((e) => e.videoId === videoId);
+				return entry && { title: entry.title, durationSeconds: entry.durationSeconds };
+			};
+			await downloadSongsForOffline(
+				videoIds,
+				(videoId, ok) => {
+					if (ok) downloaded.add(videoId);
+					else failures++;
+					// A fresh Set each time: reassigning the same reference is not
+					// a change as far as reactivity is concerned, so the rows
+					// would stop updating after the first download landed.
+					cachedVideoIds = new Set(downloaded);
+					if (batchDownloadProgress) batchDownloadProgress.completed++;
+				},
+				metadataFor
+			);
 			toast[failures === 0 ? 'success' : 'error'](
 				failures === 0
 					? 'Downloaded for offline playback'

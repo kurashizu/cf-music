@@ -14,7 +14,9 @@ import {
 	coverCacheKey,
 	extractVideoIdFromCoverPath,
 	AUDIO_CACHE_NAME,
-	COVER_CACHE_NAME
+	COVER_CACHE_NAME,
+	METADATA_CACHE_NAME,
+	metadataCacheKey
 } from '$lib/shared/audio-cache-key';
 import { sliceRangeFromCachedResponse } from '$lib/shared/range-slice';
 
@@ -27,6 +29,23 @@ const AUDIO_CACHE = AUDIO_CACHE_NAME;
 // flow audio uses — they're cached opportunistically, cache-first, the
 // first time any page happens to request one.
 const COVER_CACHE = COVER_CACHE_NAME;
+const METADATA_CACHE = METADATA_CACHE_NAME;
+
+/**
+ * The page served for any navigation the network can't answer.
+ *
+ * Every real route is server-rendered against the user's session, so none of
+ * them can be precached as HTML — offline, there is no server to render one.
+ * This standalone page ships with the build, runs entirely in the browser,
+ * and plays what is already in the audio cache.
+ */
+const OFFLINE_PAGE = '/offline.html';
+
+/**
+ * Paths this deploy precached, as a set so the fetch handler can decide
+ * whether a request is one of them without opening the cache.
+ */
+const PRECACHED_PATHS = new Set([...build, ...files]);
 
 sw.addEventListener('install', (event) => {
 	event.waitUntil(
@@ -54,7 +73,12 @@ sw.addEventListener('activate', (event) => {
 			// them on every deploy would defeat the point of caching them at
 			// all.
 			for (const key of await caches.keys()) {
-				if (key !== APP_CACHE && key !== AUDIO_CACHE && key !== COVER_CACHE) {
+				if (
+					key !== APP_CACHE &&
+					key !== AUDIO_CACHE &&
+					key !== COVER_CACHE &&
+					key !== METADATA_CACHE
+				) {
 					await caches.delete(key);
 				}
 			}
@@ -71,11 +95,51 @@ sw.addEventListener('fetch', (event) => {
 	const audioVideoId = extractVideoIdFromAudioPath(url.pathname);
 	const coverVideoId = audioVideoId ? null : extractVideoIdFromCoverPath(url.pathname);
 
-	// Anything that isn't a song audio/cover request (the app shell, API
-	// calls) goes straight through untouched — no cache-first behavior for
-	// those, since a stale API response or a stale app shell asset is far
-	// worse than a network request that could have been avoided.
-	if (!audioVideoId && !coverVideoId) return;
+	if (!audioVideoId && !coverVideoId) {
+		// A navigation the network can't answer gets the offline page rather
+		// than the browser's own error screen — that error screen was why an
+		// installed app with songs already downloaded opened to nothing at
+		// all once the connection dropped.
+		if (event.request.mode === 'navigate') {
+			event.respondWith(
+				(async () => {
+					try {
+						return await fetch(event.request);
+					} catch {
+						const cache = await caches.open(APP_CACHE);
+						const offline = await cache.match(OFFLINE_PAGE);
+						return (
+							offline ??
+							new Response('Offline', { status: 503, headers: { 'content-type': 'text/plain' } })
+						);
+					}
+				})()
+			);
+			return;
+		}
+
+		// Anything this deploy precached (build assets and static files) is
+		// served from that cache when the network is gone. Build assets are
+		// content-hashed so a cached one can never be stale, and the static
+		// files are this deploy's own. Everything else — API calls above all
+		// — still goes straight to the network, where a stale answer would be
+		// worse than an error.
+		if (url.origin === sw.location.origin && PRECACHED_PATHS.has(url.pathname)) {
+			event.respondWith(
+				(async () => {
+					try {
+						return await fetch(event.request);
+					} catch {
+						const cache = await caches.open(APP_CACHE);
+						const hit = await cache.match(event.request);
+						if (hit) return hit;
+						throw new Error(`Offline and not cached: ${url.pathname}`);
+					}
+				})()
+			);
+		}
+		return;
+	}
 
 	const cacheName = audioVideoId ? AUDIO_CACHE : COVER_CACHE;
 	const cacheKey = audioVideoId ? audioCacheKey(audioVideoId) : coverCacheKey(coverVideoId!);
@@ -144,6 +208,56 @@ sw.addEventListener('fetch', (event) => {
 sw.addEventListener('message', (event) => {
 	const data = event.data as { type: string; [key: string]: unknown };
 
+	// Written whenever a track is cached, so the offline page can list and
+	// play it: the audio cache holds opaque media with nowhere to put a
+	// title, and a videoId is not something a reader can be shown.
+	if (data?.type === 'STORE_TRACK_METADATA') {
+		const { tracks } = data as { tracks: unknown[] };
+		event.waitUntil(
+			(async () => {
+				const cache = await caches.open(METADATA_CACHE);
+				for (const track of tracks) {
+					const { videoId } = track as { videoId?: string };
+					if (!videoId) continue;
+					await cache.put(
+						metadataCacheKey(videoId),
+						new Response(JSON.stringify(track), {
+							headers: { 'content-type': 'application/json' }
+						})
+					);
+				}
+			})()
+		);
+		return;
+	}
+
+	if (data?.type === 'LIST_CACHED_TRACKS') {
+		const port = event.ports[0];
+		event.waitUntil(
+			(async () => {
+				const [audio, meta] = await Promise.all([
+					caches.open(AUDIO_CACHE),
+					caches.open(METADATA_CACHE)
+				]);
+				const cachedIds = (await audio.keys()).map(
+					(request) => new URL(request.url).pathname.split('/').pop() ?? ''
+				);
+				const tracks = [];
+				for (const videoId of cachedIds) {
+					if (!videoId) continue;
+					const hit = await meta.match(metadataCacheKey(videoId));
+					// A track cached before metadata was recorded still plays;
+					// it just has no title to show, so the id stands in.
+					tracks.push(
+						hit ? await hit.json() : { videoId, title: videoId, durationSeconds: null }
+					);
+				}
+				port?.postMessage({ tracks });
+			})()
+		);
+		return;
+	}
+
 	if (data?.type === 'PRECACHE_AUDIO') {
 		const { videoId, audioUrl } = data as { videoId: string; audioUrl: string };
 		const port = event.ports[0];
@@ -204,9 +318,15 @@ sw.addEventListener('message', (event) => {
 		const { videoIds } = data as { videoIds: string[] };
 		event.waitUntil(
 			(async () => {
-				const cache = await caches.open(AUDIO_CACHE);
+				const [cache, meta] = await Promise.all([
+					caches.open(AUDIO_CACHE),
+					caches.open(METADATA_CACHE)
+				]);
 				for (const videoId of videoIds) {
 					await cache.delete(audioCacheKey(videoId));
+					// Kept in step with the audio: metadata for a track that is
+					// no longer cached would list something unplayable offline.
+					await meta.delete(metadataCacheKey(videoId));
 				}
 			})()
 		);

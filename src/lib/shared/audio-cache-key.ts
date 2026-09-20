@@ -8,6 +8,15 @@
  */
 export const AUDIO_CACHE_NAME = 'audio-v1';
 export const COVER_CACHE_NAME = 'cover-v1';
+/**
+ * Holds one small JSON entry per cached song: the title and duration needed
+ * to list and play it with no network at all.
+ *
+ * Kept apart from the audio itself because the audio cache stores opaque
+ * media bodies — there is nowhere in them to put a title, and the videoId in
+ * the key is not something a reader can be shown.
+ */
+export const METADATA_CACHE_NAME = 'audio-meta-v1';
 
 /**
  * Presigned S3/MinIO URLs (see /api/stream-url/[videoId]) carry a
@@ -40,6 +49,18 @@ export function extractVideoIdFromAudioPath(pathname: string): string | null {
  */
 export function coverCacheKey(videoId: string): string {
 	return `https://covers.cf-music.internal/${videoId}`;
+}
+
+/** Lookup key for one cached song's metadata. Same scheme as audioCacheKey, never fetched. */
+export function metadataCacheKey(videoId: string): string {
+	return `https://meta.cf-music.internal/${videoId}`;
+}
+
+/** What is known about a cached song without reaching the network. */
+export interface CachedTrackMetadata {
+	videoId: string;
+	title: string;
+	durationSeconds: number | null;
 }
 
 /** MinIO object keys are covers/{videoId}.{ext} — see object-key.ts for the authoritative format. */

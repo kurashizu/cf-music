@@ -18,6 +18,22 @@ async function setUpLibrary(page: Page, name: string, trackCount: number) {
 	return seedPlaylistWithSongs(userId, playlistId, name, trackCount);
 }
 
+/**
+ * Clicks a row and waits for the selection to take.
+ *
+ * The rows are server-rendered, so a click can land before hydration has
+ * attached the handler: it does nothing, and a following shift- or
+ * ctrl-click then has no anchor to work from.
+ */
+async function selectRow(page: Page, title: string) {
+	const row = page.getByText(title);
+	await expect(row).toBeVisible();
+	await expect(async () => {
+		await row.click();
+		await expect(page.getByText(/\d+ selected/)).toBeVisible({ timeout: 2000 });
+	}).toPass({ timeout: 20000 });
+}
+
 test.describe('manage storage page', () => {
 	test('shows an empty state with no songs', async ({ page }) => {
 		await registerViaApi(page);
@@ -68,7 +84,7 @@ test.describe('manage storage page', () => {
 		await expect(secondRow).toBeVisible();
 
 		const before = await secondRow.boundingBox();
-		await page.getByText(tracks[0].title).click();
+		await selectRow(page, tracks[0].title);
 		await expect(page.getByText('1 selected')).toBeVisible();
 		const after = await secondRow.boundingBox();
 
@@ -93,7 +109,7 @@ test.describe('manage storage page', () => {
 		const tracks = await setUpLibrary(page, 'Multi Select Playlist', 3);
 
 		await page.goto('/settings/storage');
-		await page.getByText(tracks[0].title).click();
+		await selectRow(page, tracks[0].title);
 		await page.getByText(tracks[2].title).click({ modifiers: ['ControlOrMeta'] });
 
 		await expect(page.getByText('2 selected')).toBeVisible();
@@ -103,7 +119,10 @@ test.describe('manage storage page', () => {
 		const tracks = await setUpLibrary(page, 'Shift Select Playlist', 3);
 
 		await page.goto('/settings/storage');
-		await page.getByText(tracks[0].title).click();
+		// The first click has to actually register before the shift-click: a
+		// click that lands before hydration selects nothing, leaving no anchor
+		// for the range to extend from.
+		await selectRow(page, tracks[0].title);
 		await page.getByText(tracks[2].title).click({ modifiers: ['Shift'] });
 
 		await expect(page.getByText('3 selected')).toBeVisible();
