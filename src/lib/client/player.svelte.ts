@@ -108,6 +108,8 @@ class PlayerStore {
 	//    in some browsers ("The play() request was interrupted..."); this
 	//    flag lets pause wait for that promise first instead of racing it.
 	private pendingPlay: Promise<void> | null = null;
+	/** Guards against a single plug/unplug's repeated devicechange events each restarting playback. */
+	private rebindingOutput = false;
 
 	constructor() {
 		this.restoreSession();
@@ -119,6 +121,52 @@ class PlayerStore {
 			document.addEventListener('visibilitychange', () => {
 				if (document.visibilityState === 'hidden') this.saveSessionNow();
 			});
+
+			// Unplugging headphones (or any default-output change) leaves the
+			// element bound to a sink that no longer exists: its clock keeps
+			// running, so timeupdate still fires and the progress bar advances,
+			// but nothing is audible until the media is reloaded. Re-binding it
+			// to whatever is now the default restores sound without losing the
+			// position, which otherwise took a full page reload.
+			navigator.mediaDevices?.addEventListener('devicechange', () => {
+				this.rebindOutputDevice();
+			});
+		}
+	}
+
+	/**
+	 * Reloads the current media in place so it attaches to the current default
+	 * output device, preserving position and play state. No-op unless
+	 * something is actually playing, since a paused element picks up the new
+	 * device on its next play() anyway.
+	 */
+	private async rebindOutputDevice(): Promise<void> {
+		const audio = this.audio;
+		if (!audio || audio.paused || !audio.src || this.rebindingOutput) return;
+
+		// A single plug/unplug typically fires devicechange more than once;
+		// without this, each one would restart playback again.
+		this.rebindingOutput = true;
+		const resumeAt = audio.currentTime;
+		try {
+			await this.pendingPlay;
+		} catch {
+			// A play() that was already interrupted tells us nothing here.
+		}
+		// Seeking is deferred through the same pendingResumeSeconds path that
+		// session restore uses: preload is "none" (see getAudio), so load()
+		// fetches nothing on its own and there is no duration to seek against
+		// until play() has started the real request.
+		if (resumeAt > 0) this.pendingResumeSeconds = resumeAt;
+		audio.load();
+		this.pendingPlay = audio.play();
+		try {
+			await this.pendingPlay;
+		} catch {
+			// Autoplay can refuse to resume without a fresh gesture; the
+			// transport controls still work, so surface nothing here.
+		} finally {
+			this.rebindingOutput = false;
 		}
 	}
 
