@@ -1,7 +1,5 @@
 <script lang="ts">
 	import { throttledFetchBlobUrl, releaseBlobUrl } from '$lib/client/image-throttle';
-	import { motionParams } from '$lib/client/motion';
-	import { fade } from 'svelte/transition';
 
 	interface Props {
 		src: string;
@@ -38,11 +36,25 @@
 	});
 </script>
 
-{#if blobUrl}
-	<img src={blobUrl} {alt} class={className} transition:fade={motionParams({ duration: 150 })} />
-{:else}
-	<!-- Deliberately a static fill, not animate-pulse: a long list renders one
-	     of these per un-resolved cover, and dozens of simultaneous CSS
-	     animations measurably cost frames while scrolling on mobile. -->
-	<div class="{className} bg-muted"></div>
-{/if}
+<!-- The placeholder stays mounted underneath rather than being swapped out,
+     so the image fades in over a filled box instead of the two trading
+     places — a hard swap is what made a scrolling list look like it was
+     flickering as covers resolved.
+
+     Deliberately a static fill, not animate-pulse: a long list renders one
+     of these per un-resolved cover, and dozens of simultaneous CSS
+     animations measurably cost frames while scrolling on mobile. -->
+<div class="relative {className}">
+	<div class="absolute inset-0 bg-muted"></div>
+	{#if blobUrl}
+		<!-- A CSS transition on a stable element, not a Svelte one: the row
+		     around this re-renders as the list loads and sorts, which would
+		     restart an in: transition and leave covers stuck part-way faded. -->
+		<img
+			src={blobUrl}
+			{alt}
+			class="absolute inset-0 size-full object-cover opacity-0 transition-opacity duration-200"
+			onload={(e) => e.currentTarget.classList.remove('opacity-0')}
+		/>
+	{/if}
+</div>
