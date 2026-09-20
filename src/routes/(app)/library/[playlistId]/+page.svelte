@@ -282,10 +282,22 @@
 	// everything is already loaded (ensureAllSongsLoaded, for any
 	// non-custom-order view) or this is the plain scrolling case, where
 	// the reset window may reach indices loadMore hasn't fetched yet.
+	//
+	// Keyed on the query/sort/filter values themselves, NOT on
+	// visibleIndices. That array is rebuilt on every `songs` change, so
+	// depending on it made loading a page undo itself: loadMore raised
+	// visibleCount, the fetch it triggered grew `songs`, visibleIndices was
+	// recomputed into a fresh array, and this effect reset visibleCount
+	// straight back to PAGE_SIZE — pinning the list at its first page.
 	$effect(() => {
-		visibleIndices;
+		searchQuery;
+		sortField;
+		sortDirection;
+		artistFilter;
+		minDurationMinutes;
+		maxDurationMinutes;
 		visibleCount = PAGE_SIZE;
-		fetchMissingSongData(visibleIndices.slice(0, PAGE_SIZE));
+		fetchMissingSongData(untrack(() => visibleIndices).slice(0, PAGE_SIZE));
 	});
 
 	// Which row's "…" menu is open, if any — see the menus' own {#if} for why
