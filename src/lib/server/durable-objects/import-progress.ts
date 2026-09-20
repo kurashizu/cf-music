@@ -274,12 +274,17 @@ export class ImportProgressDurableObject implements DurableObject {
 		const reason = 'Import process disconnected unexpectedly';
 		await disconnectImportJob(db, jobId, job.userId, reason);
 
-		// completedCount > 0 at disconnect time is exactly disconnectImportJob's
-		// own branch condition for resolving to `completed` instead of
-		// `failed` — reusing it here keeps the broadcast event in sync with
-		// whichever branch the D1 write actually took, without a second
-		// read back.
-		const event = job.completedCount > 0 ? { type: 'complete' } : { type: 'fatal_error', reason };
+		// Must stay identical to disconnectImportJob's own branch condition,
+		// so the broadcast matches whichever way the D1 write went without a
+		// second read back. The knownCount term is load-bearing: an import
+		// where every song was already in the library writes `completed` but,
+		// without it, told the browser `fatal_error` — so a job that fully
+		// succeeded sat on screen as a red failure card that only a manual
+		// dismiss would clear.
+		const event =
+			job.completedCount + job.knownCount > 0
+				? { type: 'complete' }
+				: { type: 'fatal_error', reason };
 		const raw = JSON.stringify({ jobId, event });
 		for (const browserWs of this.ctx.getWebSockets()) {
 			if (!isCiSocket(this.ctx.getTags(browserWs))) {

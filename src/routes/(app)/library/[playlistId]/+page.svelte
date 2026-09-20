@@ -492,7 +492,10 @@
 		const reordered = loadedSongs();
 		const [moved] = reordered.splice(fromIndex, 1);
 		reordered.splice(toIndex, 0, moved);
-		list.reset(reordered);
+		// Keeps the window: this only runs on a fully-loaded list, so every row
+		// is already rendered and collapsing back to one page would yank the
+		// reader away from the row they just dropped.
+		list.reset(reordered, true);
 		await persistReorder();
 	}
 

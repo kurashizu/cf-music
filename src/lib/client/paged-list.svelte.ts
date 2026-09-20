@@ -46,14 +46,23 @@ export class PagedList<T> {
 		this.reset(options.initial);
 	}
 
-	/** Re-seeds from a fresh server payload, e.g. after the list is mutated. */
-	reset(initial: T[]): void {
+	/**
+	 * Re-seeds from a fresh payload, e.g. after the list is mutated.
+	 *
+	 * `keepWindow` is for a re-seed that carries everything already on screen
+	 * — reordering a fully-loaded playlist, say. Collapsing back to one page
+	 * there would snap a 200-row list down to 20, scrolling the reader away
+	 * from the edit they just made, and would also disable further dragging,
+	 * since that needs the whole list rendered.
+	 */
+	reset(initial: T[], keepWindow = false): void {
 		// .fill() matters: a bare `new Array(n)` has holes that map/filter skip
 		// entirely rather than visiting, so scans for missing positions come
 		// back empty.
 		const next = new Array<T | undefined>(this.total).fill(undefined);
 		initial.forEach((item, i) => (next[i] = item));
 		this.items = next;
+		if (keepWindow) return;
 		this.windowStart = 0;
 		this.windowCount = Math.min(this.pageSize, this.total);
 	}

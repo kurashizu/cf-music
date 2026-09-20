@@ -120,3 +120,34 @@ describe('reset', () => {
 		expect(list.items[2]).toBeUndefined();
 	});
 });
+
+describe('reset with keepWindow', () => {
+	it('collapses to one page by default', async () => {
+		const { list } = build(100);
+		await list.loadAll();
+		list.windowCount = 100;
+		expect(list.windowIndices.length).toBe(100);
+
+		list.reset(Array.from({ length: 100 }, (_, i) => `item-${i}`));
+
+		expect(list.windowIndices.length).toBe(20);
+	});
+
+	it('keeps everything on screen when asked, so a reorder does not snap the list back', async () => {
+		// Reordering only runs on a fully-loaded list, so collapsing the window
+		// would scroll the reader away from the row they just dropped — and
+		// would disable dragging, which needs the whole list rendered.
+		const { list } = build(100);
+		await list.loadAll();
+		list.windowCount = 100;
+		expect(list.windowIndices.length).toBe(100);
+
+		list.reset(
+			Array.from({ length: 100 }, (_, i) => `item-${i}`),
+			true
+		);
+
+		expect(list.windowIndices.length).toBe(100);
+		expect(list.isComplete).toBe(true);
+	});
+});

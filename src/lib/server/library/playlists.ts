@@ -10,6 +10,10 @@ import {
 	embeddingJobs
 } from '../db/schema';
 import { PLAYLIST_MOSAIC_COVER_COUNT } from '../../shared/playlist-cover';
+import { chunk } from '../../shared/chunk';
+
+/** Matches the batch size every other bound-parameter query here uses. */
+const PLAYLIST_ID_BATCH_SIZE = 90;
 
 export class LibraryError extends Error {
 	constructor(
@@ -197,26 +201,35 @@ export async function listPlaylistsWithCovers(
 	// function ranks each playlist's covered songs by position and the
 	// outer query only keeps the top N, so D1 only ever returns (and only
 	// needs to have read) a handful of rows per playlist.
-	const coverRows = await db.all<{ playlistId: string; coverKey: string }>(sql`
-		select "playlist_id" as "playlistId", "cover_key" as "coverKey"
-		from (
-			select
-				${playlistSongs.playlistId} as "playlist_id",
-				${songs.coverKey} as "cover_key",
-				row_number() over (
-					partition by ${playlistSongs.playlistId}
-					order by ${playlistSongs.position}
-				) as "rank"
-			from ${playlistSongs}
-			inner join ${songs} on ${playlistSongs.videoId} = ${songs.videoId}
-			where ${inArray(
-				playlistSongs.playlistId,
-				rows.map((p) => p.id)
-			)}
-				and ${songs.coverKey} is not null
-		) ranked
-		where "rank" <= ${PLAYLIST_MOSAIC_COVER_COUNT}
-	`);
+	// Chunked because each id is a bound parameter and D1 caps those near
+	// 100 — well short of what a library reaches, since smart playlists add
+	// one per artist with two or more songs, uncapped. Unchunked, the query
+	// throws "too many SQL variables" and the whole library page 500s, and
+	// only once a scheduled run happens to cross the threshold.
+	const playlistIds = rows.map((p) => p.id);
+	const coverRows = (
+		await Promise.all(
+			chunk(playlistIds, PLAYLIST_ID_BATCH_SIZE).map((batch) =>
+				db.all<{ playlistId: string; coverKey: string }>(sql`
+					select "playlist_id" as "playlistId", "cover_key" as "coverKey"
+					from (
+						select
+							${playlistSongs.playlistId} as "playlist_id",
+							${songs.coverKey} as "cover_key",
+							row_number() over (
+								partition by ${playlistSongs.playlistId}
+								order by ${playlistSongs.position}
+							) as "rank"
+						from ${playlistSongs}
+						inner join ${songs} on ${playlistSongs.videoId} = ${songs.videoId}
+						where ${inArray(playlistSongs.playlistId, batch)}
+							and ${songs.coverKey} is not null
+					) ranked
+					where "rank" <= ${PLAYLIST_MOSAIC_COVER_COUNT}
+				`)
+			)
+		)
+	).flat();
 
 	const coverKeysByPlaylist = new Map<string, string[]>();
 	for (const row of coverRows) {
@@ -230,16 +243,17 @@ export async function listPlaylistsWithCovers(
 	// function already fans out to N playlists at once for the library
 	// grid, so it needs the same one-query shape the cover mosaic above
 	// uses, not an N+1.
-	const countRows = await db
-		.select({ playlistId: playlistSongs.playlistId, songCount: sql<number>`count(*)` })
-		.from(playlistSongs)
-		.where(
-			inArray(
-				playlistSongs.playlistId,
-				rows.map((p) => p.id)
+	const countRows = (
+		await Promise.all(
+			chunk(playlistIds, PLAYLIST_ID_BATCH_SIZE).map((batch) =>
+				db
+					.select({ playlistId: playlistSongs.playlistId, songCount: sql<number>`count(*)` })
+					.from(playlistSongs)
+					.where(inArray(playlistSongs.playlistId, batch))
+					.groupBy(playlistSongs.playlistId)
 			)
 		)
-		.groupBy(playlistSongs.playlistId);
+	).flat();
 	const songCountByPlaylist = new Map(countRows.map((r) => [r.playlistId, r.songCount]));
 
 	return rows.map((playlist) => ({

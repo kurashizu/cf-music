@@ -148,6 +148,28 @@ describe('createPlaylist / listPlaylists', () => {
 		expect(list[0].songCount).toBe(6);
 	});
 
+	it('handles more playlists than D1 allows bound parameters', async () => {
+		// Smart playlists add one per artist with two or more songs, uncapped,
+		// so a real library crosses D1's ~100 parameter limit. Unchunked, both
+		// queries here throw "too many SQL variables" and the whole library
+		// page 500s — and only once a scheduled run happens to cross it.
+		await seedUser('u1');
+		await seedSong('shared', { coverKey: 'covers/shared.avif' });
+
+		const playlistCount = 120;
+		for (let i = 0; i < playlistCount; i++) {
+			const { id } = await createPlaylist(db, { userId: 'u1', name: `Mix ${i}` });
+			await addSongToPlaylist(db, id, 'u1', 'shared');
+		}
+
+		const list = await listPlaylistsWithCovers(db, 'u1');
+
+		expect(list).toHaveLength(playlistCount);
+		// Every playlist keeps its own covers and count across the chunks.
+		expect(list.every((p) => p.coverKeys.length === 1)).toBe(true);
+		expect(list.every((p) => p.songCount === 1)).toBe(true);
+	});
+
 	it('returns an empty coverKeys array and a zero songCount for a playlist with no songs', async () => {
 		await seedUser('u1');
 		await createPlaylist(db, { userId: 'u1', name: 'Empty' });
