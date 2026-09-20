@@ -99,7 +99,7 @@
 			class="hidden shrink-0 items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground sm:flex"
 		>
 			<CheckIcon class="size-3" />
-			Cached
+			Downloaded
 		</span>
 	{/if}
 

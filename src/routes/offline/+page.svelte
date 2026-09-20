@@ -8,6 +8,7 @@
 		readLibrarySnapshot
 	} from '$lib/client/offline-cache';
 	import type { CachedPlaylist, CachedTrackMetadata } from '$lib/shared/audio-cache-key';
+	import { PLAYLIST_MOSAIC_COVER_COUNT } from '$lib/shared/playlist-cover';
 	import AppShell from '$lib/components/app-shell.svelte';
 	import SongRow from '$lib/components/song-row.svelte';
 	import SongCard from '$lib/components/song-card.svelte';
@@ -66,7 +67,7 @@
 		return playlist.videoIds
 			.map((videoId) => coverUrls[videoId])
 			.filter((url): url is string => url !== undefined)
-			.slice(0, 4);
+			.slice(0, PLAYLIST_MOSAIC_COVER_COUNT);
 	}
 
 	const allDownloaded = $derived([...tracks].sort((a, b) => a.title.localeCompare(b.title)));

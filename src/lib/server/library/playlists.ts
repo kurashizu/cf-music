@@ -1,6 +1,7 @@
 import { eq, and, isNull, max, inArray, sql, exists } from 'drizzle-orm';
 import type { Db } from '../db';
 import { playlists, playlistSongs, songs, users, importJobs, userSongs, embeddingJobs } from '../db/schema';
+import { PLAYLIST_MOSAIC_COVER_COUNT } from '../../shared/playlist-cover';
 
 export class LibraryError extends Error {
 	constructor(
@@ -111,7 +112,6 @@ async function assertPlaylistMutable(
 	}
 }
 
-export const PLAYLIST_MOSAIC_COVER_COUNT = 4;
 
 export interface PlaylistSummary {
 	id: string;

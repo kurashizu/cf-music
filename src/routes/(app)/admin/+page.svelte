@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { formatBytes, formatDateTime } from '$lib/shared/format';
 	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -308,13 +309,6 @@
 		}
 	}
 
-	function formatBytes(bytes: number): string {
-		return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-	}
-
-	function formatDate(iso: string): string {
-		return new Date(iso).toLocaleString();
-	}
 </script>
 
 <svelte:head>
@@ -368,7 +362,7 @@
 								{invite.usedBy ? 'Used' : 'Available'}
 							</span>
 							<span class="flex-1 truncate text-xs text-muted-foreground">
-								{formatDate(invite.createdAt)}
+								{formatDateTime(invite.createdAt)}
 							</span>
 							<Button variant="ghost" size="icon-sm" onclick={() => copyCode(invite.code)}>
 								<CopyIcon class="size-3.5" />

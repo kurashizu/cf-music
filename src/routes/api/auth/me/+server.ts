@@ -1,10 +1,7 @@
-import { json, error } from '@sveltejs/kit';
+import { json } from '@sveltejs/kit';
+import { requireSession } from '$lib/server/auth/guard';
 import type { RequestHandler } from './$types';
 
-export const GET: RequestHandler = async ({ locals }) => {
-	if (!locals.session) {
-		error(401, 'Not authenticated');
-	}
-
-	return json(locals.session);
+export const GET: RequestHandler = async (event) => {
+	return json(requireSession(event));
 };

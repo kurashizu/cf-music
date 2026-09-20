@@ -3,7 +3,7 @@ import { env } from 'cloudflare:test';
 import { getDb } from '../db';
 import { users, songs, playlists, playlistSongs, auditLog } from '../db/schema';
 import type { ObjectStorage } from '../storage/s3';
-import { previewEvictionForImport, evictSongForUser, executeEvictionPlan } from './execute';
+import { previewEvictionForImport, evictSongForUser } from './execute';
 import { eq } from 'drizzle-orm';
 
 const db = getDb(env.DB);
@@ -187,21 +187,5 @@ describe('evictSongForUser', () => {
 
 		const entries = await db.query.auditLog.findMany();
 		expect(entries[0].eventType).toBe('manual_delete');
-	});
-});
-
-describe('executeEvictionPlan', () => {
-	it('evicts every song in the given list', async () => {
-		await seedUser('u1');
-		await seedSong('a');
-		await seedSong('b');
-		await seedPlaylistWithSong('p1', 'u1', 'a');
-		await seedPlaylistWithSong('p2', 'u1', 'b');
-		const storage = new FakeObjectStorage();
-
-		await executeEvictionPlan(db, storage, 'u1', ['a', 'b']);
-
-		const remainingSongs = await db.query.songs.findMany();
-		expect(remainingSongs).toHaveLength(0);
 	});
 });

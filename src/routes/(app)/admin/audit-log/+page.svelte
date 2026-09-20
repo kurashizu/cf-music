@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { formatDateTime } from '$lib/shared/format';
 	import { untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -100,10 +101,6 @@
 			default:
 				return '';
 		}
-	}
-
-	function formatDate(iso: string): string {
-		return new Date(iso).toLocaleString();
 	}
 
 	function prettyDetail(detail: string | null): string {
@@ -228,7 +225,7 @@
 						<span class="min-w-0 flex-1 truncate text-xs text-muted-foreground">
 							{detailSummary(entry)}
 						</span>
-						<span class="shrink-0 text-xs text-muted-foreground">{formatDate(entry.createdAt)}</span>
+						<span class="shrink-0 text-xs text-muted-foreground">{formatDateTime(entry.createdAt)}</span>
 					</button>
 				</li>
 			{/each}
@@ -273,7 +270,7 @@
 			<div class="flex flex-col gap-2 text-sm">
 				<div class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
 					<span class="text-muted-foreground">Time</span>
-					<span>{formatDate(detailEntry.createdAt)}</span>
+					<span>{formatDateTime(detailEntry.createdAt)}</span>
 					<span class="text-muted-foreground">User</span>
 					<span>{detailEntry.username ?? detailEntry.userId ?? '—'}</span>
 					<span class="text-muted-foreground">Actor</span>

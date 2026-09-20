@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { formatBytes } from '$lib/shared/format';
+	import { formatBytes, formatCompactDuration } from '$lib/shared/format';
 	import * as Card from '$lib/components/ui/card/index.js';
 	import MusicIcon from '@lucide/svelte/icons/music';
 	import UsersIcon from '@lucide/svelte/icons/users';
@@ -15,13 +15,6 @@
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
-
-	function formatDuration(totalSeconds: number): string {
-		const h = Math.floor(totalSeconds / 3600);
-		const m = Math.floor((totalSeconds % 3600) / 60);
-		if (h === 0) return `${m}m`;
-		return `${h}h ${m}m`;
-	}
 
 	const totalDurationSeconds = $derived(
 		data.songs.reduce((sum, s) => sum + (s.durationSeconds ?? 0), 0)
@@ -234,7 +227,7 @@
 						<ClockIcon class="size-3.5" />
 						Total time
 					</span>
-					<span class="text-2xl font-medium">{formatDuration(totalDurationSeconds)}</span>
+					<span class="text-2xl font-medium">{formatCompactDuration(totalDurationSeconds)}</span>
 				</Card.Content>
 			</Card.Root>
 			<Card.Root class="transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-md">
@@ -362,7 +355,7 @@
 						</div>
 						<div class="flex items-center justify-between">
 							<span class="text-muted-foreground">Average song length</span>
-							<span>{formatDuration(avgDurationSeconds)}</span>
+							<span>{formatCompactDuration(avgDurationSeconds)}</span>
 						</div>
 						<div class="flex items-center justify-between">
 							<span class="text-muted-foreground">Cloud storage quota</span>

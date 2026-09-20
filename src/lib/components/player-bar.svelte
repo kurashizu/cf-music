@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { player } from '$lib/client/player.svelte';
+	import { formatAudioSpec, formatPlaybackTime } from '$lib/shared/format';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import PlayIcon from '@lucide/svelte/icons/play';
@@ -15,20 +16,6 @@
 	import QueueTriggerButton from '$lib/components/queue-trigger-button.svelte';
 	import { fade } from 'svelte/transition';
 	import { motionParams } from '$lib/client/motion';
-
-	function formatAudioSpec(spec: typeof player.audioSpec): string {
-		if (!spec) return '';
-		const parts = [spec.codec];
-		if (spec.bitrateKbps) parts.push(`${spec.bitrateKbps}kbps`);
-		return parts.join(' · ');
-	}
-
-	function formatTime(seconds: number): string {
-		if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
-		const m = Math.floor(seconds / 60);
-		const s = Math.floor(seconds % 60);
-		return `${m}:${s.toString().padStart(2, '0')}`;
-	}
 
 	let seekTrack: HTMLDivElement | undefined = $state();
 	let dragging = $state(false);
@@ -162,12 +149,12 @@
 			</div>
 			<p class="flex items-center gap-1.5 text-xs text-muted-foreground">
 				{#if player.currentTrack}
-					<span>{formatTime(player.currentTimeSeconds)} / {formatTime(player.durationSeconds)}</span>
+					<span>{formatPlaybackTime(player.currentTimeSeconds)} / {formatPlaybackTime(player.durationSeconds)}</span>
 					{#if player.audioSpec}
 						<span
 							class="hidden rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] leading-normal text-muted-foreground sm:inline"
 						>
-							{formatAudioSpec(player.audioSpec)}
+							{formatAudioSpec(player.audioSpec?.codec ?? null, player.audioSpec?.bitrateKbps ?? null)}
 						</span>
 					{/if}
 				{:else}

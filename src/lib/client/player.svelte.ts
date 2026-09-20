@@ -146,6 +146,24 @@ class PlayerStore {
 	/** Blob URL for a cover served from the offline cache, released on track change. */
 	private cachedCoverObjectUrl: string | null = null;
 
+	/**
+	 * Releases the blob URLs minted for offline playback.
+	 *
+	 * Both were previously only revoked when the *next* track also came from
+	 * the cache, so every offline→online transition stranded one audio blob
+	 * (several MB of decoded audio) and one cover for the life of the tab.
+	 */
+	private releaseCachedObjectUrls(): void {
+		if (this.cachedObjectUrl) {
+			URL.revokeObjectURL(this.cachedObjectUrl);
+			this.cachedObjectUrl = null;
+		}
+		if (this.cachedCoverObjectUrl) {
+			URL.revokeObjectURL(this.cachedCoverObjectUrl);
+			this.cachedCoverObjectUrl = null;
+		}
+	}
+
 	constructor() {
 		this.restoreSession();
 		if (typeof window !== 'undefined') {
@@ -225,8 +243,27 @@ class PlayerStore {
 		}
 	}
 
-	currentTrack = $derived<QueueTrack | null>(this.queue[this.queueIndex] ?? null);
-	hasNext = $derived(this.queueIndex < this.queue.length - 1 || this.repeatMode !== 'off');
+	/**
+	 * Where the current track sits in `queue`.
+	 *
+	 * `queueIndex` is a position in *play order*, which is `shuffleIndices`
+	 * when shuffle is on and the queue's own order otherwise — so it has to be
+	 * resolved through that indirection before indexing `queue`. Reading
+	 * `queue[queueIndex]` directly meant shuffled playback ignored the shuffle
+	 * entirely: clicking a song played whichever one happened to sit at its
+	 * play-order position instead.
+	 */
+	currentActualIndex = $derived(
+		this.shuffleEnabled ? (this.shuffleIndices[this.queueIndex] ?? 0) : this.queueIndex
+	);
+	currentTrack = $derived<QueueTrack | null>(this.queue[this.currentActualIndex] ?? null);
+	// Only repeat-all wraps past the end — see nextQueueIndex, which returns
+	// null for repeat-one there. Treating any repeat mode as "there is a next"
+	// left the button enabled on the last track doing nothing.
+	hasNext = $derived(
+		this.queueIndex < this.queue.length - 1 ||
+			(this.repeatMode === 'all' && this.queue.length > 0)
+	);
 	hasPrevious = $derived(this.queueIndex > 0);
 
 	private getAudio(): HTMLAudioElement {
@@ -402,7 +439,7 @@ class PlayerStore {
 	 * offline doesn't accumulate them.
 	 */
 	private playFromCachedUrl(track: QueueTrack, blobUrl: string, autoplay: boolean): void {
-		if (this.cachedObjectUrl) URL.revokeObjectURL(this.cachedObjectUrl);
+		this.releaseCachedObjectUrls();
 		this.cachedObjectUrl = blobUrl;
 
 		this.audioUrl = blobUrl;
@@ -527,8 +564,12 @@ class PlayerStore {
 	}
 
 	toggleShuffle(): void {
+		// Read before flipping the flag: currentActualIndex resolves through
+		// shuffleIndices only while shuffle is on, so taking it afterwards
+		// would resolve under the new mode and anchor the new order to the
+		// wrong track.
+		const currentActualIndex = this.currentActualIndex;
 		this.shuffleEnabled = !this.shuffleEnabled;
-		const currentActualIndex = this.currentActualIndex();
 		if (this.shuffleEnabled) {
 			this.shuffleIndices = moveIndexToFront(shuffleOrder(this.queue.length), currentActualIndex);
 			this.queueIndex = 0;
@@ -542,10 +583,6 @@ class PlayerStore {
 	cycleRepeatMode(): void {
 		this.repeatMode = cycleRepeatMode(this.repeatMode);
 		this.saveSessionNow();
-	}
-
-	private currentActualIndex(): number {
-		return this.shuffleEnabled ? this.shuffleIndices[this.queueIndex] : this.queueIndex;
 	}
 
 	/**
@@ -656,6 +693,8 @@ class PlayerStore {
 			return;
 		}
 
+		// Whatever the offline path minted is no longer what is playing.
+		this.releaseCachedObjectUrls();
 		this.audioUrl = data.audioUrl;
 		this.coverUrl = data.coverUrl;
 		// Title first, so the OS has something to show immediately; the

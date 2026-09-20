@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatDuration, formatLongDuration, formatAudioSpec, formatBytes } from './format';
+import { formatDuration, formatLongDuration, formatAudioSpec, formatBytes, formatPlaybackTime, formatCompactDuration, formatDateTime } from './format';
 
 describe('formatDuration', () => {
 	it('pads seconds so times stay aligned in a list', () => {
@@ -52,5 +52,43 @@ describe('formatBytes', () => {
 
 	it('stops at gigabytes rather than inventing a larger unit', () => {
 		expect(formatBytes(3 * 1024 ** 4)).toBe('3072.0 GB');
+	});
+});
+
+describe('formatPlaybackTime', () => {
+	it('formats a position as m:ss', () => {
+		expect(formatPlaybackTime(0)).toBe('0:00');
+		expect(formatPlaybackTime(65)).toBe('1:05');
+		expect(formatPlaybackTime(3599)).toBe('59:59');
+	});
+
+	it('reads as zero for a duration the media element has not resolved yet', () => {
+		// <audio>.duration is NaN until metadata loads; an em dash mid-playback
+		// would be wrong, which is why this differs from formatDuration.
+		expect(formatPlaybackTime(NaN)).toBe('0:00');
+		expect(formatPlaybackTime(Infinity)).toBe('0:00');
+		expect(formatPlaybackTime(-1)).toBe('0:00');
+	});
+});
+
+describe('formatCompactDuration', () => {
+	it('drops the hour when there is none', () => {
+		expect(formatCompactDuration(0)).toBe('0m');
+		expect(formatCompactDuration(59)).toBe('0m');
+		expect(formatCompactDuration(600)).toBe('10m');
+	});
+
+	it('reads as hours and minutes once past an hour', () => {
+		expect(formatCompactDuration(3600)).toBe('1h 0m');
+		expect(formatCompactDuration(8100)).toBe('2h 15m');
+	});
+});
+
+describe('formatBytes at the scales a quota is set in', () => {
+	it('scales rather than forcing one unit', () => {
+		// The admin page used to divide by 1024^3 unconditionally, so a 200MB
+		// quota read as "0.20 GB" while every other page said "200.0 MB".
+		expect(formatBytes(200 * 1024 * 1024)).toBe('200.0 MB');
+		expect(formatBytes(5 * 1024 * 1024 * 1024)).toBe('5.0 GB');
 	});
 });

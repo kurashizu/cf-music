@@ -10,11 +10,11 @@ import {
 import { getObjectStorage } from '$lib/server/storage/factory';
 import type { PageServerLoad } from './$types';
 
-// Matches the client's own PAGE_SIZE (windowedIndices) — only this many
-// songs are fetched from D1 and have covers presigned here; everything
-// past it is fetched (full row data, not just a cover) on demand as the
-// user scrolls or searches, via GET /api/playlists/[playlistId]/songs —
-// see this page's own fetchMissingSongs/loadMore. Reading every song in
+// Matches PagedList's own DEFAULT_PAGE_SIZE — only this many songs are
+// fetched from D1 and have covers presigned here; everything past it is
+// fetched (full row data, not just a cover) on demand as the user scrolls
+// or searches, via GET /api/playlists/[playlistId]/songs — see this page's
+// own fetchSongRange, which PagedList calls. Reading every song in
 // a large playlist unconditionally on every page load was a confirmed
 // live cost driver (see this file's git history) well before it was ever
 // the presign work itself; both the D1 read and the presign signing now

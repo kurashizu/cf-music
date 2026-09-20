@@ -380,7 +380,6 @@
 		batchDownloadProgress = { completed: 0, total: videoIds.length };
 		try {
 			let failures = 0;
-			const downloaded = new Set(cachedVideoIds);
 			const metadataFor = (videoId: string) => {
 				const song = loadedSongs().find((candidate) => candidate.videoId === videoId);
 				return song && { title: song.title, durationSeconds: song.durationSeconds };
@@ -388,9 +387,12 @@
 			await downloadSongsForOffline(
 				videoIds,
 				(videoId, ok) => {
-					if (ok) downloaded.add(videoId);
+					// Merged into whatever is current rather than into a set
+					// snapshotted before the batch began: a single download
+					// finishing mid-batch would otherwise be erased when the
+					// next one settles.
+					if (ok) cachedVideoIds = new Set([...cachedVideoIds, videoId]);
 					else failures++;
-					cachedVideoIds = new Set(downloaded);
 					if (batchDownloadProgress) batchDownloadProgress.completed++;
 				},
 				metadataFor

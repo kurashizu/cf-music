@@ -13,8 +13,8 @@ const MAX_RANGE_LIMIT = 100; // generous over the client's own page size (20) â€
  * everything a row renders) for songs past the playlist page's own
  * initial window â€” see INITIAL_PAGE_SIZE in +page.server.ts for why the
  * full playlist isn't read from D1 up front. Called by the playlist
- * page's fetchMissingSongs/loadMore as the user scrolls or searches past
- * what was already loaded server-side on first load.
+ * page's fetchSongRange (via PagedList) as the user scrolls or searches
+ * past what was already loaded server-side on first load.
  */
 export const GET: RequestHandler = async (event) => {
 	const session = requireSession(event);

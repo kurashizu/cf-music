@@ -52,7 +52,7 @@
 				class="absolute top-1 left-1 flex items-center gap-0.5 rounded-full bg-black/75 px-1.5 py-0.5 text-[10px] text-white"
 			>
 				<CheckIcon class="size-2.5" />
-				Cached
+				Downloaded
 			</span>
 		{/if}
 		{#if song.embeddingStatus === 'done'}

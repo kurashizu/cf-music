@@ -83,7 +83,7 @@ test.describe('admin panel', () => {
 		// Playwright project sharing the same local D1) also appear in this
 		// list, so scope everything to this test's own row rather than
 		// asserting on page-wide text that another row could coincidentally
-		// share (e.g. also reading "5.00 GB quota").
+		// share (e.g. also reading "5.0 GB quota").
 		const row = page.getByRole('listitem').filter({ hasText: username });
 		await row.getByRole('button', { name: 'Edit quota' }).click();
 
@@ -94,7 +94,11 @@ test.describe('admin panel', () => {
 		await page.getByRole('dialog').getByRole('button', { name: 'Save' }).click();
 
 		await expect(page.getByText('Quota updated')).toBeVisible();
-		await expect(row.getByText('5.00 GB quota')).toBeVisible();
+		// Rendered by the shared formatBytes, which scales to the unit that
+		// actually fits — this page used to divide by 1024^3 unconditionally,
+		// so a 200MB quota read as "0.20 GB" while every other page said
+		// "200.0 MB".
+		await expect(row.getByText('5.0 GB quota')).toBeVisible();
 	});
 
 	test('shows audit log entries after logging in and generating an invite code', async ({

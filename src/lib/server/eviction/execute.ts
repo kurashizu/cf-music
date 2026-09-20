@@ -92,15 +92,3 @@ export async function evictSongForUser(
 		detail: { title: song.title, fileSizeBytes: song.fileSizeBytes, hardDeleted: remainingReferences === 0 }
 	});
 }
-
-/** Evicts every song in `plan.toEvict`, in order, for the given user. */
-export async function executeEvictionPlan(
-	db: Db,
-	storage: ObjectStorage,
-	userId: string,
-	videoIds: string[]
-): Promise<void> {
-	for (const videoId of videoIds) {
-		await evictSongForUser(db, storage, userId, videoId, 'auto_evict');
-	}
-}

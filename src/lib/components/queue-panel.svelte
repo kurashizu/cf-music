@@ -2,6 +2,7 @@
 	import { scale, fade } from 'svelte/transition';
 	import { flip } from 'svelte/animate';
 	import { player } from '$lib/client/player.svelte';
+	import { formatPlaybackTime } from '$lib/shared/format';
 	import { queuePanelState } from '$lib/client/queue-panel-state.svelte';
 	import { motionParams } from '$lib/client/motion';
 	import XIcon from '@lucide/svelte/icons/x';
@@ -43,18 +44,13 @@
 		return `right: ${right}px; top: ${top}px; transform: translateY(-100%); width: min(${PANEL_WIDTH}px, calc(100vw - 24px));`;
 	});
 
-	function formatTime(seconds: number): string {
-		if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
-		const m = Math.floor(seconds / 60);
-		const s = Math.floor(seconds % 60);
-		return `${m}:${s.toString().padStart(2, '0')}`;
-	}
-
 	// A long playlist's queue can carry hundreds of upcoming tracks — same
-	// windowing pattern as the playlist/library pages (see their own
-	// visibleCount/loadMore), just scoped to this panel's own scroll
-	// container instead of the page. Resets whenever the panel (re)opens or
-	// the *current track* changes, not on every upcoming-array mutation —
+	// windowing pattern as the storage page (see its own visibleCount /
+	// loadMore), just scoped to this panel's own scroll container instead of
+	// the page. The playlist page uses PagedList instead, which fetches from
+	// the server; this queue is already entirely in memory, so there is
+	// nothing to fetch. Resets whenever the panel (re)opens or the *current
+	// track* changes, not on every upcoming-array mutation —
 	// removeFromQueue/reorder already animate via animate:flip and
 	// shouldn't also snap the window back to the top.
 	const PAGE_SIZE = 30;
@@ -121,7 +117,7 @@
 					{/if}
 					<p class="min-w-0 flex-1 truncate text-sm font-medium">{player.currentTrack.title}</p>
 					<span class="shrink-0 text-xs text-muted-foreground">
-						{formatTime(player.currentTimeSeconds)}
+						{formatPlaybackTime(player.currentTimeSeconds)}
 					</span>
 					<ChevronDownIcon
 						class="size-3.5 shrink-0 text-muted-foreground transition-transform {nowPlayingExpanded
@@ -159,7 +155,7 @@
 						</button>
 						{#if track.durationSeconds !== null}
 							<span class="shrink-0 text-xs text-muted-foreground">
-								{formatTime(track.durationSeconds)}
+								{formatPlaybackTime(track.durationSeconds)}
 							</span>
 						{/if}
 						<button

@@ -348,7 +348,6 @@
 		batchDownloadProgress = { completed: 0, total: videoIds.length };
 		try {
 			let failures = 0;
-			const downloaded = new Set(cachedVideoIds);
 			const metadataFor = (videoId: string) => {
 				const entry = entries.find((e) => e.videoId === videoId);
 				return entry && { title: entry.title, durationSeconds: entry.durationSeconds };
@@ -356,12 +355,14 @@
 			await downloadSongsForOffline(
 				videoIds,
 				(videoId, ok) => {
-					if (ok) downloaded.add(videoId);
+					// Merged into whatever is current rather than into a set
+					// snapshotted before the batch began: a single download
+					// finishing mid-batch would otherwise be erased when the
+					// next one settles. A fresh Set each time because
+					// reassigning the same reference is not a change as far as
+					// reactivity is concerned.
+					if (ok) cachedVideoIds = new Set([...cachedVideoIds, videoId]);
 					else failures++;
-					// A fresh Set each time: reassigning the same reference is not
-					// a change as far as reactivity is concerned, so the rows
-					// would stop updating after the first download landed.
-					cachedVideoIds = new Set(downloaded);
 					if (batchDownloadProgress) batchDownloadProgress.completed++;
 				},
 				metadataFor
