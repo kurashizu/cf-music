@@ -1,6 +1,12 @@
 import { hasReachedPlayThreshold } from '$lib/shared/playback';
 import { shuffleOrder, nextQueueIndex, cycleRepeatMode, moveIndexToFront, type RepeatMode } from '$lib/shared/queue';
-import { precacheAudio, storeTrackMetadata, cachedAudioUrl } from '$lib/client/offline-cache';
+import {
+	precacheAudio,
+	storeTrackMetadata,
+	cachedAudioUrl,
+	cachedCoverUrl,
+	cacheCover
+} from '$lib/client/offline-cache';
 import { throttledFetchBlobUrl, releaseBlobUrl } from '$lib/client/image-throttle';
 import {
 	bindMediaSessionHandlers,
@@ -137,6 +143,8 @@ class PlayerStore {
 	private artworkSourceUrl: string | null = null;
 	/** Blob URL for audio served from the offline cache, released on track change. */
 	private cachedObjectUrl: string | null = null;
+	/** Blob URL for a cover served from the offline cache, released on track change. */
+	private cachedCoverObjectUrl: string | null = null;
 
 	constructor() {
 		this.restoreSession();
@@ -400,6 +408,19 @@ class PlayerStore {
 		this.audioUrl = blobUrl;
 		this.coverUrl = null;
 		this.audioSpec = null;
+		// The cover comes from the cache too, so the player bar and the OS
+		// notification still show art with no network.
+		void cachedCoverUrl(track.videoId).then((coverBlobUrl) => {
+			if (!coverBlobUrl) return;
+			if (this.currentTrack?.videoId !== track.videoId) {
+				URL.revokeObjectURL(coverBlobUrl);
+				return;
+			}
+			if (this.cachedCoverObjectUrl) URL.revokeObjectURL(this.cachedCoverObjectUrl);
+			this.cachedCoverObjectUrl = coverBlobUrl;
+			this.coverUrl = coverBlobUrl;
+			setMediaSessionTrack({ title: track.title, artworkUrl: coverBlobUrl });
+		});
 		// Already local, so it never expires and never needs re-signing.
 		this.urlExpiresAt = Number.POSITIVE_INFINITY;
 		setMediaSessionTrack({ title: track.title });
@@ -742,6 +763,7 @@ class PlayerStore {
 		this.autoCacheTriggered = true;
 		const track = this.currentTrack;
 		const videoId = track.videoId;
+		const coverUrl = this.coverUrl;
 		precacheAudio(videoId, this.audioUrl)
 			.then(async (cached) => {
 				// Measured from the cached copy so the analysis reads from disk
@@ -754,6 +776,10 @@ class PlayerStore {
 				void storeTrackMetadata([
 					{ videoId, title: track.title, durationSeconds: track.durationSeconds }
 				]);
+				// The cover alongside it, keyed by videoId so it resolves with no
+				// network — otherwise a track listened to right through still has
+				// no art offline.
+				if (coverUrl) void cacheCover(videoId, coverUrl);
 				if (!silenceTrim.enabled) return;
 				const points = await analyzeTrackIfCached(videoId);
 				if (points) this.applyTrimPoints(videoId, points);

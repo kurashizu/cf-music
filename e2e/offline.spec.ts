@@ -64,9 +64,24 @@ async function seedDownloads(page: Page, count: number) {
 
 		await caches.delete('audio-v1');
 		await caches.delete('audio-meta-v1');
+		await caches.delete('cover-v1');
+		await caches.delete('library-v1');
 		const audio = await caches.open('audio-v1');
 		const meta = await caches.open('audio-meta-v1');
+		const covers = await caches.open('cover-v1');
+		// A 1x1 PNG stands in for a real cover; what matters is that one is
+		// found under the videoId and rendered.
+		const pngBytes = Uint8Array.from(
+			atob(
+				'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+			),
+			(c) => c.charCodeAt(0)
+		);
 		for (let i = 1; i <= n; i++) {
+			await covers.put(
+				`https://covers.cf-music.internal/offline-song-${i}`,
+				new Response(pngBytes, { headers: { 'content-type': 'image/png' } })
+			);
 			await audio.put(
 				`https://audio.cf-music.internal/offline-song-${i}`,
 				new Response(tone(), { headers: { 'content-type': 'audio/wav' } })
@@ -152,6 +167,71 @@ test.describe('offline', () => {
 		// same one the online app uses, picks it up.
 		await page.locator('main li button[aria-label="Play"]').first().click();
 		await expect(page.locator('p.text-sm.font-medium', { hasText: 'Offline Song 1' })).toBeVisible();
+	});
+
+	test('covers come from the cache, so rows are not blank', async ({ page }) => {
+		await registerAndLand(page);
+		await seedDownloads(page, 2);
+
+		await page.goto('/offline');
+		await expect(page.getByText('Offline Song 1')).toBeVisible();
+
+		// The cover resolves to a blob URL minted from the cache — a presigned
+		// one could not be signed without a server.
+		await expect
+			.poll(async () =>
+				page.evaluate(() => {
+					const img = document.querySelector('main img');
+					return img instanceof HTMLImageElement ? img.src.startsWith('blob:') : false;
+				})
+			)
+			.toBe(true);
+	});
+
+	test('playlists survive offline, with their own order', async ({ page }) => {
+		await registerAndLand(page);
+		await seedDownloads(page, 3);
+		await page.evaluate(async () => {
+			const cache = await caches.open('library-v1');
+			await cache.put(
+				'https://library.cf-music.internal/snapshot',
+				new Response(
+					JSON.stringify({
+						capturedAt: new Date().toISOString(),
+						playlists: [
+							{
+								id: 'p1',
+								name: 'Evening',
+								kind: 'user',
+								// Deliberately not alphabetical: a playlist keeps its
+								// stored order, unlike the all-downloaded view.
+								videoIds: ['offline-song-3', 'offline-song-1']
+							},
+							{
+								id: 'p2',
+								name: 'Nothing Downloaded',
+								kind: 'user',
+								videoIds: ['not-cached-at-all']
+							}
+						]
+					}),
+					{ headers: { 'content-type': 'application/json' } }
+				)
+			);
+		});
+
+		await page.goto('/offline');
+
+		// Only playlists with something actually downloaded are offered.
+		await expect(page.getByRole('button', { name: /Evening/ })).toBeVisible();
+		await expect(page.getByRole('button', { name: /Nothing Downloaded/ })).toHaveCount(0);
+
+		await page.getByRole('button', { name: /Evening/ }).click();
+
+		await expect(page.getByRole('heading', { name: 'Evening' })).toBeVisible();
+		await expect(page.getByText('2 songs · available without a connection')).toBeVisible();
+		const titles = await page.getByText(/^Offline Song \d$/).allTextContents();
+		expect(titles).toEqual(['Offline Song 3', 'Offline Song 1']);
 	});
 
 	test('says so plainly when nothing is downloaded', async ({ page }) => {

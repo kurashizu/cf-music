@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { syncLibrarySnapshot } from '$lib/client/offline-cache';
 	import { page } from '$app/state';
 	import { isTouchDevice } from '$lib/client/motion';
 	import { Toaster } from '$lib/components/ui/sonner/index.js';
@@ -51,6 +52,10 @@
 	let tooltipsDisabled = $state(false);
 	onMount(() => {
 		tooltipsDisabled = isTouchDevice();
+		// Keeps the offline copy of the library's structure current. Done here
+		// rather than on one page so it refreshes wherever the reader happens
+		// to go while they still have a connection.
+		void syncLibrarySnapshot();
 	});
 </script>
 

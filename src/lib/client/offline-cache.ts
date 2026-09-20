@@ -8,14 +8,21 @@
 import { analyzeTrackIfCached } from '$lib/client/silence-trim.svelte';
 import {
 	AUDIO_CACHE_NAME,
+	COVER_CACHE_NAME,
+	LIBRARY_CACHE_NAME,
 	METADATA_CACHE_NAME,
 	audioCacheKey,
+	coverCacheKey,
+	librarySnapshotKey,
 	metadataCacheKey,
-	type CachedTrackMetadata
+	type CachedPlaylist,
+	type CachedTrackMetadata,
+	type LibrarySnapshot
 } from '$lib/shared/audio-cache-key';
 
 interface StreamUrlResponse {
 	audioUrl: string;
+	coverUrl: string | null;
 }
 
 async function postToServiceWorker(message: unknown): Promise<void> {
@@ -120,6 +127,23 @@ export async function precacheAudio(videoId: string, audioUrl: string): Promise<
 }
 
 /**
+ * Fetches a cover and stores it under its videoId, so it can be found again
+ * without a presigned URL. Best-effort: a missing cover is a placeholder, not
+ * a failed download.
+ */
+export async function cacheCover(videoId: string, coverUrl: string): Promise<void> {
+	if (typeof caches === 'undefined') return;
+	try {
+		const cache = await caches.open(COVER_CACHE_NAME);
+		if (await cache.match(coverCacheKey(videoId))) return;
+		const response = await fetch(coverUrl);
+		if (response.status === 200) await cache.put(coverCacheKey(videoId), response);
+	} catch {
+		// No cover offline; the row shows its placeholder.
+	}
+}
+
+/**
  * Downloads one song into the offline cache on demand — used by explicit
  * "download" actions in the UI.
  *
@@ -140,10 +164,15 @@ export async function downloadSongForOffline(
 	try {
 		const response = await fetch(`/api/stream-url/${videoId}`);
 		if (!response.ok) return false;
-		const { audioUrl }: StreamUrlResponse = await response.json();
+		const { audioUrl, coverUrl }: StreamUrlResponse = await response.json();
 		const cached = await precacheAudio(videoId, audioUrl);
 		if (cached) {
 			if (metadata) await storeTrackMetadata([{ videoId, ...metadata }]);
+			// The cover too: it is otherwise only cached as a side effect of
+			// some page happening to display it, so a song downloaded and never
+			// scrolled past had no art at all offline. Downloading a song
+			// should bring everything needed to show it.
+			if (coverUrl) await cacheCover(videoId, coverUrl);
 			await analyzeTrackIfCached(videoId).catch(() => null);
 		}
 		return cached;
@@ -248,6 +277,79 @@ export async function backfillTrackMetadata(known: CachedTrackMetadata[]): Promi
 		if (missing.length > 0) await storeTrackMetadata(missing);
 	} catch {
 		// Best-effort: a song without a title still plays.
+	}
+}
+
+/**
+ * Stores the shape of the library — the playlists and what is in them — so
+ * offline keeps the same structure rather than collapsing to one flat list.
+ *
+ * Written whenever a page that knows the library renders, which is the only
+ * place this information exists on the client.
+ */
+export async function storeLibrarySnapshot(playlists: CachedPlaylist[]): Promise<void> {
+	if (typeof caches === 'undefined' || playlists.length === 0) return;
+	try {
+		const cache = await caches.open(LIBRARY_CACHE_NAME);
+		const snapshot: LibrarySnapshot = { playlists, capturedAt: new Date().toISOString() };
+		await cache.put(
+			librarySnapshotKey(),
+			new Response(JSON.stringify(snapshot), {
+				headers: { 'content-type': 'application/json' }
+			})
+		);
+	} catch {
+		// Offline still works without it, just as a single list.
+	}
+}
+
+/**
+ * Refreshes the cached library structure from the server.
+ *
+ * Called from pages that are already online; failing is fine, since the last
+ * good snapshot stays in place and an offline device is no worse off than
+ * before.
+ */
+export async function syncLibrarySnapshot(): Promise<void> {
+	try {
+		const response = await fetch('/api/library-snapshot');
+		if (!response.ok) return;
+		const { playlists } = (await response.json()) as { playlists: CachedPlaylist[] };
+		await storeLibrarySnapshot(playlists);
+	} catch {
+		// Offline already, or the request failed; keep whatever was stored.
+	}
+}
+
+/** The last library snapshot taken while online, or null if there isn't one. */
+export async function readLibrarySnapshot(): Promise<LibrarySnapshot | null> {
+	if (typeof caches === 'undefined') return null;
+	try {
+		const cache = await caches.open(LIBRARY_CACHE_NAME);
+		const hit = await cache.match(librarySnapshotKey());
+		return hit ? ((await hit.json()) as LibrarySnapshot) : null;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * A local URL for a cached cover, or null if there isn't one.
+ *
+ * Covers are cached opportunistically the first time any page shows one (see
+ * service-worker.ts), keyed by videoId rather than by their presigned URL —
+ * which is what makes them findable with no network, since a fresh presign
+ * can't be minted offline.
+ */
+export async function cachedCoverUrl(videoId: string): Promise<string | null> {
+	if (typeof caches === 'undefined') return null;
+	try {
+		const cache = await caches.open(COVER_CACHE_NAME);
+		const hit = await cache.match(coverCacheKey(videoId));
+		if (!hit) return null;
+		return URL.createObjectURL(await hit.blob());
+	} catch {
+		return null;
 	}
 }
 

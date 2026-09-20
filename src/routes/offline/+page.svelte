@@ -2,8 +2,12 @@
 	import { onMount } from 'svelte';
 	import { player } from '$lib/client/player.svelte';
 	import { viewMode } from '$lib/client/view-mode.svelte';
-	import { listCachedTracks } from '$lib/client/offline-cache';
-	import type { CachedTrackMetadata } from '$lib/shared/audio-cache-key';
+	import {
+		listCachedTracks,
+		cachedCoverUrl,
+		readLibrarySnapshot
+	} from '$lib/client/offline-cache';
+	import type { CachedPlaylist, CachedTrackMetadata } from '$lib/shared/audio-cache-key';
 	import SongRow from '$lib/components/song-row.svelte';
 	import SongCard from '$lib/components/song-card.svelte';
 	import ViewModeToggle from '$lib/components/view-mode-toggle.svelte';
@@ -15,27 +19,63 @@
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import CloudOffIcon from '@lucide/svelte/icons/cloud-off';
 	import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
+	import ListMusicIcon from '@lucide/svelte/icons/list-music';
 	import { isTouchDevice } from '$lib/client/motion';
 	import type { SongRowActions, SongRowData, SongRowFlags } from '$lib/components/song-row-types';
 
-	// The same components the online library uses, so this looks like the app
-	// rather than a fallback page — the only thing that differs is where the
-	// songs come from, which is the cache instead of the server.
+	// The same components the online library uses, so this is the app rather
+	// than a fallback page — the only difference is where the songs come from,
+	// which is the cache instead of the server.
 	let tracks = $state<CachedTrackMetadata[]>([]);
+	let playlists = $state<CachedPlaylist[]>([]);
+	// Cover blob URLs by videoId. Resolved once and revoked on teardown, since
+	// each createObjectURL holds its blob alive until it is released.
+	let coverUrls = $state<Record<string, string>>({});
 	let loaded = $state(false);
 	let searchQuery = $state('');
 	let backOnline = $state(false);
+	/** null means "everything downloaded"; otherwise a playlist id. */
+	let selectedPlaylistId = $state<string | null>(null);
 
 	const tooltipsDisabled = isTouchDevice();
 
-	const filtered = $derived.by(() => {
+	const byVideoId = $derived(new Map(tracks.map((track) => [track.videoId, track])));
+
+	/**
+	 * Only playlists with something actually downloaded, in their own order.
+	 *
+	 * A playlist whose songs are all still in the cloud would be an empty
+	 * shelf offline, so it isn't offered at all.
+	 */
+	const availablePlaylists = $derived.by(() =>
+		playlists
+			.map((playlist) => ({
+				...playlist,
+				videoIds: playlist.videoIds.filter((videoId) => byVideoId.has(videoId))
+			}))
+			.filter((playlist) => playlist.videoIds.length > 0)
+	);
+
+	const selectedPlaylist = $derived(
+		availablePlaylists.find((playlist) => playlist.id === selectedPlaylistId) ?? null
+	);
+
+	const visibleTracks = $derived.by(() => {
+		// A playlist keeps its own stored order; the all-downloaded view has no
+		// order of its own, so it sorts by title.
+		const base = selectedPlaylist
+			? selectedPlaylist.videoIds
+					.map((videoId) => byVideoId.get(videoId))
+					.filter((track): track is CachedTrackMetadata => track !== undefined)
+			: [...tracks].sort((a, b) => a.title.localeCompare(b.title));
+
 		const query = searchQuery.trim().toLowerCase();
-		if (query.length === 0) return tracks;
-		return tracks.filter((track) => track.title.toLowerCase().includes(query));
+		if (query.length === 0) return base;
+		return base.filter((track) => track.title.toLowerCase().includes(query));
 	});
 
 	const queueTracks = $derived(
-		filtered.map((track) => ({
+		visibleTracks.map((track) => ({
 			videoId: track.videoId,
 			title: track.title,
 			durationSeconds: track.durationSeconds
@@ -43,17 +83,38 @@
 	);
 
 	onMount(() => {
-		listCachedTracks().then((found) => {
-			// Alphabetical: there is no playlist order to honour here, and a
-			// Cache Storage listing comes back in whatever order it pleases.
-			tracks = found.sort((a, b) => a.title.localeCompare(b.title));
+		let disposed = false;
+		const minted: string[] = [];
+
+		Promise.all([listCachedTracks(), readLibrarySnapshot()]).then(async ([found, snapshot]) => {
+			if (disposed) return;
+			tracks = found;
+			playlists = snapshot?.playlists ?? [];
 			loaded = true;
+
+			// Covers resolve after the list is up, so the page appears at once
+			// and fills in rather than waiting on every blob.
+			for (const track of found) {
+				const url = await cachedCoverUrl(track.videoId);
+				if (!url) continue;
+				if (disposed) {
+					URL.revokeObjectURL(url);
+					return;
+				}
+				minted.push(url);
+				coverUrls = { ...coverUrls, [track.videoId]: url };
+			}
 		});
 
 		const onOnline = () => (backOnline = true);
 		window.addEventListener('online', onOnline);
 		if (navigator.onLine) backOnline = true;
-		return () => window.removeEventListener('online', onOnline);
+
+		return () => {
+			disposed = true;
+			window.removeEventListener('online', onOnline);
+			for (const url of minted) URL.revokeObjectURL(url);
+		};
 	});
 
 	function toRowData(track: CachedTrackMetadata): SongRowData {
@@ -61,10 +122,10 @@
 			videoId: track.videoId,
 			title: track.title,
 			durationSeconds: track.durationSeconds,
-			// No cover and no audio spec offline: covers are presigned per
-			// request and the spec comes back with the stream URL, neither of
-			// which exists without a server. The row renders its placeholder.
-			coverUrl: null,
+			// The cover comes from the cache, keyed by videoId — a presigned URL
+			// can't be minted offline. No audio spec, though: that arrives with
+			// the stream URL, which needs a server.
+			coverUrl: coverUrls[track.videoId] ?? null,
 			codec: null,
 			bitrateKbps: null,
 			embeddingStatus: null
@@ -76,7 +137,7 @@
 			selected: false,
 			current: player.currentTrack?.videoId === track.videoId,
 			playing: player.isPlaying,
-			// Everything listed here is cached by definition — that is the only
+			// Everything listed is cached by definition — that is the only
 			// reason it appears at all.
 			cached: true,
 			downloading: false,
@@ -95,16 +156,16 @@
 		};
 	}
 
-	function rowActions(index: number, track: CachedTrackMetadata): SongRowActions {
+	function rowActions(index: number): SongRowActions {
 		const noop = () => {};
 		return {
-			// Selection, playlists and deletion all need the server, so the row
-			// is play-only here rather than offering actions that would fail.
+			// Editing a playlist, copying or deleting all need the server, so
+			// rows are play-only here rather than offering actions that fail.
 			onSelect: noop,
 			onPlay: () => void playFrom(index),
 			onDownload: noop,
 			onMenuOpenChange: noop,
-			onAddToQueue: noop,
+			onAddToQueue: () => void addToQueue(index),
 			onCopy: noop,
 			onMove: noop,
 			onRemove: noop,
@@ -119,13 +180,23 @@
 	}
 
 	async function playFrom(index: number) {
-		const track = filtered[index];
+		const track = visibleTracks[index];
 		if (!track) return;
 		if (player.currentTrack?.videoId === track.videoId) {
 			await player.togglePlayPause();
 			return;
 		}
 		await player.playQueue(queueTracks, index);
+	}
+
+	async function addToQueue(index: number) {
+		const track = queueTracks[index];
+		if (track) await player.addToQueue([track]);
+	}
+
+	async function playAll(shuffle = false) {
+		if (queueTracks.length === 0) return;
+		await player.playQueue(queueTracks, 0, shuffle);
 	}
 </script>
 
@@ -135,7 +206,7 @@
 
 <Tooltip.Provider disabled={tooltipsDisabled}>
 	<div class="flex h-svh flex-col bg-background">
-		<header class="flex items-center gap-2 border-b border-border p-3">
+		<header class="flex shrink-0 items-center gap-2 border-b border-border p-3">
 			<Logo size={22} />
 			<span class="text-sm font-medium">KRSZ Music</span>
 			<span
@@ -149,26 +220,64 @@
 		<main class="min-h-0 flex-1 overflow-y-auto">
 			<div class="mx-auto max-w-screen-2xl p-4 md:p-8">
 				<div class="mb-6 flex flex-wrap items-center justify-between gap-3">
-					<div>
-						<h1 class="text-lg font-medium">Downloaded</h1>
+					<div class="min-w-0">
+						<h1 class="truncate text-lg font-medium">
+							{selectedPlaylist ? selectedPlaylist.name : 'Downloaded'}
+						</h1>
 						<p class="text-xs text-muted-foreground">
 							{#if !loaded}
 								Looking for downloaded songs…
 							{:else if tracks.length === 0}
 								Nothing on this device yet
 							{:else}
-								{tracks.length}
-								{tracks.length === 1 ? 'song' : 'songs'} · available without a connection
+								{visibleTracks.length}
+								{visibleTracks.length === 1 ? 'song' : 'songs'} · available without a connection
 							{/if}
 						</p>
 					</div>
-					{#if backOnline}
-						<Button href="/library" size="sm" class="gap-1.5">
-							<RefreshCwIcon class="size-4" />
-							Back online
-						</Button>
-					{/if}
+					<div class="flex items-center gap-2">
+						{#if loaded && visibleTracks.length > 0}
+							<Button size="sm" class="gap-1.5" onclick={() => playAll()}>Play</Button>
+							<Button size="sm" variant="outline" class="gap-1.5" onclick={() => playAll(true)}>
+								Shuffle
+							</Button>
+						{/if}
+						{#if backOnline}
+							<Button href="/library" size="sm" variant="outline" class="gap-1.5">
+								<RefreshCwIcon class="size-4" />
+								Back online
+							</Button>
+						{/if}
+					</div>
 				</div>
+
+				{#if loaded && availablePlaylists.length > 0}
+					<!-- Horizontal rather than a sidebar: this page is one column,
+					     and the list is short since only playlists with something
+					     downloaded appear. -->
+					<div class="mb-4 flex gap-2 overflow-x-auto pb-1">
+						<Button
+							size="sm"
+							variant={selectedPlaylistId === null ? 'default' : 'outline'}
+							class="shrink-0 gap-1.5"
+							onclick={() => (selectedPlaylistId = null)}
+						>
+							All downloaded
+						</Button>
+						{#each availablePlaylists as playlist (playlist.id)}
+							<Button
+								size="sm"
+								variant={selectedPlaylistId === playlist.id ? 'default' : 'outline'}
+								class="shrink-0 gap-1.5"
+								onclick={() => (selectedPlaylistId = playlist.id)}
+							>
+								<ListMusicIcon class="size-3.5" />
+								{playlist.name}
+								<span class="text-[11px] opacity-70">{playlist.videoIds.length}</span>
+							</Button>
+						{/each}
+					</div>
+				{/if}
 
 				{#if loaded && tracks.length > 0}
 					<div class="mb-3 flex flex-wrap items-center gap-2">
@@ -195,30 +304,28 @@
 							storage — and they'll play here with no connection.
 						</p>
 					</div>
-				{:else if filtered.length === 0}
+				{:else if visibleTracks.length === 0}
 					<p class="py-8 text-center text-sm text-muted-foreground">
-						No downloaded songs match "{searchQuery}".
+						{searchQuery.trim().length > 0
+							? `No downloaded songs match "${searchQuery}".`
+							: 'Nothing downloaded from this playlist yet.'}
 					</p>
 				{:else if viewMode.mode === 'grid'}
 					<div
 						class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8"
 					>
-						{#each filtered as track, index (track.videoId)}
+						{#each visibleTracks as track, index (track.videoId)}
 							<SongCard
 								song={toRowData(track)}
 								flags={rowFlags(track)}
-								actions={rowActions(index, track)}
+								actions={rowActions(index)}
 							/>
 						{/each}
 					</div>
 				{:else}
 					<ul class="flex flex-col">
-						{#each filtered as track, index (track.videoId)}
-							<SongRow
-								song={toRowData(track)}
-								flags={rowFlags(track)}
-								actions={rowActions(index, track)}
-							/>
+						{#each visibleTracks as track, index (track.videoId)}
+							<SongRow song={toRowData(track)} flags={rowFlags(track)} actions={rowActions(index)} />
 						{/each}
 					</ul>
 				{/if}

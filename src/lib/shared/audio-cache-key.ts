@@ -17,6 +17,11 @@ export const COVER_CACHE_NAME = 'cover-v1';
  * the key is not something a reader can be shown.
  */
 export const METADATA_CACHE_NAME = 'audio-meta-v1';
+/**
+ * Holds the shape of the library itself — which playlists exist and which
+ * songs are in each — so offline is the same app rather than one flat list.
+ */
+export const LIBRARY_CACHE_NAME = 'library-v1';
 
 /**
  * Presigned S3/MinIO URLs (see /api/stream-url/[videoId]) carry a
@@ -54,6 +59,26 @@ export function coverCacheKey(videoId: string): string {
 /** Lookup key for one cached song's metadata. Same scheme as audioCacheKey, never fetched. */
 export function metadataCacheKey(videoId: string): string {
 	return `https://meta.cf-music.internal/${videoId}`;
+}
+
+/** Lookup key for the cached library snapshot. Never fetched. */
+export function librarySnapshotKey(): string {
+	return 'https://library.cf-music.internal/snapshot';
+}
+
+/** One playlist as it is needed offline: its name, and the songs it holds in order. */
+export interface CachedPlaylist {
+	id: string;
+	name: string;
+	kind: string;
+	videoIds: string[];
+}
+
+/** The whole library as last seen online. */
+export interface LibrarySnapshot {
+	playlists: CachedPlaylist[];
+	/** When this was taken, so the offline view can say how fresh it is. */
+	capturedAt: string;
 }
 
 /** What is known about a cached song without reaching the network. */

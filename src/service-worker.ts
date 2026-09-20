@@ -16,6 +16,7 @@ import {
 	AUDIO_CACHE_NAME,
 	COVER_CACHE_NAME,
 	METADATA_CACHE_NAME,
+	LIBRARY_CACHE_NAME,
 	metadataCacheKey
 } from '$lib/shared/audio-cache-key';
 import { sliceRangeFromCachedResponse } from '$lib/shared/range-slice';
@@ -30,6 +31,7 @@ const AUDIO_CACHE = AUDIO_CACHE_NAME;
 // first time any page happens to request one.
 const COVER_CACHE = COVER_CACHE_NAME;
 const METADATA_CACHE = METADATA_CACHE_NAME;
+const LIBRARY_CACHE = LIBRARY_CACHE_NAME;
 
 /**
  * The page served for any navigation the network can't answer.
@@ -77,15 +79,17 @@ sw.addEventListener('activate', (event) => {
 			// those are keyed by videoId, not by deploy version, and clearing
 			// them on every deploy would defeat the point of caching them at
 			// all.
+			// Everything keyed by content rather than by deploy: audio, covers,
+			// their metadata and the library's shape all survive a deploy,
+			// because clearing them would throw away the user's downloads. Only
+			// a previous deploy's APP_CACHE is dropped.
+			//
+			// Listed in one place deliberately: a cache missing from here is
+			// silently deleted on the next deploy, which is how the library
+			// snapshot vanished the first time.
+			const KEEP = new Set([APP_CACHE, AUDIO_CACHE, COVER_CACHE, METADATA_CACHE, LIBRARY_CACHE]);
 			for (const key of await caches.keys()) {
-				if (
-					key !== APP_CACHE &&
-					key !== AUDIO_CACHE &&
-					key !== COVER_CACHE &&
-					key !== METADATA_CACHE
-				) {
-					await caches.delete(key);
-				}
+				if (!KEEP.has(key)) await caches.delete(key);
 			}
 			// Pairs with skipWaiting above: takes control of already-open
 			// tabs immediately rather than only ones opened after this

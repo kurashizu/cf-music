@@ -333,6 +333,55 @@ export type PlaylistSongRow = typeof songs.$inferSelect & {
  * fetched, is pulled through this same range query on demand from the
  * client instead of the whole playlist being read into memory up front.
  */
+/** One playlist's identity and membership — enough to rebuild the library offline. */
+export interface PlaylistMembership {
+	id: string;
+	name: string;
+	kind: string;
+	videoIds: string[];
+}
+
+/**
+ * Every playlist the user has, with the videoIds each contains in order.
+ *
+ * One pass over the membership table rather than a query per playlist: this
+ * exists to be cached wholesale by the client for offline use, so it is asked
+ * for in full or not at all.
+ */
+export async function listPlaylistMemberships(
+	db: Db,
+	userId: string
+): Promise<PlaylistMembership[]> {
+	const userPlaylists = await db
+		.select({ id: playlists.id, name: playlists.name, kind: playlists.kind })
+		.from(playlists)
+		.where(eq(playlists.userId, userId));
+	if (userPlaylists.length === 0) return [];
+
+	const memberships = await db
+		.select({
+			playlistId: playlistSongs.playlistId,
+			videoId: playlistSongs.videoId,
+			position: playlistSongs.position
+		})
+		.from(playlistSongs)
+		.innerJoin(playlists, eq(playlistSongs.playlistId, playlists.id))
+		.where(eq(playlists.userId, userId))
+		.orderBy(playlistSongs.position);
+
+	const byPlaylist = new Map<string, string[]>();
+	for (const row of memberships) {
+		const existing = byPlaylist.get(row.playlistId);
+		if (existing) existing.push(row.videoId);
+		else byPlaylist.set(row.playlistId, [row.videoId]);
+	}
+
+	return userPlaylists.map((playlist) => ({
+		...playlist,
+		videoIds: byPlaylist.get(playlist.id) ?? []
+	}));
+}
+
 export async function getPlaylistSongsInRange(
 	db: Db,
 	playlistId: string,
