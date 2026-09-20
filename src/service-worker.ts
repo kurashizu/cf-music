@@ -12,19 +12,21 @@ import {
 	audioCacheKey,
 	extractVideoIdFromAudioPath,
 	coverCacheKey,
-	extractVideoIdFromCoverPath
+	extractVideoIdFromCoverPath,
+	AUDIO_CACHE_NAME,
+	COVER_CACHE_NAME
 } from '$lib/shared/audio-cache-key';
 import { sliceRangeFromCachedResponse } from '$lib/shared/range-slice';
 
 const sw = self as unknown as ServiceWorkerGlobalScope;
 
 const APP_CACHE = `app-${version}`;
-const AUDIO_CACHE = 'audio-v1';
+const AUDIO_CACHE = AUDIO_CACHE_NAME;
 // Separate from AUDIO_CACHE: covers are small and every song has one, so
 // there's no reason to gate them behind the same explicit pin/download
 // flow audio uses — they're cached opportunistically, cache-first, the
 // first time any page happens to request one.
-const COVER_CACHE = 'cover-v1';
+const COVER_CACHE = COVER_CACHE_NAME;
 
 sw.addEventListener('install', (event) => {
 	event.waitUntil(

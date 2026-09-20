@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { formatBytes } from '$lib/shared/format';
 	import { untrack, onMount } from 'svelte';
 	import { flip } from 'svelte/animate';
 	import { slide, scale } from 'svelte/transition';
@@ -168,18 +169,6 @@
 			? Math.min(100, (browserStorage.usageBytes / data.quotaBytes) * 100)
 			: 0
 	);
-
-	function formatBytes(bytes: number): string {
-		if (bytes < 1024) return `${bytes} B`;
-		const units = ['KB', 'MB', 'GB'];
-		let value = bytes / 1024;
-		let unitIndex = 0;
-		while (value >= 1024 && unitIndex < units.length - 1) {
-			value /= 1024;
-			unitIndex++;
-		}
-		return `${value.toFixed(1)} ${units[unitIndex]}`;
-	}
 
 	onMount(() => {
 		estimateBrowserStorage().then((estimate) => {

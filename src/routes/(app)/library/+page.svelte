@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { formatDuration } from '$lib/shared/format';
 	import { invalidateAll } from '$app/navigation';
 	import { toast } from 'svelte-sonner';
 	import { flip } from 'svelte/animate';
@@ -96,13 +97,6 @@
 	async function playSong(song: { videoId: string; title: string; durationSeconds: number | null }) {
 		const index = matchingSongs.findIndex((s) => s.videoId === song.videoId);
 		await player.playQueue(matchingSongs, Math.max(0, index));
-	}
-
-	function formatDuration(seconds: number | null): string {
-		if (seconds === null) return '—';
-		const m = Math.floor(seconds / 60);
-		const s = Math.floor(seconds % 60);
-		return `${m}:${s.toString().padStart(2, '0')}`;
 	}
 
 	let renameTarget = $state<{ id: string; name: string } | null>(null);

@@ -90,10 +90,15 @@ class PlayerStore {
 	private autoCacheTriggered = false;
 	private urlExpiresAt = 0;
 	private lastSessionSaveAt = 0;
-	// Seconds to resume at once the restored track's metadata is loaded —
-	// set only during restoreSession(), consumed and cleared by the
-	// 'durationchange' handler in getAudio() the first time it fires for
-	// the freshly-loaded <audio> element.
+	// Where to seek to once the loaded track reports a duration, consumed and
+	// cleared by the 'durationchange' handler in getAudio().
+	//
+	// Anything that needs a position on a track that hasn't loaded yet goes
+	// through here: restoring a session, re-binding after an output device
+	// change, and starting past a measured silent intro. They can't collide —
+	// each sets it immediately before the load whose durationchange consumes
+	// it — but loadCurrent must clear it (see there) so a position set for one
+	// track is never applied to the next.
 	private pendingResumeSeconds: number | null = null;
 	// HTMLMediaElement.play() is asynchronous — it can take real time (a
 	// stream URL fetch, then the browser buffering enough to start) before
@@ -138,33 +143,18 @@ class PlayerStore {
 	}
 
 	/**
-	 * Discards the audio element so the next getAudio() builds one with the
-	 * current settings applied, resuming whatever was playing at its position.
-	 */
-	private rebuildAudioElement(): void {
-		const old = this.audio;
-		if (!old) return;
-		const resumeAt = old.currentTime;
-		const wasPlaying = !old.paused;
-		old.pause();
-		this.audio = null;
-		if (!this.audioUrl) return;
-
-		const audio = this.getAudio();
-		audio.src = this.audioUrl;
-		if (resumeAt > 0) this.pendingResumeSeconds = resumeAt;
-		if (wasPlaying) void this.startPlayback();
-	}
-
-	/**
 	 * Reloads the current media in place so it attaches to the current default
-	 * output device, preserving position and play state. No-op unless
-	 * something is actually playing, since a paused element picks up the new
-	 * device on its next play() anyway.
+	 * output device, preserving position and play state.
+	 *
+	 * Gated on `isPlaying` — the user's intent — rather than the element's own
+	 * `paused`. Losing an output device (unplugging headphones) makes the
+	 * browser pause the element itself, so by the time devicechange arrives
+	 * `paused` is already true; treating that as "nothing to do" is exactly
+	 * why playback stayed silent until the page was reloaded.
 	 */
 	private async rebindOutputDevice(): Promise<void> {
 		const audio = this.audio;
-		if (!audio || audio.paused || !audio.src || this.rebindingOutput) return;
+		if (!audio || !this.isPlaying || !audio.src || this.rebindingOutput) return;
 
 		// A single plug/unplug typically fires devicechange more than once;
 		// without this, each one would restart playback again.
@@ -228,6 +218,14 @@ class PlayerStore {
 				}
 			});
 			this.audio.addEventListener('ended', () => this.handleEnded());
+			// Losing an output device pauses the element without the user
+			// asking. devicechange alone isn't dependable here — a page that
+			// has never enumerated devices may not receive it — so a pause
+			// that contradicts the user's intent is treated as the same
+			// signal, and playback is re-bound to whatever is now default.
+			this.audio.addEventListener('pause', () => {
+				if (this.isPlaying) void this.rebindOutputDevice();
+			});
 			this.audio.addEventListener('waiting', () => (this.isLoading = true));
 			this.audio.addEventListener('canplay', () => (this.isLoading = false));
 			this.audio.addEventListener('progress', () => this.maybeAutoCache());
@@ -331,8 +329,12 @@ class PlayerStore {
 		// startPlayback's own rejection handler already swallows the
 		// interruption this pause() is about to cause.
 		if (this.pendingPlay) await this.pendingPlay;
-		this.getAudio().pause();
+		// Cleared before pausing the element, not after: the 'pause' handler
+		// reads this to tell a deliberate pause from the browser pausing us
+		// because an output device disappeared, and would otherwise resume
+		// playback the moment the user asked for it to stop.
 		this.isPlaying = false;
+		this.getAudio().pause();
 		this.saveSessionNow();
 	}
 

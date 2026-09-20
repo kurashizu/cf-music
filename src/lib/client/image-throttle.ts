@@ -38,9 +38,8 @@
  * burst this throttle exists to prevent; only a genuine cache miss queues.
  */
 
-import { coverCacheKey, extractVideoIdFromCoverPath } from '$lib/shared/audio-cache-key';
+import { coverCacheKey, extractVideoIdFromCoverPath, COVER_CACHE_NAME } from '$lib/shared/audio-cache-key';
 
-const COVER_SW_CACHE_NAME = 'cover-v1';
 
 const blobUrlCache = new Map<string, { url: string; refCount: number }>();
 // Tracks a fetch that's already been started (queued or in-flight) for a
@@ -117,7 +116,7 @@ async function isAlreadyCoverCached(url: string): Promise<boolean> {
 	try {
 		const videoId = extractVideoIdFromCoverPath(new URL(url).pathname);
 		if (!videoId) return false;
-		const cache = await caches.open(COVER_SW_CACHE_NAME);
+		const cache = await caches.open(COVER_CACHE_NAME);
 		return (await cache.match(coverCacheKey(videoId))) !== undefined;
 	} catch {
 		return false;

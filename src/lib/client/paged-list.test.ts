@@ -1,0 +1,121 @@
+import { describe, it, expect, vi } from 'vitest';
+import { PagedList } from './paged-list.svelte';
+
+/** A fake backend that hands out `item-N` and records what was asked for. */
+function backend(total: number) {
+	const calls: [number, number][] = [];
+	return {
+		calls,
+		fetchRange: vi.fn(async (offset: number, count: number) => {
+			calls.push([offset, count]);
+			return Array.from({ length: Math.min(count, total - offset) }, (_, i) => `item-${offset + i}`);
+		})
+	};
+}
+
+function build(total: number, initialCount = 20, options = {}) {
+	const back = backend(total);
+	const list = new PagedList<string>({
+		total,
+		initial: Array.from({ length: initialCount }, (_, i) => `item-${i}`),
+		fetchRange: back.fetchRange,
+		...options
+	});
+	return { list, back };
+}
+
+describe('window', () => {
+	it('starts at the first page', () => {
+		const { list } = build(365);
+		expect(list.windowIndices).toEqual([...Array(20).keys()]);
+		expect(list.hasMore).toBe(true);
+	});
+
+	it('grows a page at a time', async () => {
+		const { list } = build(365);
+		await list.extend();
+		expect(list.windowIndices.length).toBe(40);
+		expect(list.windowIndices[39]).toBe(39);
+	});
+
+	it('stops growing past a cap, releasing what scrolled away', async () => {
+		const { list } = build(365, 20, { maxWindow: 60 });
+		for (let i = 0; i < 6; i++) await list.extend();
+
+		// Held items stay bounded however far the list is scrolled — this is
+		// what keeps a long list from accumulating rows until the browser
+		// discards the page.
+		expect(list.windowIndices.length).toBeLessThanOrEqual(60);
+		expect(list.loadedCount).toBeLessThanOrEqual(60);
+		// The window has moved forward rather than growing from zero.
+		expect(list.windowStart).toBeGreaterThan(0);
+	});
+
+	it('never reports an index it cannot render', async () => {
+		const { list } = build(365, 20, { maxWindow: 40 });
+		for (let i = 0; i < 4; i++) await list.extend();
+		for (const i of list.windowIndices) {
+			expect(list.items[i]).toBeDefined();
+		}
+	});
+
+	it('stops at the end of the list', async () => {
+		const { list } = build(30);
+		await list.extend();
+		expect(list.hasMore).toBe(false);
+		expect(list.windowIndices.length).toBe(30);
+	});
+});
+
+describe('fetching', () => {
+	it('asks only for positions it is missing', async () => {
+		const { list, back } = build(365);
+		await list.extend();
+		expect(back.calls).toEqual([[20, 20]]);
+	});
+
+	it('splits a large range into chunks the endpoint accepts', async () => {
+		// The songs endpoint clamps a larger limit silently, so asking for more
+		// than it serves would leave the tail of the range unfilled.
+		const { list, back } = build(365, 20, { maxFetch: 100 });
+		await list.loadAll();
+		expect(back.calls.every(([, count]) => count <= 100)).toBe(true);
+		expect(list.isComplete).toBe(true);
+	});
+
+	it('fills every position when loading everything', async () => {
+		const { list } = build(365);
+		await list.loadAll();
+		expect(list.loadedCount).toBe(365);
+		expect(list.items[364]).toBe('item-364');
+	});
+
+	it('does not re-request a position already in flight', async () => {
+		const { list, back } = build(365);
+		await Promise.all([list.extend(), list.extend()]);
+		const requested = back.calls.flatMap(([offset, count]) =>
+			Array.from({ length: count }, (_, i) => offset + i)
+		);
+		expect(new Set(requested).size).toBe(requested.length);
+	});
+
+	it('keeps everything once the whole list is held', async () => {
+		// Searching and sorting need every item; releasing under them would
+		// make results flicker as the window moved.
+		const { list } = build(120, 20, { maxWindow: 40 });
+		await list.loadAll();
+		await list.extend();
+		expect(list.loadedCount).toBe(120);
+	});
+});
+
+describe('reset', () => {
+	it('re-seeds from a fresh payload and returns to the first page', async () => {
+		const { list } = build(365);
+		await list.extend();
+		list.reset(['fresh-0', 'fresh-1']);
+		expect(list.windowStart).toBe(0);
+		expect(list.items[0]).toBe('fresh-0');
+		expect(list.items[2]).toBeUndefined();
+	});
+});

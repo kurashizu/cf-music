@@ -1,4 +1,15 @@
 /**
+ * Names of the Cache Storage buckets the service worker maintains.
+ *
+ * Declared here, beside the key helpers, because more than the service
+ * worker reads them: analysis code opens the audio cache directly to reuse a
+ * track it has already downloaded. A bucket renamed in only one of those
+ * places fails silently — the reader simply finds nothing.
+ */
+export const AUDIO_CACHE_NAME = 'audio-v1';
+export const COVER_CACHE_NAME = 'cover-v1';
+
+/**
  * Presigned S3/MinIO URLs (see /api/stream-url/[videoId]) carry a
  * signature query string that's different on every request, so the
  * request URL itself can't be a stable Cache API key — two requests for

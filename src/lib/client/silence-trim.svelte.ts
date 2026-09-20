@@ -1,4 +1,4 @@
-import { audioCacheKey } from '$lib/shared/audio-cache-key';
+import { audioCacheKey, AUDIO_CACHE_NAME } from '$lib/shared/audio-cache-key';
 
 const STORAGE_KEY = 'krsz-music:trim-silence';
 const TRIM_POINTS_KEY = 'krsz-music:trim-points';
@@ -93,12 +93,6 @@ function saveTrimPoints(videoId: string, points: TrimPoints): void {
 	localStorage.setItem(TRIM_POINTS_KEY, JSON.stringify(all));
 }
 
-/** Drops every measurement — used when local data is cleared. */
-export function clearTrimPoints(): void {
-	if (typeof localStorage === 'undefined') return;
-	localStorage.removeItem(TRIM_POINTS_KEY);
-}
-
 /**
  * Finds where audible content starts and ends in decoded audio.
  *
@@ -150,7 +144,12 @@ export function findTrimPoints(samples: Float32Array, sampleRate: number): TrimP
 	};
 }
 
-let analysisInFlight: string | null = null;
+/**
+ * In-progress measurements by videoId, so a second request for the same track
+ * awaits the first rather than being told there are no trim points while the
+ * measurement is seconds from finishing.
+ */
+const analysisInFlight = new Map<string, Promise<TrimPoints | null>>();
 
 /**
  * Measures and stores a track's trim points, reading the audio the service
@@ -162,27 +161,36 @@ let analysisInFlight: string | null = null;
  * second play onward rather than making the first one wait.
  */
 export async function analyzeTrackIfCached(videoId: string): Promise<TrimPoints | null> {
-	if (typeof caches === 'undefined' || analysisInFlight === videoId) return null;
-	if (getTrimPoints(videoId)) return getTrimPoints(videoId);
+	if (typeof caches === 'undefined') return null;
 
-	analysisInFlight = videoId;
-	try {
-		const cache = await caches.open('audio-v1');
-		const hit = await cache.match(audioCacheKey(videoId));
-		if (!hit) return null;
+	const known = getTrimPoints(videoId);
+	if (known) return known;
 
-		const encoded = await hit.arrayBuffer();
-		const context = new OfflineAudioContext(1, ANALYSIS_SAMPLE_RATE, ANALYSIS_SAMPLE_RATE);
-		const decoded = await context.decodeAudioData(encoded);
-		if (decoded.duration > MAX_ANALYSIS_SECONDS) return null;
+	const running = analysisInFlight.get(videoId);
+	if (running) return running;
 
-		const points = findTrimPoints(decoded.getChannelData(0), decoded.sampleRate);
-		saveTrimPoints(videoId, points);
-		return points;
-	} catch {
-		// A track that can't be decoded just doesn't get trimmed.
-		return null;
-	} finally {
-		analysisInFlight = null;
-	}
+	const analysis = (async (): Promise<TrimPoints | null> => {
+		try {
+			const cache = await caches.open(AUDIO_CACHE_NAME);
+			const hit = await cache.match(audioCacheKey(videoId));
+			if (!hit) return null;
+
+			const encoded = await hit.arrayBuffer();
+			const context = new OfflineAudioContext(1, ANALYSIS_SAMPLE_RATE, ANALYSIS_SAMPLE_RATE);
+			const decoded = await context.decodeAudioData(encoded);
+			if (decoded.duration > MAX_ANALYSIS_SECONDS) return null;
+
+			const points = findTrimPoints(decoded.getChannelData(0), decoded.sampleRate);
+			saveTrimPoints(videoId, points);
+			return points;
+		} catch {
+			// A track that can't be decoded just doesn't get trimmed.
+			return null;
+		} finally {
+			analysisInFlight.delete(videoId);
+		}
+	})();
+
+	analysisInFlight.set(videoId, analysis);
+	return analysis;
 }
