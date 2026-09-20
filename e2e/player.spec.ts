@@ -37,6 +37,29 @@ async function stubStreamUrls(page: Page) {
 	});
 }
 
+// "Play" is a substring of the sidebar's "Collapse playlists" button, so an
+// unscoped getByRole('button', { name: 'Play' }) matches it too — and
+// .first() picked it, clicking the sidebar toggle instead of anything that
+// plays. Every player control below is scoped to the element that owns it
+// and matched exactly.
+/**
+ * Clicks the first song row's play button, once it is actually interactive.
+ *
+ * The page server-renders the rows, so a click can land before hydration has
+ * attached the handler — the button is present and clickable but nothing
+ * happens, leaving the player at "Nothing playing". Waiting for the player
+ * bar to leave its empty state confirms the click took effect rather than
+ * being swallowed.
+ */
+async function playFirstRow(page: Page) {
+	const button = page.locator('main li button[aria-label="Play"]').first();
+	await expect(button).toBeVisible();
+	await expect(async () => {
+		await button.click();
+		await expect(page.getByText('Nothing playing')).toHaveCount(0, { timeout: 2000 });
+	}).toPass({ timeout: 20000 });
+}
+
 test.describe('playlist detail page', () => {
 	test('lists songs with formatted durations and an empty state when there are none', async ({
 		page
@@ -73,13 +96,19 @@ test.describe('playlist detail page', () => {
 
 		await page.goto(`/library/${playlistId}`);
 
-		await expect(page.getByRole('menuitem', { name: 'Add to queue' })).toHaveCount(0);
+		const menuItem = page.getByRole('menuitem', { name: 'Add to queue' });
+		await expect(menuItem).toHaveCount(0);
 
-		await page.getByRole('button', { name: 'Song options' }).first().click();
-		await expect(page.getByRole('menuitem', { name: 'Add to queue' })).toBeVisible();
+		// Wait for the row itself before reaching for its menu: under a loaded
+		// test server the list can still be rendering, and clicking a trigger
+		// mid-render opened nothing.
+		const trigger = page.getByRole('button', { name: 'Song options' }).first();
+		await expect(trigger).toBeVisible();
+		await trigger.click();
+		await expect(menuItem).toBeVisible();
 
 		await page.keyboard.press('Escape');
-		await expect(page.getByRole('menuitem', { name: 'Add to queue' })).toHaveCount(0);
+		await expect(menuItem).toHaveCount(0);
 	});
 
 	test('removes a song from the playlist', async ({ page }) => {
@@ -108,10 +137,12 @@ test.describe('player bar', () => {
 		const tracks = seedPlaylistWithSongs(userId, playlistId, 'Playback Test Playlist', 3);
 
 		await page.goto(`/library/${playlistId}`);
-		await page.getByRole('button', { name: 'Play' }).first().click();
+		await playFirstRow(page);
 
 		await expect(page.getByText(tracks[0].title)).toHaveCount(2); // list row + player bar
-		await expect(page.getByRole('button', { name: 'Pause' }).last()).toBeVisible();
+		await expect(
+			page.getByRole('button', { name: 'Pause', exact: true }).last()
+		).toBeVisible();
 	});
 
 	test('advances to the next track and back to the previous one', async ({ page }) => {
@@ -121,13 +152,13 @@ test.describe('player bar', () => {
 		const tracks = seedPlaylistWithSongs(userId, playlistId, 'Skip Test Playlist', 3);
 
 		await page.goto(`/library/${playlistId}`);
-		await page.getByRole('button', { name: 'Play' }).first().click();
-		await expect(page.getByRole('button', { name: 'Next' })).toBeEnabled();
+		await playFirstRow(page);
+		await expect(page.getByRole('button', { name: 'Next', exact: true })).toBeEnabled();
 
-		await page.getByRole('button', { name: 'Next' }).click();
+		await page.getByRole('button', { name: 'Next', exact: true }).click();
 		await expect(page.locator('p.text-sm.font-medium', { hasText: tracks[1].title })).toBeVisible();
 
-		await page.getByRole('button', { name: 'Previous' }).click();
+		await page.getByRole('button', { name: 'Previous', exact: true }).click();
 		await expect(page.locator('p.text-sm.font-medium', { hasText: tracks[0].title })).toBeVisible();
 	});
 
@@ -140,11 +171,31 @@ test.describe('player bar', () => {
 		seedPlaylistWithSongs(userId, playlistId, 'Boundary Test Playlist', 2);
 
 		await page.goto(`/library/${playlistId}`);
-		await page.getByRole('button', { name: 'Play' }).first().click();
+		await playFirstRow(page);
 
-		await expect(page.getByRole('button', { name: 'Previous' })).toBeDisabled();
-		await page.getByRole('button', { name: 'Next' }).click();
-		await expect(page.getByRole('button', { name: 'Next' })).toBeDisabled();
+		await expect(page.getByRole('button', { name: 'Previous', exact: true })).toBeDisabled();
+		await page.getByRole('button', { name: 'Next', exact: true }).click();
+		await expect(page.getByRole('button', { name: 'Next', exact: true })).toBeDisabled();
+	});
+
+	test('advances on its own when a track plays to its end', async ({ page }) => {
+		await stubStreamUrls(page);
+		const { userId } = await registerViaApi(page);
+		const playlistId = `e2e-playlist-${uniqueSuffix()}`;
+		const tracks = seedPlaylistWithSongs(userId, playlistId, 'Natural End Playlist', 2);
+
+		await page.goto(`/library/${playlistId}`);
+		await playFirstRow(page);
+		await expect(page.locator('p.text-sm.font-medium', { hasText: tracks[0].title })).toBeVisible();
+
+		// The fixture is ~2s long, so this lets it finish rather than skipping.
+		// A track ending pauses the element before firing 'ended'; treating
+		// that pause as a lost output device used to reload the finished track
+		// and seek back to its end, leaving the player stuck at "3:04 / 3:04"
+		// with the progress bar jittering instead of moving on.
+		await expect(page.locator('p.text-sm.font-medium', { hasText: tracks[1].title })).toBeVisible({
+			timeout: 15000
+		});
 	});
 
 	test('persists across client-side navigation back to the library', async ({ page }) => {
@@ -154,10 +205,12 @@ test.describe('player bar', () => {
 		const tracks = seedPlaylistWithSongs(userId, playlistId, 'Persistence Test Playlist', 1);
 
 		await page.goto(`/library/${playlistId}`);
-		await page.getByRole('button', { name: 'Play' }).first().click();
-		await expect(page.getByRole('button', { name: 'Pause' }).last()).toBeVisible();
+		await playFirstRow(page);
+		await expect(
+			page.getByRole('button', { name: 'Pause', exact: true }).last()
+		).toBeVisible();
 
-		await page.getByRole('link', { name: 'Library' }).first().click();
+		await page.getByRole('link', { name: 'Library', exact: true }).first().click();
 		await expect(page).toHaveURL('/library');
 		await expect(page.locator('p.text-sm.font-medium', { hasText: tracks[0].title })).toBeVisible();
 	});

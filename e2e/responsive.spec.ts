@@ -15,10 +15,7 @@ async function registerAndLand(page: import('@playwright/test').Page) {
 }
 
 test.describe('responsive app shell', () => {
-	test('desktop shows the sidebar nav and hides the mobile bottom nav', async ({
-		page,
-		isMobile
-	}) => {
+	test('desktop shows the sidebar nav and hides the mobile chrome', async ({ page, isMobile }) => {
 		test.skip(isMobile, 'desktop-only assertion');
 		await registerAndLand(page);
 
@@ -27,19 +24,35 @@ test.describe('responsive app shell', () => {
 
 		await expect(sidebar).toBeVisible();
 		await expect(mobileNav).toBeHidden();
-		await expect(sidebar.getByRole('button', { name: 'Log out' })).toBeVisible();
+		// The mobile-only header carries the logo and build info the sidebar
+		// footer already shows, so it must not double up on desktop.
+		await expect(page.locator('header')).toBeHidden();
+		await expect(sidebar.getByRole('link', { name: 'Settings' })).toBeVisible();
 	});
 
-	test('mobile shows the bottom nav and hides the sidebar', async ({ page, isMobile }) => {
+	test('mobile shows the bottom nav and header, and hides the sidebar', async ({
+		page,
+		isMobile
+	}) => {
 		test.skip(!isMobile, 'mobile-only assertion');
 		await registerAndLand(page);
 
 		const sidebar = page.locator('aside');
 		const mobileNav = page.getByRole('navigation', { name: 'Primary (mobile)' });
-		const mobileHeader = page.locator('header');
 
 		await expect(mobileNav).toBeVisible();
 		await expect(sidebar).toBeHidden();
-		await expect(mobileHeader.getByRole('button', { name: 'Log out' })).toBeVisible();
+		await expect(page.locator('header')).toBeVisible();
+		// Settings is reachable from the bottom nav, since the sidebar's own
+		// entry for it is off-screen here.
+		await expect(mobileNav.getByRole('link', { name: 'Settings' })).toBeVisible();
+	});
+
+	test('logging out is reachable from settings on either breakpoint', async ({ page }) => {
+		await registerAndLand(page);
+
+		await page.goto('/settings');
+
+		await expect(page.getByRole('button', { name: 'Log out' })).toBeVisible();
 	});
 });

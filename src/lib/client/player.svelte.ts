@@ -118,6 +118,13 @@ class PlayerStore {
 	private rebindingOutput = false;
 	/** Where the current track's audio ends, when that has been measured and trimming is on. */
 	private trimEndSeconds: number | null = null;
+	/**
+	 * Set while a track change is in flight. Pointing the element at a new
+	 * src pauses it, which is indistinguishable from an output device
+	 * disappearing unless the transition says so itself — and a trim-point
+	 * end does this mid-track, where the end-of-media check can't help.
+	 */
+	private switchingTrack = false;
 
 	constructor() {
 		this.restoreSession();
@@ -152,6 +159,22 @@ class PlayerStore {
 	 * `paused` is already true; treating that as "nothing to do" is exactly
 	 * why playback stayed silent until the page was reloaded.
 	 */
+	/**
+	 * True when the element is paused because it ran out of media rather than
+	 * because something took the output away.
+	 *
+	 * `ended` is the reliable signal but arrives after `pause`; the duration
+	 * comparison covers the same instant, with a small tolerance because
+	 * currentTime can land a few milliseconds short of duration.
+	 */
+	private isAtEndOfMedia(): boolean {
+		const audio = this.audio;
+		if (!audio) return false;
+		if (audio.ended) return true;
+		const { duration, currentTime } = audio;
+		return Number.isFinite(duration) && duration > 0 && currentTime >= duration - 0.25;
+	}
+
 	private async rebindOutputDevice(): Promise<void> {
 		const audio = this.audio;
 		if (!audio || !this.isPlaying || !audio.src || this.rebindingOutput) return;
@@ -224,7 +247,16 @@ class PlayerStore {
 			// that contradicts the user's intent is treated as the same
 			// signal, and playback is re-bound to whatever is now default.
 			this.audio.addEventListener('pause', () => {
-				if (this.isPlaying) void this.rebindOutputDevice();
+				// A track reaching its end pauses the element too, and does so
+				// *before* 'ended' fires — so without this guard every natural
+				// end looked like a vanished output device. The rebind then
+				// reloaded the finished track and queued a seek back to its
+				// last position, while handleEnded was already loading the next
+				// one: the two fought over the same element and playback stuck
+				// at "3:04 / 3:04" with the progress bar jittering.
+				if (this.isPlaying && !this.switchingTrack && !this.isAtEndOfMedia()) {
+					void this.rebindOutputDevice();
+				}
 			});
 			this.audio.addEventListener('waiting', () => (this.isLoading = true));
 			this.audio.addEventListener('canplay', () => (this.isLoading = false));
@@ -434,6 +466,7 @@ class PlayerStore {
 		}
 	}
 
+
 	private async loadCurrent(autoplay: boolean): Promise<void> {
 		const track = this.currentTrack;
 		if (!track) {
@@ -465,23 +498,31 @@ class PlayerStore {
 		this.urlExpiresAt = Date.now() + data.expiresInSeconds * 1000;
 
 		const audio = this.getAudio();
-		audio.src = data.audioUrl;
+		// Pointing the element at a new source pauses it; that pause is this
+		// code's own doing, not an output device going away, so it is marked
+		// as such for the 'pause' handler until playback is under way again.
+		this.switchingTrack = true;
+		try {
+			audio.src = data.audioUrl;
 
-		// Trim points are known before playback starts (measured after an
-		// earlier play — see analyzeTrackIfCached), so the leading silence is
-		// never heard: this seeks past it through the same deferred path
-		// session restore uses, rather than skipping once playback is audible.
-		this.trimEndSeconds = null;
-		if (silenceTrim.enabled) {
-			const points = getTrimPoints(track.videoId);
-			if (points) {
-				if (points.start > 0) this.pendingResumeSeconds = points.start;
-				this.trimEndSeconds = points.end;
+			// Trim points are known before playback starts (measured after an
+			// earlier play — see analyzeTrackIfCached), so the leading silence is
+			// never heard: this seeks past it through the same deferred path
+			// session restore uses, rather than skipping once playback is audible.
+			this.trimEndSeconds = null;
+			if (silenceTrim.enabled) {
+				const points = getTrimPoints(track.videoId);
+				if (points) {
+					if (points.start > 0) this.pendingResumeSeconds = points.start;
+					this.trimEndSeconds = points.end;
+				}
 			}
-		}
 
-		if (autoplay) {
-			await this.startPlayback();
+			if (autoplay) {
+				await this.startPlayback();
+			}
+		} finally {
+			this.switchingTrack = false;
 		}
 		this.isLoading = false;
 		this.saveSessionNow();

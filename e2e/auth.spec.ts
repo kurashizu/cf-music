@@ -29,15 +29,12 @@ async function login(page: Page, opts: { username: string; password: string }) {
 	await panel.getByRole('button', { name: 'Login' }).click();
 }
 
-// The desktop sidebar and mobile header each render their own "Log out"
-// button; only one is visually shown per breakpoint via CSS (display:none
-// on the other), so scope by container instead of relying on visibility
-// filtering, which strict mode would otherwise reject as ambiguous.
+// Logging out lives on the settings page, alongside the other
+// account-scoped actions, rather than in the app shell — so this navigates
+// there rather than looking for a button in the sidebar or header.
 async function logout(page: Page) {
-	const sidebarButton = page.locator('aside').getByRole('button', { name: 'Log out' });
-	const headerButton = page.locator('header').getByRole('button', { name: 'Log out' });
-	const visible = (await sidebarButton.isVisible()) ? sidebarButton : headerButton;
-	await visible.click();
+	await page.goto('/settings');
+	await page.getByRole('button', { name: 'Log out' }).click();
 }
 
 test.describe('login page', () => {

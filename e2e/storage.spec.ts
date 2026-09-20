@@ -125,6 +125,12 @@ test.describe('manage storage page', () => {
 		await setUpLibrary(page, 'Sort Test Playlist', 3);
 
 		await page.goto('/settings/storage');
+		// On a phone the sort and filter controls start collapsed behind a
+		// toggle, so the list isn't crowded out; open it before reaching for
+		// them. The toggle isn't rendered at all from `sm:` up.
+		const collapseToggle = page.getByRole('button', { name: /Sort & filter/ });
+		if (await collapseToggle.isVisible()) await collapseToggle.click();
+
 		// Default is file size; every seeded song shares one, so switch to a
 		// field that actually distinguishes them. The direction carries over
 		// from the file-size default, which starts on "largest first".

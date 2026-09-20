@@ -50,12 +50,16 @@ test.describe('admin panel', () => {
 		return { userId, username };
 	}
 
-	test('shows the Admin link and lets an admin reach the page', async ({ page }) => {
+	test('shows the Admin entry on settings and lets an admin reach the page', async ({ page }) => {
 		await registerAdminAndReload(page);
 
-		await expect(page.getByRole('link', { name: 'Admin' })).toBeVisible();
+		// Admin is reached from the settings page rather than the app shell's
+		// nav, alongside the other account-scoped destinations.
+		await page.goto('/settings');
+		const adminLink = page.getByRole('link').filter({ hasText: 'Admin' });
+		await expect(adminLink).toBeVisible();
 
-		await page.getByRole('link', { name: 'Admin' }).click();
+		await adminLink.click();
 		await expect(page).toHaveURL('/admin');
 		await expect(page.getByRole('tab', { name: 'Invites' })).toBeVisible();
 	});
@@ -101,10 +105,12 @@ test.describe('admin panel', () => {
 		await page.getByRole('button', { name: 'New invite code' }).click();
 		await expect(page.getByText('Invite code created')).toBeVisible();
 
-		await page.reload();
-		await page.getByRole('tab', { name: 'Audit log' }).click();
+		// The audit log is its own page, not a tab on the admin panel, and it
+		// renders readable labels rather than the raw event type names.
+		await page.getByRole('link', { name: 'Audit log' }).click();
+		await expect(page).toHaveURL('/admin/audit-log');
 
-		await expect(page.getByText('invite_created').first()).toBeVisible();
-		await expect(page.getByText('login').first()).toBeVisible();
+		await expect(page.getByText('Invite created').first()).toBeVisible();
+		await expect(page.getByText('Login', { exact: true }).first()).toBeVisible();
 	});
 });
