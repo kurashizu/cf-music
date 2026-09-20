@@ -38,6 +38,8 @@ describe('presignGetUrl', () => {
 		const storage = makeStorage();
 		const url = new URL(await storage.presignGetUrl('covers/some-song.avif'));
 
-		expect(url.origin + url.pathname).toBe('https://s3.example.com/test-bucket/covers/some-song.avif');
+		expect(url.origin + url.pathname).toBe(
+			'https://s3.example.com/test-bucket/covers/some-song.avif'
+		);
 	});
 });

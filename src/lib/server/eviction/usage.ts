@@ -70,7 +70,10 @@ export async function setUserQuotaBytes(
  * played it), not a global count, so one user's listening can't make a
  * song look falsely popular in someone else's eviction scoring.
  */
-export async function getUserEvictionCandidates(db: Db, userId: string): Promise<EvictionCandidate[]> {
+export async function getUserEvictionCandidates(
+	db: Db,
+	userId: string
+): Promise<EvictionCandidate[]> {
 	const rows = await db
 		.selectDistinct({
 			videoId: songs.videoId,

@@ -84,7 +84,8 @@
 			case 'embedding_completed': {
 				const parts = [];
 				if (typeof parsed.dimensions === 'number') parts.push(`${parsed.dimensions}d`);
-				if (typeof parsed.segmentCount === 'number') parts.push(`${parsed.segmentCount} segment(s)`);
+				if (typeof parsed.segmentCount === 'number')
+					parts.push(`${parsed.segmentCount} segment(s)`);
 				if (typeof parsed.totalAudioSeconds === 'number')
 					parts.push(`${parsed.totalAudioSeconds.toFixed(0)}s audio`);
 				if (typeof parsed.embedMillis === 'number') parts.push(`${parsed.embedMillis}ms`);
@@ -161,12 +162,12 @@
 			<ArrowLeftIcon class="size-4" />
 		</Button>
 		<h1 class="text-lg font-medium">Audit log</h1>
-		<span class="text-sm text-muted-foreground">{data.total} events</span>
+		<span class="text-muted-foreground text-sm">{data.total} events</span>
 	</div>
 
 	<div class="mb-4 flex flex-wrap items-center gap-2">
 		<div class="relative min-w-48 flex-1">
-			<SearchIcon class="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+			<SearchIcon class="text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2" />
 			<Input
 				placeholder="Search username, target, error, IP…"
 				bind:value={searchInput}
@@ -191,7 +192,7 @@
 		</Select.Root>
 
 		<Input type="date" bind:value={fromDateInput} onchange={applyFilters} class="w-36" />
-		<span class="text-sm text-muted-foreground">to</span>
+		<span class="text-muted-foreground text-sm">to</span>
 		<Input type="date" bind:value={toDateInput} onchange={applyFilters} class="w-36" />
 
 		{#if hasActiveFilters}
@@ -203,7 +204,7 @@
 	</div>
 
 	{#if data.entries.length === 0}
-		<p class="py-16 text-center text-sm text-muted-foreground">
+		<p class="text-muted-foreground py-16 text-center text-sm">
 			{hasActiveFilters ? 'No events match these filters.' : 'No audit events yet.'}
 		</p>
 	{:else}
@@ -212,27 +213,31 @@
 				<li>
 					<button
 						type="button"
-						class="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left text-sm transition-colors hover:bg-muted"
+						class="hover:bg-muted flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left text-sm transition-colors"
 						onclick={() => (detailEntry = entry)}
 					>
 						<span
-							class="shrink-0 rounded-full px-2 py-0.5 text-xs {eventTypeBadgeClass(entry.eventType)}"
+							class="shrink-0 rounded-full px-2 py-0.5 text-xs {eventTypeBadgeClass(
+								entry.eventType
+							)}"
 						>
 							{EVENT_TYPE_LABELS[entry.eventType] ?? entry.eventType}
 						</span>
-						<span class="w-32 shrink-0 truncate text-muted-foreground">{actorLabel(entry)}</span>
-						<span class="w-40 shrink-0 truncate text-muted-foreground">{targetLabel(entry)}</span>
-						<span class="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+						<span class="text-muted-foreground w-32 shrink-0 truncate">{actorLabel(entry)}</span>
+						<span class="text-muted-foreground w-40 shrink-0 truncate">{targetLabel(entry)}</span>
+						<span class="text-muted-foreground min-w-0 flex-1 truncate text-xs">
 							{detailSummary(entry)}
 						</span>
-						<span class="shrink-0 text-xs text-muted-foreground">{formatDateTime(entry.createdAt)}</span>
+						<span class="text-muted-foreground shrink-0 text-xs"
+							>{formatDateTime(entry.createdAt)}</span
+						>
 					</button>
 				</li>
 			{/each}
 		</ul>
 
 		<div class="mt-4 flex items-center justify-between">
-			<p class="text-xs text-muted-foreground">
+			<p class="text-muted-foreground text-xs">
 				Page {data.page} of {totalPages}
 			</p>
 			<div class="flex gap-2">
@@ -263,7 +268,7 @@
 	<Dialog.Content class="sm:max-w-lg">
 		<Dialog.Header>
 			<Dialog.Title>
-				{detailEntry ? EVENT_TYPE_LABELS[detailEntry.eventType] ?? detailEntry.eventType : ''}
+				{detailEntry ? (EVENT_TYPE_LABELS[detailEntry.eventType] ?? detailEntry.eventType) : ''}
 			</Dialog.Title>
 		</Dialog.Header>
 		{#if detailEntry}
@@ -282,8 +287,8 @@
 				</div>
 				{#if detailEntry.detail}
 					<div>
-						<p class="mb-1 text-muted-foreground">Detail</p>
-						<pre class="overflow-x-auto rounded-md bg-muted p-2 text-xs">{prettyDetail(
+						<p class="text-muted-foreground mb-1">Detail</p>
+						<pre class="bg-muted overflow-x-auto rounded-md p-2 text-xs">{prettyDetail(
 								detailEntry.detail
 							)}</pre>
 					</div>

@@ -129,7 +129,8 @@
 		start.setDate(1);
 		const monthsSpan = Math.max(
 			1,
-			(new Date().getFullYear() - start.getFullYear()) * 12 + (new Date().getMonth() - start.getMonth())
+			(new Date().getFullYear() - start.getFullYear()) * 12 +
+				(new Date().getMonth() - start.getMonth())
 		);
 		const months = Math.min(monthsSpan + 1, 24);
 		const cursor = new Date();
@@ -188,56 +189,68 @@
 	<h1 class="mb-6 text-lg font-medium">Stats</h1>
 
 	{#if data.songs.length === 0}
-		<div class="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border py-16 text-center">
-			<TrendingUpIcon class="size-8 text-muted-foreground" />
-			<p class="text-sm text-muted-foreground">Import some songs to see stats here.</p>
+		<div
+			class="border-border flex flex-col items-center gap-3 rounded-xl border border-dashed py-16 text-center"
+		>
+			<TrendingUpIcon class="text-muted-foreground size-8" />
+			<p class="text-muted-foreground text-sm">Import some songs to see stats here.</p>
 		</div>
 	{:else}
 		<div class="mb-4 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
-			<Card.Root class="transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-md">
+			<Card.Root
+				class="transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-md"
+			>
 				<Card.Content class="flex flex-col gap-1">
-					<span class="flex items-center gap-1.5 text-xs text-muted-foreground">
+					<span class="text-muted-foreground flex items-center gap-1.5 text-xs">
 						<MusicIcon class="size-3.5" />
 						Songs
 					</span>
 					<span class="text-2xl font-medium">{data.songs.length}</span>
 				</Card.Content>
 			</Card.Root>
-			<Card.Root class="transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-md">
+			<Card.Root
+				class="transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-md"
+			>
 				<Card.Content class="flex flex-col gap-1">
-					<span class="flex items-center gap-1.5 text-xs text-muted-foreground">
+					<span class="text-muted-foreground flex items-center gap-1.5 text-xs">
 						<UsersIcon class="size-3.5" />
 						Artists
 					</span>
 					<span class="text-2xl font-medium">{uniqueArtists}</span>
 				</Card.Content>
 			</Card.Root>
-			<Card.Root class="transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-md">
+			<Card.Root
+				class="transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-md"
+			>
 				<Card.Content class="flex flex-col gap-1">
-					<span class="flex items-center gap-1.5 text-xs text-muted-foreground">
+					<span class="text-muted-foreground flex items-center gap-1.5 text-xs">
 						<ListMusicIcon class="size-3.5" />
 						Playlists
 					</span>
 					<span class="text-2xl font-medium">{data.playlistCount + data.smartPlaylistCount}</span>
 				</Card.Content>
 			</Card.Root>
-			<Card.Root class="transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-md">
+			<Card.Root
+				class="transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-md"
+			>
 				<Card.Content class="flex flex-col gap-1">
-					<span class="flex items-center gap-1.5 text-xs text-muted-foreground">
+					<span class="text-muted-foreground flex items-center gap-1.5 text-xs">
 						<ClockIcon class="size-3.5" />
 						Total time
 					</span>
 					<span class="text-2xl font-medium">{formatCompactDuration(totalDurationSeconds)}</span>
 				</Card.Content>
 			</Card.Root>
-			<Card.Root class="transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-md">
+			<Card.Root
+				class="transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-md"
+			>
 				<Card.Content class="flex flex-col gap-1">
-					<span class="flex items-center gap-1.5 text-xs text-muted-foreground">
+					<span class="text-muted-foreground flex items-center gap-1.5 text-xs">
 						<HardDriveIcon class="size-3.5" />
 						Storage used
 					</span>
 					<span class="text-2xl font-medium">{formatBytes(totalBytes)}</span>
-					<div class="mt-1 h-1 overflow-hidden rounded-full bg-muted">
+					<div class="bg-muted mt-1 h-1 overflow-hidden rounded-full">
 						<div
 							class="h-full rounded-full transition-all duration-500 {usagePercent > 90
 								? 'bg-amber-400'
@@ -265,7 +278,7 @@
 				<Card.Content>
 					<div class="mb-3 flex items-center justify-between">
 						<h2 class="text-sm font-medium">Library growth</h2>
-						<span class="text-xs text-muted-foreground">cumulative songs imported</span>
+						<span class="text-muted-foreground text-xs">cumulative songs imported</span>
 					</div>
 					<AreaChart points={importsOverTime} formatValue={(v) => `${v} songs`} />
 				</Card.Content>
@@ -283,9 +296,9 @@
 			<Card.Root class="lg:col-span-2">
 				<Card.Content class="flex h-full flex-col">
 					<div class="mb-3 flex items-center gap-1.5">
-						<FlameIcon class="size-3.5 text-muted-foreground" />
+						<FlameIcon class="text-muted-foreground size-3.5" />
 						<h2 class="text-sm font-medium">Recently played</h2>
-						<span class="text-xs text-muted-foreground">— by last-played date</span>
+						<span class="text-muted-foreground text-xs">— by last-played date</span>
 					</div>
 					<div class="flex flex-1 flex-col justify-center">
 						<ActivityHeatmap counts={lastPlayedCounts} />
@@ -306,7 +319,7 @@
 				<Card.Content>
 					<h2 class="mb-3 text-sm font-medium">Most played songs</h2>
 					{#if topSongs.length === 0}
-						<p class="text-xs text-muted-foreground">Nothing played yet.</p>
+						<p class="text-muted-foreground text-xs">Nothing played yet.</p>
 					{:else}
 						<BarList
 							bars={topSongs.map((s) => ({
@@ -323,7 +336,7 @@
 				<Card.Content>
 					<h2 class="mb-3 text-sm font-medium">Most played artists</h2>
 					{#if topArtists.length === 0}
-						<p class="text-xs text-muted-foreground">Nothing played yet.</p>
+						<p class="text-muted-foreground text-xs">Nothing played yet.</p>
 					{:else}
 						<BarList
 							bars={topArtists.map(([artist, plays]) => ({

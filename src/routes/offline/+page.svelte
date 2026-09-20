@@ -2,11 +2,7 @@
 	import { onMount } from 'svelte';
 	import { player } from '$lib/client/player.svelte';
 	import { viewMode } from '$lib/client/view-mode.svelte';
-	import {
-		listCachedTracks,
-		cachedCoverUrl,
-		readLibrarySnapshot
-	} from '$lib/client/offline-cache';
+	import { listCachedTracks, cachedCoverUrl, readLibrarySnapshot } from '$lib/client/offline-cache';
 	import type { CachedPlaylist, CachedTrackMetadata } from '$lib/shared/audio-cache-key';
 	import { PLAYLIST_MOSAIC_COVER_COUNT } from '$lib/shared/playlist-cover';
 	import AppShell from '$lib/components/app-shell.svelte';
@@ -231,7 +227,7 @@
 
 {#snippet offlineBadge()}
 	<span
-		class="flex items-center gap-1.5 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground"
+		class="bg-muted text-muted-foreground flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px]"
 	>
 		<CloudOffIcon class="size-3" />
 		Offline
@@ -244,7 +240,7 @@
 	>
 		{#each items as playlist (playlist.id)}
 			<Card.Root
-				class="group relative overflow-hidden py-0 transition-colors active:border-ring/50 hover:border-ring/50"
+				class="group active:border-ring/50 hover:border-ring/50 relative overflow-hidden py-0 transition-colors"
 			>
 				<button
 					type="button"
@@ -252,17 +248,17 @@
 					onclick={() => openPlaylistView(playlist.id)}
 				>
 					<div
-						class="flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-muted transition-transform duration-200 group-active:scale-[1.02] group-hover:scale-[1.02]"
+						class="bg-muted flex aspect-square items-center justify-center overflow-hidden rounded-lg transition-transform duration-200 group-hover:scale-[1.02] group-active:scale-[1.02]"
 					>
 						<PlaylistCover coverUrls={mosaicFor(playlist)}>
 							{#snippet fallback()}
-								<ListMusicIcon class="size-8 text-muted-foreground" />
+								<ListMusicIcon class="text-muted-foreground size-8" />
 							{/snippet}
 						</PlaylistCover>
 					</div>
 					<div class="min-w-0">
 						<p class="truncate text-sm font-medium">{playlist.name}</p>
-						<p class="truncate text-xs text-muted-foreground">
+						<p class="text-muted-foreground truncate text-xs">
 							{playlist.videoIds.length}
 							{playlist.videoIds.length === 1 ? 'song' : 'songs'} downloaded
 						</p>
@@ -300,21 +296,21 @@
 >
 	<div class="mx-auto max-w-screen-2xl p-4 md:p-8">
 		{#if !loaded}
-			<div class="py-16 text-center text-sm text-muted-foreground">Loading…</div>
+			<div class="text-muted-foreground py-16 text-center text-sm">Loading…</div>
 		{:else if tracks.length === 0}
 			<div
-				class="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border py-16 text-center"
+				class="border-border flex flex-col items-center gap-3 rounded-xl border border-dashed py-16 text-center"
 			>
-				<CloudOffIcon class="size-8 text-muted-foreground" />
-				<p class="text-sm text-muted-foreground">No songs are downloaded on this device.</p>
-				<p class="max-w-sm text-xs text-muted-foreground">
+				<CloudOffIcon class="text-muted-foreground size-8" />
+				<p class="text-muted-foreground text-sm">No songs are downloaded on this device.</p>
+				<p class="text-muted-foreground max-w-sm text-xs">
 					Download songs while you're online — from a playlist, or from Settings → Manage storage —
 					and they'll play here with no connection.
 				</p>
 			</div>
 		{:else if openPlaylist}
 			<!-- A playlist, laid out like its online counterpart. -->
-			<Button variant="ghost" size="sm" class="-ml-2 mb-4 gap-1.5" onclick={backToIndex}>
+			<Button variant="ghost" size="sm" class="mb-4 -ml-2 gap-1.5" onclick={backToIndex}>
 				<ArrowLeftIcon class="size-4" />
 				Library
 			</Button>
@@ -322,7 +318,7 @@
 			<div class="mb-6 flex flex-wrap items-center justify-between gap-4">
 				<div class="min-w-0">
 					<h1 class="truncate text-lg font-medium">{openPlaylist.name}</h1>
-					<p class="text-xs text-muted-foreground">
+					<p class="text-muted-foreground text-xs">
 						{openPlaylist.videoIds.length}
 						{openPlaylist.videoIds.length === 1 ? 'song' : 'songs'} downloaded
 					</p>
@@ -341,14 +337,16 @@
 
 			<div class="mb-3 flex flex-wrap items-center gap-2">
 				<div class="relative min-w-48 flex-1">
-					<SearchIcon class="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+					<SearchIcon
+						class="text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2"
+					/>
 					<Input placeholder="Search songs…" bind:value={searchQuery} class="pl-9" />
 				</div>
 				<ViewModeToggle />
 			</div>
 
 			{#if visibleTracks.length === 0}
-				<p class="py-8 text-center text-sm text-muted-foreground">
+				<p class="text-muted-foreground py-8 text-center text-sm">
 					No downloaded songs match "{searchQuery}".
 				</p>
 			{:else}
@@ -358,12 +356,10 @@
 			<!-- The library index, laid out like its online counterpart. -->
 			<div class="mb-6 flex flex-wrap items-center gap-2">
 				<div class="relative min-w-48 flex-1">
-					<SearchIcon class="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-					<Input
-						placeholder="Search playlists and songs…"
-						bind:value={searchQuery}
-						class="pl-9"
+					<SearchIcon
+						class="text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2"
 					/>
+					<Input placeholder="Search playlists and songs…" bind:value={searchQuery} class="pl-9" />
 				</div>
 				<ViewModeToggle />
 			</div>
@@ -376,7 +372,7 @@
 			{/if}
 
 			{#if matchingSmartPlaylists.length > 0}
-				<h2 class="mb-4 text-sm font-medium text-muted-foreground">Smart Playlists</h2>
+				<h2 class="text-muted-foreground mb-4 text-sm font-medium">Smart Playlists</h2>
 				<div class="mb-8">
 					{@render playlistGrid(matchingSmartPlaylists)}
 				</div>
@@ -385,7 +381,7 @@
 			<div class="mb-4 flex flex-wrap items-center justify-between gap-4">
 				<div>
 					<h2 class="text-lg font-medium">All downloaded</h2>
-					<p class="text-xs text-muted-foreground">
+					<p class="text-muted-foreground text-xs">
 						{visibleTracks.length}
 						{visibleTracks.length === 1 ? 'song' : 'songs'} · available without a connection
 					</p>
@@ -405,7 +401,7 @@
 			</div>
 
 			{#if visibleTracks.length === 0}
-				<p class="py-8 text-center text-sm text-muted-foreground">
+				<p class="text-muted-foreground py-8 text-center text-sm">
 					No downloaded songs match "{searchQuery}".
 				</p>
 			{:else}

@@ -78,7 +78,11 @@ export async function reserveQuota(
  * know in advance whether this specific event is a first delivery or a
  * retry.
  */
-export async function releaseQuotaReservation(db: Db, jobId: string, videoId: string): Promise<void> {
+export async function releaseQuotaReservation(
+	db: Db,
+	jobId: string,
+	videoId: string
+): Promise<void> {
 	await db
 		.delete(quotaReservations)
 		.where(and(eq(quotaReservations.jobId, jobId), eq(quotaReservations.videoId, videoId)));

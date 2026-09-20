@@ -2,7 +2,12 @@ import { eq, and, isNull, desc } from 'drizzle-orm';
 import type { Db } from '../db';
 import { users, inviteCodes } from '../db/schema';
 import { hashPassword, verifyPassword } from './password';
-import { generateSessionId, generateInviteCode, computeSessionExpiry, isSessionExpired } from './tokens';
+import {
+	generateSessionId,
+	generateInviteCode,
+	computeSessionExpiry,
+	isSessionExpired
+} from './tokens';
 import { createSession, getSession, deleteSession, deleteAllSessionsForUser } from './sessions';
 import { recordAuditEvent } from '../audit/log';
 
@@ -147,7 +152,11 @@ export interface AuthenticatedSession {
 	isAdmin: boolean;
 }
 
-export async function resolveSession(db: Db, kv: KVNamespace, sessionId: string): Promise<AuthenticatedSession> {
+export async function resolveSession(
+	db: Db,
+	kv: KVNamespace,
+	sessionId: string
+): Promise<AuthenticatedSession> {
 	const session = await getSession(kv, sessionId);
 	if (!session) {
 		throw new AuthError('Session not found', 'session_not_found');

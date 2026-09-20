@@ -69,7 +69,7 @@
 		<SlidersHorizontalIcon class="size-4" />
 		Sort & filter
 		{#if activeFilterCount > 0}
-			<span class="rounded-full bg-primary px-1.5 text-[10px] leading-4 text-primary-foreground">
+			<span class="bg-primary text-primary-foreground rounded-full px-1.5 text-[10px] leading-4">
 				{activeFilterCount}
 			</span>
 		{/if}
@@ -136,7 +136,7 @@
 				bind:value={minDurationMinutes}
 				class="w-full min-w-0 sm:w-20"
 			/>
-			<span class="text-sm text-muted-foreground">–</span>
+			<span class="text-muted-foreground text-sm">–</span>
 			<Input
 				type="number"
 				min="0"

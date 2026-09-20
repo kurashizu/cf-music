@@ -9,7 +9,10 @@ import { listUserLibrarySongs, type LibrarySongSummary } from '../library/playli
 // binds 1 param per videoId.
 const VIDEO_ID_BATCH_SIZE = 90;
 
-export async function getVectorsByVideoIds(db: Db, videoIds: string[]): Promise<Map<string, Float32Array>> {
+export async function getVectorsByVideoIds(
+	db: Db,
+	videoIds: string[]
+): Promise<Map<string, Float32Array>> {
 	if (videoIds.length === 0) return new Map();
 	const batches = await Promise.all(
 		chunk(videoIds, VIDEO_ID_BATCH_SIZE).map((batch) =>
@@ -46,7 +49,10 @@ export async function getSimilarSongsInLibrary(
 	const candidates = library.filter((s) => s.videoId !== seedVideoId);
 	if (candidates.length === 0) return [];
 
-	const vectors = await getVectorsByVideoIds(db, [seedVideoId, ...candidates.map((s) => s.videoId)]);
+	const vectors = await getVectorsByVideoIds(db, [
+		seedVideoId,
+		...candidates.map((s) => s.videoId)
+	]);
 	const seedVector = vectors.get(seedVideoId);
 	if (!seedVector) return [];
 

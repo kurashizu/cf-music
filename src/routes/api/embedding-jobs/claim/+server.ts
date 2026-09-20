@@ -1,7 +1,11 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getDb } from '$lib/server/db';
-import { claimEmbeddingJobs, failEmbeddingJob, getSongsForEmbeddingJobs } from '$lib/server/embedding/jobs';
+import {
+	claimEmbeddingJobs,
+	failEmbeddingJob,
+	getSongsForEmbeddingJobs
+} from '$lib/server/embedding/jobs';
 import { verifyWebhookSignature } from '$lib/server/import/webhook-auth';
 import { pickPositiveNumber } from '$lib/server/http/validate';
 import { getObjectStorage } from '$lib/server/storage/factory';
@@ -39,7 +43,10 @@ export const POST: RequestHandler = async (event) => {
 		return json({ jobs: [] });
 	}
 
-	const songRows = await getSongsForEmbeddingJobs(db, claimed.map((c) => c.videoId));
+	const songRows = await getSongsForEmbeddingJobs(
+		db,
+		claimed.map((c) => c.videoId)
+	);
 	const songsByVideoId = new Map(songRows.map((s) => [s.videoId, s]));
 	const storage = getObjectStorage(event.platform!.env);
 

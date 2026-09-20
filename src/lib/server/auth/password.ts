@@ -23,7 +23,11 @@ function fromHex(hex: string): Uint8Array {
 	return new Uint8Array(pairs.map((pair) => parseInt(pair, 16)));
 }
 
-async function derive(password: string, salt: Uint8Array, iterations: number): Promise<ArrayBuffer> {
+async function derive(
+	password: string,
+	salt: Uint8Array,
+	iterations: number
+): Promise<ArrayBuffer> {
 	const keyMaterial = await crypto.subtle.importKey(
 		'raw',
 		new TextEncoder().encode(password),

@@ -23,6 +23,10 @@ export async function recordSongPlay(db: Db, userId: string, videoId: string): P
 		.values({ userId, videoId, playCount: 1, lastPlayedAt: now })
 		.onConflictDoUpdate({
 			target: [userSongs.userId, userSongs.videoId],
-			set: { playCount: sql`${userSongs.playCount} + 1`, lastPlayedAt: now, updatedAt: sql`(current_timestamp)` }
+			set: {
+				playCount: sql`${userSongs.playCount} + 1`,
+				lastPlayedAt: now,
+				updatedAt: sql`(current_timestamp)`
+			}
 		});
 }

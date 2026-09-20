@@ -11,7 +11,9 @@ export function encodeVector(values: number[]): Uint8Array {
 
 export function decodeVector(blob: ArrayBuffer | Uint8Array): Float32Array {
 	const bytes = blob instanceof Uint8Array ? blob : new Uint8Array(blob);
-	return new Float32Array(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+	return new Float32Array(
+		bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
+	);
 }
 
 export function cosineSimilarity(a: Float32Array, b: Float32Array): number {

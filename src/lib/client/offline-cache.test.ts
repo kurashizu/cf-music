@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { reconcileAudioCache, downloadSongForOffline, estimateBrowserStorage } from './offline-cache';
+import {
+	reconcileAudioCache,
+	downloadSongForOffline,
+	estimateBrowserStorage
+} from './offline-cache';
 
 /**
  * Minimal fake of the one thing these functions actually touch on
@@ -119,7 +123,9 @@ describe('downloadSongForOffline', () => {
 		expect(await downloadSongForOffline('a')).toBe(true);
 
 		expect(fetch).toHaveBeenCalledWith('/api/stream-url/a');
-		expect(sentMessages).toEqual([{ type: 'PRECACHE_AUDIO', videoId: 'a', audioUrl: 'https://signed.example/a' }]);
+		expect(sentMessages).toEqual([
+			{ type: 'PRECACHE_AUDIO', videoId: 'a', audioUrl: 'https://signed.example/a' }
+		]);
 	});
 
 	it('returns false when the stream-url fetch responds non-ok', async () => {

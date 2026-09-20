@@ -54,7 +54,10 @@ function isSongNamespaceKey(key: string): boolean {
  * be leftover from an interrupted/failed operation, never a real reference.
  * Report-only: callers decide whether to actually delete `orphanKeys`.
  */
-export async function findOrphanedObjects(db: Db, storage: ObjectStorage): Promise<OrphanScanResult> {
+export async function findOrphanedObjects(
+	db: Db,
+	storage: ObjectStorage
+): Promise<OrphanScanResult> {
 	const [bucketKeys, songRows] = await Promise.all([
 		storage.listAllKeys(),
 		db.select({ audioKey: songs.audioKey, coverKey: songs.coverKey }).from(songs)
@@ -87,10 +90,20 @@ export async function findOrphanedObjects(db: Db, storage: ObjectStorage): Promi
  * with a dead reference (re-import, delete the row) is a judgment call, not
  * something safe to automate.
  */
-export async function findDeadSongReferences(db: Db, storage: ObjectStorage): Promise<DeadReferenceScanResult> {
+export async function findDeadSongReferences(
+	db: Db,
+	storage: ObjectStorage
+): Promise<DeadReferenceScanResult> {
 	const [bucketKeys, songRows] = await Promise.all([
 		storage.listAllKeys(),
-		db.select({ videoId: songs.videoId, title: songs.title, audioKey: songs.audioKey, coverKey: songs.coverKey }).from(songs)
+		db
+			.select({
+				videoId: songs.videoId,
+				title: songs.title,
+				audioKey: songs.audioKey,
+				coverKey: songs.coverKey
+			})
+			.from(songs)
 	]);
 
 	const bucketKeySet = new Set(bucketKeys);
@@ -98,10 +111,20 @@ export async function findDeadSongReferences(db: Db, storage: ObjectStorage): Pr
 
 	for (const row of songRows) {
 		if (!bucketKeySet.has(row.audioKey)) {
-			deadReferences.push({ videoId: row.videoId, title: row.title, field: 'audioKey', key: row.audioKey });
+			deadReferences.push({
+				videoId: row.videoId,
+				title: row.title,
+				field: 'audioKey',
+				key: row.audioKey
+			});
 		}
 		if (row.coverKey && !bucketKeySet.has(row.coverKey)) {
-			deadReferences.push({ videoId: row.videoId, title: row.title, field: 'coverKey', key: row.coverKey });
+			deadReferences.push({
+				videoId: row.videoId,
+				title: row.title,
+				field: 'coverKey',
+				key: row.coverKey
+			});
 		}
 	}
 
@@ -159,7 +182,10 @@ export async function resolveDeadSongReference(
 	reference: DeadReference
 ): Promise<{ resolved: boolean }> {
 	if (reference.field === 'audioKey') {
-		const deleted = await db.delete(songs).where(eq(songs.videoId, reference.videoId)).returning({ videoId: songs.videoId });
+		const deleted = await db
+			.delete(songs)
+			.where(eq(songs.videoId, reference.videoId))
+			.returning({ videoId: songs.videoId });
 		if (deleted.length === 0) return { resolved: false };
 
 		await recordAuditEvent(db, {

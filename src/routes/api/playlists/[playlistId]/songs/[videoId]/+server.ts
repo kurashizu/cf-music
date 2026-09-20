@@ -49,13 +49,20 @@ export const PUT: RequestHandler = async (event) => {
 	if (!fields) {
 		error(400, 'toPlaylistId is required');
 	}
-	const modeRaw = typeof body === 'object' && body !== null ? (body as Record<string, unknown>).mode : undefined;
+	const modeRaw =
+		typeof body === 'object' && body !== null ? (body as Record<string, unknown>).mode : undefined;
 	const mode = typeof modeRaw === 'string' && VALID_MODES.has(modeRaw) ? modeRaw : 'copy';
 
 	const db = getDb(event.platform!.env.DB);
 	try {
 		if (mode === 'move') {
-			await moveSongToPlaylist(db, session.userId, event.params.playlistId, fields.toPlaylistId, event.params.videoId);
+			await moveSongToPlaylist(
+				db,
+				session.userId,
+				event.params.playlistId,
+				fields.toPlaylistId,
+				event.params.videoId
+			);
 		} else {
 			await addSongToPlaylist(db, fields.toPlaylistId, session.userId, event.params.videoId);
 		}

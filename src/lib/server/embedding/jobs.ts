@@ -49,7 +49,10 @@ export async function claimEmbeddingJobs(db: Db, limit: number): Promise<Claimed
 		where: (t, { or, and, eq, lt, sql }) =>
 			or(
 				eq(t.status, 'pending'),
-				and(eq(t.status, 'processing'), sql`${t.updatedAt} < datetime('now', ${'-' + staleAfterSeconds + ' seconds'})`)
+				and(
+					eq(t.status, 'processing'),
+					sql`${t.updatedAt} < datetime('now', ${'-' + staleAfterSeconds + ' seconds'})`
+				)
 			),
 		orderBy: (t, { asc }) => asc(t.createdAt),
 		limit
@@ -118,7 +121,9 @@ export async function enqueueEmbeddingJob(db: Db, videoId: string): Promise<void
 export async function getSongsForEmbeddingJobs(db: Db, videoIds: string[]) {
 	if (videoIds.length === 0) return [];
 	const batches = await Promise.all(
-		chunk(videoIds, SINGLE_PARAM_BATCH_SIZE).map((batch) => db.query.songs.findMany({ where: inArray(songs.videoId, batch) }))
+		chunk(videoIds, SINGLE_PARAM_BATCH_SIZE).map((batch) =>
+			db.query.songs.findMany({ where: inArray(songs.videoId, batch) })
+		)
 	);
 	return batches.flat();
 }

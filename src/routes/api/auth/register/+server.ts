@@ -19,7 +19,10 @@ export const POST: RequestHandler = async ({ request, platform, cookies, getClie
 	const { username, password, inviteCode } = fields;
 
 	if (username.length < MIN_USERNAME_LENGTH || username.length > MAX_USERNAME_LENGTH) {
-		error(400, `username must be between ${MIN_USERNAME_LENGTH} and ${MAX_USERNAME_LENGTH} characters`);
+		error(
+			400,
+			`username must be between ${MIN_USERNAME_LENGTH} and ${MAX_USERNAME_LENGTH} characters`
+		);
 	}
 	if (password.length < MIN_PASSWORD_LENGTH) {
 		error(400, `password must be at least ${MIN_PASSWORD_LENGTH} characters`);

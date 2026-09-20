@@ -96,7 +96,6 @@
 	let tooltipsDisabled = $state(false);
 	onMount(() => {
 		tooltipsDisabled = isTouchDevice();
-
 	});
 </script>
 
@@ -106,260 +105,265 @@
      rather than reactively, since a device doesn't change pointer type
      mid-session in any way worth re-rendering the whole app for. -->
 <Tooltip.Provider disabled={tooltipsDisabled}>
-<div class="flex h-svh bg-background">
-	<!-- Desktop sidebar -->
-	<aside
-		class="hidden shrink-0 flex-col border-r border-border p-4 transition-[width] duration-150 md:flex {sidebar.collapsed
-			? 'w-16'
-			: 'w-56'}"
-	>
-		<div class="mb-6 flex items-center gap-2 px-2 {sidebar.collapsed ? 'justify-center px-0' : ''}">
-			<Logo size={24} />
-			{#if !sidebar.collapsed}
-				<span class="truncate text-sm font-medium" transition:fade={motionParams({ duration: 100 })}
-					>KRSZ Music</span
-				>
-			{/if}
-		</div>
+	<div class="bg-background flex h-svh">
+		<!-- Desktop sidebar -->
+		<aside
+			class="border-border hidden shrink-0 flex-col border-r p-4 transition-[width] duration-150 md:flex {sidebar.collapsed
+				? 'w-16'
+				: 'w-56'}"
+		>
+			<div
+				class="mb-6 flex items-center gap-2 px-2 {sidebar.collapsed ? 'justify-center px-0' : ''}"
+			>
+				<Logo size={24} />
+				{#if !sidebar.collapsed}
+					<span
+						class="truncate text-sm font-medium"
+						transition:fade={motionParams({ duration: 100 })}>KRSZ Music</span
+					>
+				{/if}
+			</div>
 
-		<nav class="flex min-h-0 flex-1 flex-col gap-1" aria-label="Primary">
-			{#each navItems as item (item.href)}
-				{#if item.href === '/library'}
-					<div class="flex items-center gap-0.5">
-						{#if sidebar.collapsed}
-							<Tooltip.Root>
-								<Tooltip.Trigger>
-									{#snippet child({ props })}
-										<a
-											{...props}
-											href={item.href}
-											class="flex flex-1 items-center justify-center rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:bg-muted active:text-foreground {isActive(
-												item.href
-											)
-												? 'bg-muted text-foreground'
-												: ''}"
-										>
-											<item.icon class="size-4" />
-										</a>
-									{/snippet}
-								</Tooltip.Trigger>
-								<Tooltip.Content side="right">{item.label}</Tooltip.Content>
-							</Tooltip.Root>
-						{:else}
-							<a
-								href={item.href}
-								class="flex flex-1 items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:bg-muted active:text-foreground {isActive(
-									item.href
-								)
-									? 'bg-muted text-foreground'
-									: ''}"
-							>
-								<item.icon class="size-4" />
-								{item.label}
-							</a>
-							{#if sidebarPlaylists.length > 0 || sidebarSmartPlaylists.length > 0}
-								<button
-									type="button"
-									class="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:bg-muted active:text-foreground"
-									onclick={() => (playlistsExpanded = !playlistsExpanded)}
-									aria-label={playlistsExpanded ? 'Collapse playlists' : 'Expand playlists'}
-									aria-expanded={playlistsExpanded}
-								>
-									<ChevronDownIcon
-										class="size-3.5 transition-transform {playlistsExpanded ? '' : '-rotate-90'}"
-									/>
-								</button>
-							{/if}
-						{/if}
-					</div>
-					{#if playlistsExpanded && !sidebar.collapsed}
-						<div class="flex flex-col gap-0.5 pl-4">
-							{#each sidebarSmartPlaylists as playlist (playlist.id)}
+			<nav class="flex min-h-0 flex-1 flex-col gap-1" aria-label="Primary">
+				{#each navItems as item (item.href)}
+					{#if item.href === '/library'}
+						<div class="flex items-center gap-0.5">
+							{#if sidebar.collapsed}
+								<Tooltip.Root>
+									<Tooltip.Trigger>
+										{#snippet child({ props })}
+											<a
+												{...props}
+												href={item.href}
+												class="text-muted-foreground hover:bg-muted hover:text-foreground active:bg-muted active:text-foreground flex flex-1 items-center justify-center rounded-lg p-2 transition-colors {isActive(
+													item.href
+												)
+													? 'bg-muted text-foreground'
+													: ''}"
+											>
+												<item.icon class="size-4" />
+											</a>
+										{/snippet}
+									</Tooltip.Trigger>
+									<Tooltip.Content side="right">{item.label}</Tooltip.Content>
+								</Tooltip.Root>
+							{:else}
 								<a
-									href="/library/{playlist.id}"
-									onclick={(event) => {
-										if (!onPlaylistSelect) return;
-										event.preventDefault();
-										onPlaylistSelect(playlist.id);
-									}}
-									class="flex items-center gap-2 truncate rounded-lg px-2.5 py-1.5 text-[13px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:bg-muted active:text-foreground {isActive(
-										`/library/${playlist.id}`
-									)
-										? 'bg-muted text-foreground'
-										: ''}"
-								>
-									<SparklesIcon class="size-3.5 shrink-0" />
-									<span class="truncate">{playlist.name}</span>
-								</a>
-							{/each}
-							{#each sidebarPlaylists as playlist (playlist.id)}
-								<a
-									href="/library/{playlist.id}"
-									onclick={(event) => {
-										if (!onPlaylistSelect) return;
-										event.preventDefault();
-										onPlaylistSelect(playlist.id);
-									}}
-									class="flex items-center gap-2 truncate rounded-lg px-2.5 py-1.5 text-[13px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:bg-muted active:text-foreground {isActive(
-										`/library/${playlist.id}`
-									)
-										? 'bg-muted text-foreground'
-										: ''}"
-								>
-									<ListMusicIcon class="size-3.5 shrink-0" />
-									<span class="truncate">{playlist.name}</span>
-								</a>
-							{/each}
-						</div>
-					{/if}
-				{:else if sidebar.collapsed}
-					<Tooltip.Root>
-						<Tooltip.Trigger>
-							{#snippet child({ props })}
-								<a
-									{...props}
 									href={item.href}
-									class="flex items-center justify-center rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:bg-muted active:text-foreground {isActive(
+									class="text-muted-foreground hover:bg-muted hover:text-foreground active:bg-muted active:text-foreground flex flex-1 items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors {isActive(
 										item.href
 									)
 										? 'bg-muted text-foreground'
 										: ''}"
 								>
 									<item.icon class="size-4" />
+									{item.label}
+								</a>
+								{#if sidebarPlaylists.length > 0 || sidebarSmartPlaylists.length > 0}
+									<button
+										type="button"
+										class="text-muted-foreground hover:bg-muted hover:text-foreground active:bg-muted active:text-foreground rounded-lg p-1.5 transition-colors"
+										onclick={() => (playlistsExpanded = !playlistsExpanded)}
+										aria-label={playlistsExpanded ? 'Collapse playlists' : 'Expand playlists'}
+										aria-expanded={playlistsExpanded}
+									>
+										<ChevronDownIcon
+											class="size-3.5 transition-transform {playlistsExpanded ? '' : '-rotate-90'}"
+										/>
+									</button>
+								{/if}
+							{/if}
+						</div>
+						{#if playlistsExpanded && !sidebar.collapsed}
+							<div class="flex flex-col gap-0.5 pl-4">
+								{#each sidebarSmartPlaylists as playlist (playlist.id)}
+									<a
+										href="/library/{playlist.id}"
+										onclick={(event) => {
+											if (!onPlaylistSelect) return;
+											event.preventDefault();
+											onPlaylistSelect(playlist.id);
+										}}
+										class="text-muted-foreground hover:bg-muted hover:text-foreground active:bg-muted active:text-foreground flex items-center gap-2 truncate rounded-lg px-2.5 py-1.5 text-[13px] transition-colors {isActive(
+											`/library/${playlist.id}`
+										)
+											? 'bg-muted text-foreground'
+											: ''}"
+									>
+										<SparklesIcon class="size-3.5 shrink-0" />
+										<span class="truncate">{playlist.name}</span>
+									</a>
+								{/each}
+								{#each sidebarPlaylists as playlist (playlist.id)}
+									<a
+										href="/library/{playlist.id}"
+										onclick={(event) => {
+											if (!onPlaylistSelect) return;
+											event.preventDefault();
+											onPlaylistSelect(playlist.id);
+										}}
+										class="text-muted-foreground hover:bg-muted hover:text-foreground active:bg-muted active:text-foreground flex items-center gap-2 truncate rounded-lg px-2.5 py-1.5 text-[13px] transition-colors {isActive(
+											`/library/${playlist.id}`
+										)
+											? 'bg-muted text-foreground'
+											: ''}"
+									>
+										<ListMusicIcon class="size-3.5 shrink-0" />
+										<span class="truncate">{playlist.name}</span>
+									</a>
+								{/each}
+							</div>
+						{/if}
+					{:else if sidebar.collapsed}
+						<Tooltip.Root>
+							<Tooltip.Trigger>
+								{#snippet child({ props })}
+									<a
+										{...props}
+										href={item.href}
+										class="text-muted-foreground hover:bg-muted hover:text-foreground active:bg-muted active:text-foreground flex items-center justify-center rounded-lg p-2 transition-colors {isActive(
+											item.href
+										)
+											? 'bg-muted text-foreground'
+											: ''}"
+									>
+										<item.icon class="size-4" />
+									</a>
+								{/snippet}
+							</Tooltip.Trigger>
+							<Tooltip.Content side="right">{item.label}</Tooltip.Content>
+						</Tooltip.Root>
+					{:else}
+						<a
+							href={item.href}
+							class="text-muted-foreground hover:bg-muted hover:text-foreground active:bg-muted active:text-foreground flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors {isActive(
+								item.href
+							)
+								? 'bg-muted text-foreground'
+								: ''}"
+						>
+							<item.icon class="size-4" />
+							{item.label}
+						</a>
+					{/if}
+				{/each}
+			</nav>
+
+			<div class="border-border flex flex-col gap-1 border-t pt-2">
+				{#if sidebar.collapsed}
+					<Tooltip.Root>
+						<Tooltip.Trigger>
+							{#snippet child({ props })}
+								<a
+									{...props}
+									href={settingsItem.href}
+									class="text-muted-foreground hover:bg-muted hover:text-foreground active:bg-muted active:text-foreground flex items-center justify-center rounded-lg p-2 transition-colors {isActive(
+										settingsItem.href
+									)
+										? 'bg-muted text-foreground'
+										: ''}"
+								>
+									<settingsItem.icon class="size-4" />
 								</a>
 							{/snippet}
 						</Tooltip.Trigger>
-						<Tooltip.Content side="right">{item.label}</Tooltip.Content>
+						<Tooltip.Content side="right">{settingsItem.label}</Tooltip.Content>
 					</Tooltip.Root>
 				{:else}
 					<a
-						href={item.href}
-						class="flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:bg-muted active:text-foreground {isActive(
-							item.href
+						href={settingsItem.href}
+						class="text-muted-foreground hover:bg-muted hover:text-foreground active:bg-muted active:text-foreground flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors {isActive(
+							settingsItem.href
 						)
 							? 'bg-muted text-foreground'
 							: ''}"
 					>
-						<item.icon class="size-4" />
-						{item.label}
+						<settingsItem.icon class="size-4" />
+						{settingsItem.label}
 					</a>
 				{/if}
-			{/each}
-		</nav>
 
-		<div class="flex flex-col gap-1 border-t border-border pt-2">
-			{#if sidebar.collapsed}
 				<Tooltip.Root>
 					<Tooltip.Trigger>
 						{#snippet child({ props })}
-							<a
+							<button
 								{...props}
-								href={settingsItem.href}
-								class="flex items-center justify-center rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:bg-muted active:text-foreground {isActive(
-									settingsItem.href
-								)
-									? 'bg-muted text-foreground'
+								type="button"
+								class="text-muted-foreground hover:bg-muted hover:text-foreground active:bg-muted active:text-foreground flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors {sidebar.collapsed
+									? 'justify-center'
 									: ''}"
+								onclick={() => sidebar.toggle()}
+								aria-label={sidebar.collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
 							>
-								<settingsItem.icon class="size-4" />
-							</a>
+								{#if sidebar.collapsed}
+									<PanelLeftOpenIcon class="size-4" />
+								{:else}
+									<PanelLeftCloseIcon class="size-4" />
+									<span transition:fade={motionParams({ duration: 100 })}>Collapse</span>
+								{/if}
+							</button>
 						{/snippet}
 					</Tooltip.Trigger>
-					<Tooltip.Content side="right">{settingsItem.label}</Tooltip.Content>
+					<Tooltip.Content side="right"
+						>{sidebar.collapsed ? 'Expand sidebar' : 'Collapse sidebar'}</Tooltip.Content
+					>
 				</Tooltip.Root>
-			{:else}
-				<a
-					href={settingsItem.href}
-					class="flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:bg-muted active:text-foreground {isActive(
-						settingsItem.href
-					)
-						? 'bg-muted text-foreground'
-						: ''}"
-				>
-					<settingsItem.icon class="size-4" />
-					{settingsItem.label}
-				</a>
-			{/if}
 
-			<Tooltip.Root>
-				<Tooltip.Trigger>
-					{#snippet child({ props })}
-						<button
-							{...props}
-							type="button"
-							class="flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:bg-muted active:text-foreground {sidebar.collapsed
-								? 'justify-center'
-								: ''}"
-							onclick={() => sidebar.toggle()}
-							aria-label={sidebar.collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-						>
-							{#if sidebar.collapsed}
-								<PanelLeftOpenIcon class="size-4" />
-							{:else}
-								<PanelLeftCloseIcon class="size-4" />
-								<span transition:fade={motionParams({ duration: 100 })}>Collapse</span>
-							{/if}
-						</button>
-					{/snippet}
-				</Tooltip.Trigger>
-				<Tooltip.Content side="right">{sidebar.collapsed ? 'Expand sidebar' : 'Collapse sidebar'}</Tooltip.Content>
-			</Tooltip.Root>
+				{#if !sidebar.collapsed}
+					<div class="px-2.5" transition:fade={motionParams({ duration: 100 })}>
+						{#if statusBadge}
+							{@render statusBadge()}
+						{:else}
+							<BuildInfo />
+						{/if}
+					</div>
+				{/if}
+			</div>
+		</aside>
 
-			{#if !sidebar.collapsed}
-				<div class="px-2.5" transition:fade={motionParams({ duration: 100 })}>
+		<div class="flex min-w-0 flex-1 flex-col">
+			<!-- Mobile top bar -->
+			<header class="border-border flex items-center gap-2 border-b p-3 md:hidden">
+				<Logo size={22} />
+				<span class="text-sm font-medium">KRSZ Music</span>
+				<!-- Build info lives in the desktop sidebar footer, which doesn't
+			     exist on mobile — this is the only place it can surface here.
+			     A status badge takes its place when there is one to show, since
+			     "which build is this" matters less than "you are offline". -->
+				<div class="ml-auto min-w-0">
 					{#if statusBadge}
 						{@render statusBadge()}
 					{:else}
 						<BuildInfo />
 					{/if}
 				</div>
-			{/if}
+			</header>
+
+			<main class="min-h-0 flex-1 overflow-y-auto pb-16 md:pb-0">
+				{@render children()}
+			</main>
+
+			<PlayerBar />
+
+			<!-- Mobile bottom nav -->
+			<nav
+				class="border-border bg-card/95 fixed inset-x-0 bottom-0 flex items-center justify-around border-t py-2 backdrop-blur-sm md:hidden"
+				aria-label="Primary (mobile)"
+			>
+				{#each [...navItems, settingsItem] as item (item.href)}
+					<a
+						href={item.href}
+						class="text-muted-foreground active:text-foreground flex flex-col items-center gap-0.5 rounded-lg px-3 py-1 text-[11px] transition-all active:scale-90 {isActive(
+							item.href
+						)
+							? 'text-foreground'
+							: ''}"
+					>
+						<item.icon class="size-5" />
+						{item.label}
+					</a>
+				{/each}
+			</nav>
 		</div>
-	</aside>
-
-	<div class="flex min-w-0 flex-1 flex-col">
-		<!-- Mobile top bar -->
-		<header class="flex items-center gap-2 border-b border-border p-3 md:hidden">
-			<Logo size={22} />
-			<span class="text-sm font-medium">KRSZ Music</span>
-			<!-- Build info lives in the desktop sidebar footer, which doesn't
-			     exist on mobile — this is the only place it can surface here.
-			     A status badge takes its place when there is one to show, since
-			     "which build is this" matters less than "you are offline". -->
-			<div class="ml-auto min-w-0">
-				{#if statusBadge}
-					{@render statusBadge()}
-				{:else}
-					<BuildInfo />
-				{/if}
-			</div>
-		</header>
-
-		<main class="min-h-0 flex-1 overflow-y-auto pb-16 md:pb-0">
-			{@render children()}
-		</main>
-
-		<PlayerBar />
-
-		<!-- Mobile bottom nav -->
-		<nav
-			class="fixed inset-x-0 bottom-0 flex items-center justify-around border-t border-border bg-card/95 py-2 backdrop-blur-sm md:hidden"
-			aria-label="Primary (mobile)"
-		>
-			{#each [...navItems, settingsItem] as item (item.href)}
-				<a
-					href={item.href}
-					class="flex flex-col items-center gap-0.5 rounded-lg px-3 py-1 text-[11px] text-muted-foreground transition-all active:scale-90 active:text-foreground {isActive(
-						item.href
-					)
-						? 'text-foreground'
-						: ''}"
-				>
-					<item.icon class="size-5" />
-					{item.label}
-				</a>
-			{/each}
-		</nav>
 	</div>
-</div>
 </Tooltip.Provider>

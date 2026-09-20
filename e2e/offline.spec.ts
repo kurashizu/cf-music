@@ -166,7 +166,9 @@ test.describe('offline', () => {
 		// Playback comes entirely from the cache — the real player bar, the
 		// same one the online app uses, picks it up.
 		await page.locator('main li button[aria-label="Play"]').first().click();
-		await expect(page.locator('p.text-sm.font-medium', { hasText: 'Offline Song 1' })).toBeVisible();
+		await expect(
+			page.locator('p.text-sm.font-medium', { hasText: 'Offline Song 1' })
+		).toBeVisible();
 	});
 
 	test('covers come from the cache, so rows are not blank', async ({ page }) => {

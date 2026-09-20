@@ -8,7 +8,10 @@ import { encodeVector } from './vector-codec';
 const db = getDb(env.DB);
 
 async function seedUser(id: string) {
-	await db.insert(users).values({ id, username: `user-${id}`, passwordHash: 'x' }).onConflictDoNothing();
+	await db
+		.insert(users)
+		.values({ id, username: `user-${id}`, passwordHash: 'x' })
+		.onConflictDoNothing();
 }
 
 async function seedSong(videoId: string) {
@@ -88,7 +91,7 @@ describe('getSimilarSongsInLibrary', () => {
 		expect(result.length).toBe(2);
 	});
 
-	it('excludes songs from another user\'s library', async () => {
+	it("excludes songs from another user's library", async () => {
 		await seedUser('u1');
 		await seedUser('u2');
 		await seedSong('seed');

@@ -3,13 +3,24 @@ import { env } from 'cloudflare:test';
 import { eq } from 'drizzle-orm';
 import { getDb } from '../db';
 import { users, inviteCodes } from '../db/schema';
-import { register, login, resolveSession, logout, logoutAllSessions, listUsers, AuthError } from './service';
+import {
+	register,
+	login,
+	resolveSession,
+	logout,
+	logoutAllSessions,
+	listUsers,
+	AuthError
+} from './service';
 
 const db = getDb(env.DB);
 const kv = env.SESSION_KV;
 
 async function seedInviteCode(code: string, createdBy = 'seed-admin') {
-	await db.insert(users).values({ id: createdBy, username: `admin-${createdBy}`, passwordHash: 'x', isAdmin: true }).onConflictDoNothing();
+	await db
+		.insert(users)
+		.values({ id: createdBy, username: `admin-${createdBy}`, passwordHash: 'x', isAdmin: true })
+		.onConflictDoNothing();
 	await db.insert(inviteCodes).values({ code, createdBy });
 }
 
@@ -38,7 +49,9 @@ describe('register', () => {
 
 		expect(result.username).toBe('alice');
 
-		const invite = await db.query.inviteCodes.findFirst({ where: (t, { eq }) => eq(t.code, 'CODE1') });
+		const invite = await db.query.inviteCodes.findFirst({
+			where: (t, { eq }) => eq(t.code, 'CODE1')
+		});
 		expect(invite?.usedBy).toBe(result.id);
 		expect(invite?.usedAt).not.toBeNull();
 	});
@@ -70,7 +83,11 @@ describe('register', () => {
 
 	it('stores a password hash that is not the plaintext password', async () => {
 		await seedInviteCode('CODE5');
-		const { id } = await register(db, { username: 'dave', password: 'plaintext-pw', inviteCode: 'CODE5' });
+		const { id } = await register(db, {
+			username: 'dave',
+			password: 'plaintext-pw',
+			inviteCode: 'CODE5'
+		});
 
 		const user = await db.query.users.findFirst({ where: (t, { eq }) => eq(t.id, id) });
 		expect(user?.passwordHash).not.toBe('plaintext-pw');
@@ -93,11 +110,15 @@ describe('login', () => {
 	});
 
 	it('rejects an incorrect password', async () => {
-		await expect(login(db, kv, { username: 'erin', password: 'wrong-password' })).rejects.toThrow(AuthError);
+		await expect(login(db, kv, { username: 'erin', password: 'wrong-password' })).rejects.toThrow(
+			AuthError
+		);
 	});
 
 	it('rejects a nonexistent username', async () => {
-		await expect(login(db, kv, { username: 'nobody', password: 'anything' })).rejects.toThrow(AuthError);
+		await expect(login(db, kv, { username: 'nobody', password: 'anything' })).rejects.toThrow(
+			AuthError
+		);
 	});
 
 	it('records the provided user agent and IP address on the session', async () => {
@@ -107,7 +128,10 @@ describe('login', () => {
 			userAgent: 'test-agent/1.0',
 			ipAddress: '203.0.113.5'
 		});
-		const record = await kv.get<{ userAgent?: string; ipAddress?: string }>(`session:${result.sessionId}`, 'json');
+		const record = await kv.get<{ userAgent?: string; ipAddress?: string }>(
+			`session:${result.sessionId}`,
+			'json'
+		);
 		expect(record?.userAgent).toBe('test-agent/1.0');
 		expect(record?.ipAddress).toBe('203.0.113.5');
 	});
@@ -117,7 +141,10 @@ describe('resolveSession', () => {
 	it('resolves an active session back to its user', async () => {
 		await seedInviteCode('RESOLVE1');
 		await register(db, { username: 'frank', password: 'pw12345678', inviteCode: 'RESOLVE1' });
-		const { sessionId, userId } = await login(db, kv, { username: 'frank', password: 'pw12345678' });
+		const { sessionId, userId } = await login(db, kv, {
+			username: 'frank',
+			password: 'pw12345678'
+		});
 
 		const resolved = await resolveSession(db, kv, sessionId);
 		expect(resolved.userId).toBe(userId);
@@ -131,7 +158,11 @@ describe('resolveSession', () => {
 
 	it('rejects an expired session', async () => {
 		await seedInviteCode('RESOLVE2');
-		const { id: userId } = await register(db, { username: 'grace', password: 'pw12345678', inviteCode: 'RESOLVE2' });
+		const { id: userId } = await register(db, {
+			username: 'grace',
+			password: 'pw12345678',
+			inviteCode: 'RESOLVE2'
+		});
 
 		const expiredSessionId = 'expired-session-id';
 		await kv.put(
@@ -163,7 +194,11 @@ describe('logoutAllSessions', () => {
 	it('removes every session belonging to the user, leaving other users unaffected', async () => {
 		await seedInviteCode('LOGOUTALL1');
 		await seedInviteCode('LOGOUTALL2');
-		const { id: userId } = await register(db, { username: 'iris', password: 'pw12345678', inviteCode: 'LOGOUTALL1' });
+		const { id: userId } = await register(db, {
+			username: 'iris',
+			password: 'pw12345678',
+			inviteCode: 'LOGOUTALL1'
+		});
 		await register(db, { username: 'jack', password: 'pw12345678', inviteCode: 'LOGOUTALL2' });
 
 		const sessionA = await login(db, kv, { username: 'iris', password: 'pw12345678' });
@@ -188,7 +223,11 @@ describe('listUsers', () => {
 		// created_by FK) is itself a real row in `users`, so it shows up
 		// here too — assert kate's own fields rather than the list length.
 		await seedInviteCode('LISTUSERS1');
-		const { id } = await register(db, { username: 'kate', password: 'pw12345678', inviteCode: 'LISTUSERS1' });
+		const { id } = await register(db, {
+			username: 'kate',
+			password: 'pw12345678',
+			inviteCode: 'LISTUSERS1'
+		});
 
 		const result = await listUsers(db);
 
@@ -205,18 +244,34 @@ describe('listUsers', () => {
 	it('lists most-recently-created first', async () => {
 		await seedInviteCode('LISTUSERS2');
 		await seedInviteCode('LISTUSERS3');
-		const { id: liamId } = await register(db, { username: 'liam', password: 'pw12345678', inviteCode: 'LISTUSERS2' });
-		const { id: miaId } = await register(db, { username: 'mia', password: 'pw12345678', inviteCode: 'LISTUSERS3' });
+		const { id: liamId } = await register(db, {
+			username: 'liam',
+			password: 'pw12345678',
+			inviteCode: 'LISTUSERS2'
+		});
+		const { id: miaId } = await register(db, {
+			username: 'mia',
+			password: 'pw12345678',
+			inviteCode: 'LISTUSERS3'
+		});
 		// D1's created_at default has second-level precision, and
 		// seedInviteCode's own bootstrap admin is a third row in this table
 		// whose timestamp this test doesn't control — pin both rows under
 		// test to unambiguous, known-ordered timestamps rather than relying
 		// on insert order against uncontrolled real-time ticks.
-		await db.update(users).set({ createdAt: '2020-01-01T00:00:00.000Z' }).where(eq(users.id, liamId));
-		await db.update(users).set({ createdAt: '2020-01-02T00:00:00.000Z' }).where(eq(users.id, miaId));
+		await db
+			.update(users)
+			.set({ createdAt: '2020-01-01T00:00:00.000Z' })
+			.where(eq(users.id, liamId));
+		await db
+			.update(users)
+			.set({ createdAt: '2020-01-02T00:00:00.000Z' })
+			.where(eq(users.id, miaId));
 
 		const result = await listUsers(db);
-		const usernamesInOrder = result.map((u) => u.username).filter((name) => name === 'liam' || name === 'mia');
+		const usernamesInOrder = result
+			.map((u) => u.username)
+			.filter((name) => name === 'liam' || name === 'mia');
 
 		expect(usernamesInOrder).toEqual(['mia', 'liam']);
 	});

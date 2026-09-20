@@ -35,9 +35,18 @@ const db = getDb(env.DB);
 // Test-only convenience — see the same helper's comment in
 // playlists.integration.test.ts for why this composes the two real,
 // separately-paginated functions rather than a production-only full fetch.
-async function fetchWholePlaylist(playlistId: string, userId: string): Promise<{ songs: PlaylistSongRow[] }> {
+async function fetchWholePlaylist(
+	playlistId: string,
+	userId: string
+): Promise<{ songs: PlaylistSongRow[] }> {
 	const meta = await getPlaylistMeta(db, playlistId, userId);
-	const songs = await getPlaylistSongsInRange(db, playlistId, userId, 0, Math.max(meta.songCount, 1));
+	const songs = await getPlaylistSongsInRange(
+		db,
+		playlistId,
+		userId,
+		0,
+		Math.max(meta.songCount, 1)
+	);
 	return { songs };
 }
 
@@ -76,7 +85,10 @@ beforeEach(async () => {
 describe('createImportJob / getImportJob', () => {
 	it('creates a job in pending status', async () => {
 		await seedUser('u1');
-		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://youtube.com/playlist?list=x' });
+		const { id } = await createImportJob(db, {
+			userId: 'u1',
+			sourceUrl: 'https://youtube.com/playlist?list=x'
+		});
 
 		const job = await getImportJob(db, id, 'u1');
 		expect(job.status).toBe('pending');
@@ -122,7 +134,11 @@ describe('recordSongImported', () => {
 	it('links the song into the target playlist when the job has one', async () => {
 		await seedUser('u1');
 		await db.insert(playlists).values({ id: 'p1', userId: 'u1', name: 'Imported' });
-		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x', targetPlaylistId: 'p1' });
+		const { id } = await createImportJob(db, {
+			userId: 'u1',
+			sourceUrl: 'https://x',
+			targetPlaylistId: 'p1'
+		});
 
 		await recordSongImported(db, id, 'u1', makeSong('a'));
 
@@ -134,7 +150,11 @@ describe('recordSongImported', () => {
 		await seedUser('u1');
 		const { id: defaultPlaylistId } = await ensureDefaultPlaylist(db, 'u1');
 		await db.insert(playlists).values({ id: 'p1', userId: 'u1', name: 'Imported' });
-		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x', targetPlaylistId: 'p1' });
+		const { id } = await createImportJob(db, {
+			userId: 'u1',
+			sourceUrl: 'https://x',
+			targetPlaylistId: 'p1'
+		});
 
 		await recordSongImported(db, id, 'u1', makeSong('a'));
 
@@ -166,7 +186,9 @@ describe('recordSongImported', () => {
 		await db.insert(songs).values(seedRow);
 		const { id } = await createImportJob(db, { userId: 'u2', sourceUrl: 'https://x' });
 
-		await expect(recordSongImported(db, id, 'u2', makeSong('shared', { title: 'Different title' }))).resolves.not.toThrow();
+		await expect(
+			recordSongImported(db, id, 'u2', makeSong('shared', { title: 'Different title' }))
+		).resolves.not.toThrow();
 
 		// The pre-existing row's data is preserved, not overwritten by the duplicate import.
 		const song = await db.query.songs.findFirst({ where: eq(songs.videoId, 'shared') });
@@ -181,7 +203,7 @@ describe('recordSongImported', () => {
 		await expect(recordSongImported(db, id, 'u2', makeSong('a'))).rejects.toThrow(ImportJobError);
 	});
 
-	it('releases the song\'s quota reservation once it lands as real usage', async () => {
+	it("releases the song's quota reservation once it lands as real usage", async () => {
 		await seedUser('u1', 2_000_000);
 		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x' });
 		await reserveQuota(db, 'u1', id, 'a', 900_000);
@@ -201,7 +223,7 @@ describe('recordSongImported', () => {
 });
 
 describe('recordKnownSongLinked', () => {
-	it('links an already-existing song into the job\'s target playlist', async () => {
+	it("links an already-existing song into the job's target playlist", async () => {
 		await seedUser('u1');
 		const { tags: _tags, ...seedRow } = makeSong('already-owned');
 		await db.insert(songs).values(seedRow);
@@ -282,7 +304,7 @@ describe('recordSongFailed', () => {
 		]);
 	});
 
-	it('releases the failed song\'s quota reservation', async () => {
+	it("releases the failed song's quota reservation", async () => {
 		await seedUser('u1', 1_000_000);
 		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x' });
 		await reserveQuota(db, 'u1', id, 'a', 900_000);
@@ -391,7 +413,10 @@ describe('failImportJob', () => {
 		const [entry] = await db.query.auditLog.findMany({ where: eq(auditLog.targetId, id) });
 		expect(entry.eventType).toBe('import');
 		expect(entry.targetType).toBe('import_job');
-		expect(JSON.parse(entry.detail!)).toMatchObject({ status: 'failed', reason: 'network unreachable' });
+		expect(JSON.parse(entry.detail!)).toMatchObject({
+			status: 'failed',
+			reason: 'network unreachable'
+		});
 	});
 
 	it('releases every reservation the job was still holding — an abandoned reservation must not linger', async () => {
@@ -646,13 +671,25 @@ describe('listImportJobs', () => {
 
 	it('orders jobs most-recently-created first', async () => {
 		await seedUser('u1');
-		const { id: firstId } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x/first' });
+		const { id: firstId } = await createImportJob(db, {
+			userId: 'u1',
+			sourceUrl: 'https://x/first'
+		});
 		// D1's created_at default has second-level precision — advance it
 		// explicitly rather than relying on two inserts landing in different
 		// ticks, so this test can't flake on ordering.
-		await db.update(importJobs).set({ createdAt: '2020-01-01T00:00:00.000Z' }).where(eq(importJobs.id, firstId));
-		const { id: secondId } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x/second' });
-		await db.update(importJobs).set({ createdAt: '2020-01-02T00:00:00.000Z' }).where(eq(importJobs.id, secondId));
+		await db
+			.update(importJobs)
+			.set({ createdAt: '2020-01-01T00:00:00.000Z' })
+			.where(eq(importJobs.id, firstId));
+		const { id: secondId } = await createImportJob(db, {
+			userId: 'u1',
+			sourceUrl: 'https://x/second'
+		});
+		await db
+			.update(importJobs)
+			.set({ createdAt: '2020-01-02T00:00:00.000Z' })
+			.where(eq(importJobs.id, secondId));
 
 		const jobs = await listImportJobs(db, 'u1');
 
@@ -661,9 +698,15 @@ describe('listImportJobs', () => {
 
 	it('excludes completed and cancelled jobs, which need no further explanation', async () => {
 		await seedUser('u1');
-		const { id: completedId } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x/done' });
+		const { id: completedId } = await createImportJob(db, {
+			userId: 'u1',
+			sourceUrl: 'https://x/done'
+		});
 		await completeImportJob(db, completedId, 'u1');
-		const { id: cancelledId } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x/cancelled' });
+		const { id: cancelledId } = await createImportJob(db, {
+			userId: 'u1',
+			sourceUrl: 'https://x/cancelled'
+		});
 		await cancelImportJob(db, cancelledId, 'u1');
 		await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x/still-running' });
 
@@ -690,7 +733,10 @@ describe('failStaleImportJobs', () => {
 		// No startImportJob/submitImportPreview ever ran — updated_at still
 		// reflects insert time, same as a real workflow_dispatch that was
 		// accepted by GitHub but never actually started a runner.
-		await db.update(importJobs).set({ updatedAt: '2020-01-01 00:00:00' }).where(eq(importJobs.id, id));
+		await db
+			.update(importJobs)
+			.set({ updatedAt: '2020-01-01 00:00:00' })
+			.where(eq(importJobs.id, id));
 
 		const failedCount = await failStaleImportJobs(db, 60 * 60 * 1000);
 
@@ -704,7 +750,10 @@ describe('failStaleImportJobs', () => {
 		await seedUser('u1');
 		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x/stalled' });
 		await startImportJob(db, id, 5);
-		await db.update(importJobs).set({ updatedAt: '2020-01-01 00:00:00' }).where(eq(importJobs.id, id));
+		await db
+			.update(importJobs)
+			.set({ updatedAt: '2020-01-01 00:00:00' })
+			.where(eq(importJobs.id, id));
 
 		await failStaleImportJobs(db, 60 * 60 * 1000);
 
@@ -729,7 +778,10 @@ describe('failStaleImportJobs', () => {
 		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x/done' });
 		await recordSongImported(db, id, 'u1', makeSong('a'));
 		await completeImportJob(db, id, 'u1');
-		await db.update(importJobs).set({ updatedAt: '2020-01-01 00:00:00' }).where(eq(importJobs.id, id));
+		await db
+			.update(importJobs)
+			.set({ updatedAt: '2020-01-01 00:00:00' })
+			.where(eq(importJobs.id, id));
 
 		const failedCount = await failStaleImportJobs(db, 60 * 60 * 1000);
 
@@ -742,7 +794,10 @@ describe('failStaleImportJobs', () => {
 		await seedUser('u1', 1_000_000);
 		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x/stuck' });
 		await reserveQuota(db, 'u1', id, 'a', 900_000);
-		await db.update(importJobs).set({ updatedAt: '2020-01-01 00:00:00' }).where(eq(importJobs.id, id));
+		await db
+			.update(importJobs)
+			.set({ updatedAt: '2020-01-01 00:00:00' })
+			.where(eq(importJobs.id, id));
 
 		await failStaleImportJobs(db, 60 * 60 * 1000);
 

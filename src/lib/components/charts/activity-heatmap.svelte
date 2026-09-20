@@ -84,17 +84,20 @@
 				{#each column as day (day.date)}
 					<button
 						type="button"
-						class="group relative aspect-square w-full min-w-3 rounded-sm {intensityClass(day.count)} ring-primary transition-shadow hover:ring-2"
+						class="group relative aspect-square w-full min-w-3 rounded-sm {intensityClass(
+							day.count
+						)} ring-primary transition-shadow hover:ring-2"
 						onclick={() => (tappedDate = tappedDate === day.date ? null : day.date)}
 						aria-label="{day.count} {day.count === 1 ? 'play' : 'plays'} on {formatDate(day.date)}"
 					>
 						<div
-							class="pointer-events-none absolute bottom-full z-10 mb-1 rounded-md border border-border bg-popover px-1.5 py-0.5 text-[10px] whitespace-nowrap shadow-md transition-opacity group-hover:opacity-100 {tooltipAlignClass(
+							class="border-border bg-popover pointer-events-none absolute bottom-full z-10 mb-1 rounded-md border px-1.5 py-0.5 text-[10px] whitespace-nowrap shadow-md transition-opacity group-hover:opacity-100 {tooltipAlignClass(
 								i,
 								columns.length
 							)} {tappedDate === day.date ? 'opacity-100' : 'opacity-0'}"
 						>
-							{day.count} {day.count === 1 ? 'play' : 'plays'} · {formatDate(day.date)}
+							{day.count}
+							{day.count === 1 ? 'play' : 'plays'} · {formatDate(day.date)}
 						</div>
 					</button>
 				{/each}

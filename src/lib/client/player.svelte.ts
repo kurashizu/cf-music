@@ -1,5 +1,11 @@
 import { hasReachedPlayThreshold } from '$lib/shared/playback';
-import { shuffleOrder, nextQueueIndex, cycleRepeatMode, moveIndexToFront, type RepeatMode } from '$lib/shared/queue';
+import {
+	shuffleOrder,
+	nextQueueIndex,
+	cycleRepeatMode,
+	moveIndexToFront,
+	type RepeatMode
+} from '$lib/shared/queue';
 import {
 	precacheAudio,
 	storeTrackMetadata,
@@ -74,8 +80,10 @@ function readStoredSession(): PersistedSession | null {
 			queueIndex: parsed.queueIndex,
 			shuffleEnabled: parsed.shuffleEnabled === true,
 			shuffleIndices: Array.isArray(parsed.shuffleIndices) ? parsed.shuffleIndices : [],
-			repeatMode: parsed.repeatMode === 'one' || parsed.repeatMode === 'all' ? parsed.repeatMode : 'off',
-			currentTimeSeconds: typeof parsed.currentTimeSeconds === 'number' ? parsed.currentTimeSeconds : 0
+			repeatMode:
+				parsed.repeatMode === 'one' || parsed.repeatMode === 'all' ? parsed.repeatMode : 'off',
+			currentTimeSeconds:
+				typeof parsed.currentTimeSeconds === 'number' ? parsed.currentTimeSeconds : 0
 		};
 	} catch {
 		return null;
@@ -261,8 +269,7 @@ class PlayerStore {
 	// null for repeat-one there. Treating any repeat mode as "there is a next"
 	// left the button enabled on the last track doing nothing.
 	hasNext = $derived(
-		this.queueIndex < this.queue.length - 1 ||
-			(this.repeatMode === 'all' && this.queue.length > 0)
+		this.queueIndex < this.queue.length - 1 || (this.repeatMode === 'all' && this.queue.length > 0)
 	);
 	hasPrevious = $derived(this.queueIndex > 0);
 
@@ -612,7 +619,9 @@ class PlayerStore {
 
 	/** Jumps playback straight to an upcoming track by its real array index. */
 	async playFromQueue(queueArrayIndex: number): Promise<void> {
-		this.queueIndex = this.shuffleEnabled ? this.shuffleIndices.indexOf(queueArrayIndex) : queueArrayIndex;
+		this.queueIndex = this.shuffleEnabled
+			? this.shuffleIndices.indexOf(queueArrayIndex)
+			: queueArrayIndex;
 		await this.loadCurrent(true);
 	}
 
@@ -637,7 +646,6 @@ class PlayerStore {
 			setMediaSessionPlaybackState(false);
 		}
 	}
-
 
 	private async loadCurrent(autoplay: boolean): Promise<void> {
 		const track = this.currentTrack;
@@ -701,7 +709,11 @@ class PlayerStore {
 		// artwork follows once it resolves from cache (see publishArtwork).
 		setMediaSessionTrack({ title: track.title });
 		void this.publishArtwork(track.videoId, data.coverUrl);
-		this.audioSpec = { codec: data.codec, bitrateKbps: data.bitrateKbps, sampleRate: data.sampleRate };
+		this.audioSpec = {
+			codec: data.codec,
+			bitrateKbps: data.bitrateKbps,
+			sampleRate: data.sampleRate
+		};
 		this.urlExpiresAt = Date.now() + data.expiresInSeconds * 1000;
 
 		const audio = this.getAudio();

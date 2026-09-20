@@ -29,9 +29,24 @@ function clearLocalSessionKv() {
 	).toString();
 	const keys: { name: string }[] = JSON.parse(raw);
 	for (const { name } of keys) {
-		execFileSync('npx', ['wrangler', 'kv', 'key', 'delete', '--binding', 'SESSION_KV', '--local', '--preview', 'false', name], {
-			stdio: ['ignore', 'ignore', 'inherit']
-		});
+		execFileSync(
+			'npx',
+			[
+				'wrangler',
+				'kv',
+				'key',
+				'delete',
+				'--binding',
+				'SESSION_KV',
+				'--local',
+				'--preview',
+				'false',
+				name
+			],
+			{
+				stdio: ['ignore', 'ignore', 'inherit']
+			}
+		);
 	}
 }
 
@@ -51,10 +66,14 @@ export default function globalSetup() {
 	// prior run's import test, which always fails locally since there's no
 	// real GitHub token, but still gets created with a real target
 	// playlist) blocks deleting that playlist below just the same way.
-	d1Execute(`DELETE FROM import_jobs WHERE user_id IN (SELECT id FROM users WHERE username LIKE 'e2e-%');`);
+	d1Execute(
+		`DELETE FROM import_jobs WHERE user_id IN (SELECT id FROM users WHERE username LIKE 'e2e-%');`
+	);
 	d1Execute(`DELETE FROM playlist_songs WHERE video_id LIKE 'e2e-song-%';`);
 	d1Execute(`DELETE FROM songs WHERE video_id LIKE 'e2e-song-%';`);
-	d1Execute(`DELETE FROM playlists WHERE user_id IN (SELECT id FROM users WHERE username LIKE 'e2e-%');`);
+	d1Execute(
+		`DELETE FROM playlists WHERE user_id IN (SELECT id FROM users WHERE username LIKE 'e2e-%');`
+	);
 	// invite_codes.created_by/used_by have no ON DELETE behavior, so any code
 	// created or claimed by a leftover e2e-* user (from a prior interrupted
 	// run) would block deleting that user below.

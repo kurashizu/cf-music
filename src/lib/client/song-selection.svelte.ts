@@ -35,7 +35,11 @@ export class SongSelection {
 	 * is what a reader means by "everything between these two", regardless of
 	 * where those songs sit in the underlying playlist.
 	 */
-	click(videoId: string, event: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean }, visibleIds: string[]): void {
+	click(
+		videoId: string,
+		event: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean },
+		visibleIds: string[]
+	): void {
 		if (event.shiftKey && this.anchor !== null) {
 			const from = visibleIds.indexOf(this.anchor);
 			const to = visibleIds.indexOf(videoId);

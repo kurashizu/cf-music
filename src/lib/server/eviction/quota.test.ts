@@ -46,7 +46,11 @@ describe('checkQuota', () => {
 			existingSongs: [],
 			now
 		});
-		expect(result).toEqual({ outcome: 'exceeds_total_quota', quotaBytes: 1000, fileSizeBytes: 2000 });
+		expect(result).toEqual({
+			outcome: 'exceeds_total_quota',
+			quotaBytes: 1000,
+			fileSizeBytes: 2000
+		});
 	});
 
 	it('returns "exceeds_total_quota" even when file size exactly equals quota plus one byte', () => {
@@ -140,7 +144,10 @@ describe('checkQuota', () => {
 
 		expect(resultDefault.outcome).toBe('needs_eviction');
 		expect(resultAggressiveDecay.outcome).toBe('needs_eviction');
-		if (resultDefault.outcome === 'needs_eviction' && resultAggressiveDecay.outcome === 'needs_eviction') {
+		if (
+			resultDefault.outcome === 'needs_eviction' &&
+			resultAggressiveDecay.outcome === 'needs_eviction'
+		) {
 			expect(resultDefault.plan.toEvict[0].videoId).toBe('b-cold-but-fresh');
 			expect(resultAggressiveDecay.plan.toEvict[0].videoId).toBe('a-hot-but-stale');
 		}

@@ -41,12 +41,18 @@ async function readSessionIds(kv: KVNamespace, userId: string): Promise<string[]
 	}
 }
 
-async function writeSessionIds(kv: KVNamespace, userId: string, sessionIds: string[]): Promise<void> {
+async function writeSessionIds(
+	kv: KVNamespace,
+	userId: string,
+	sessionIds: string[]
+): Promise<void> {
 	if (sessionIds.length === 0) {
 		await kv.delete(userSessionsKey(userId));
 		return;
 	}
-	await kv.put(userSessionsKey(userId), JSON.stringify(sessionIds), { expirationTtl: SESSION_TTL_SECONDS });
+	await kv.put(userSessionsKey(userId), JSON.stringify(sessionIds), {
+		expirationTtl: SESSION_TTL_SECONDS
+	});
 }
 
 export async function createSession(
@@ -62,10 +68,15 @@ export async function createSession(
 	// never find because the index write never happened.
 	const existing = await readSessionIds(kv, record.userId);
 	await writeSessionIds(kv, record.userId, [...existing, sessionId]);
-	await kv.put(sessionKey(sessionId), JSON.stringify(record), { expirationTtl: SESSION_TTL_SECONDS });
+	await kv.put(sessionKey(sessionId), JSON.stringify(record), {
+		expirationTtl: SESSION_TTL_SECONDS
+	});
 }
 
-export async function getSession(kv: KVNamespace, sessionId: string): Promise<SessionRecord | null> {
+export async function getSession(
+	kv: KVNamespace,
+	sessionId: string
+): Promise<SessionRecord | null> {
 	return kv.get<SessionRecord>(sessionKey(sessionId), 'json');
 }
 

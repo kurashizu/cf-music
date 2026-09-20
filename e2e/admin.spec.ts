@@ -74,7 +74,7 @@ test.describe('admin panel', () => {
 		await expect(page.getByText('Available').first()).toBeVisible();
 	});
 
-	test('lists the admin\'s own user row and lets it edit its own quota', async ({ page }) => {
+	test("lists the admin's own user row and lets it edit its own quota", async ({ page }) => {
 		const { username } = await registerAdminAndReload(page);
 		await page.goto('/admin');
 

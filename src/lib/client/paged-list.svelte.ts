@@ -142,5 +142,4 @@ export class PagedList<T> {
 			for (const i of missing) this.inFlight.delete(i);
 		}
 	}
-
 }

@@ -37,12 +37,21 @@ async function fetchWholePlaylist(
 	userId: string
 ): Promise<{ name: string; songs: PlaylistSongRow[] }> {
 	const meta = await getPlaylistMeta(db, playlistId, userId);
-	const songs = await getPlaylistSongsInRange(db, playlistId, userId, 0, Math.max(meta.songCount, 1));
+	const songs = await getPlaylistSongsInRange(
+		db,
+		playlistId,
+		userId,
+		0,
+		Math.max(meta.songCount, 1)
+	);
 	return { name: meta.name, songs };
 }
 
 async function seedUser(id: string) {
-	await db.insert(users).values({ id, username: `user-${id}`, passwordHash: 'x' }).onConflictDoNothing();
+	await db
+		.insert(users)
+		.values({ id, username: `user-${id}`, passwordHash: 'x' })
+		.onConflictDoNothing();
 }
 
 async function seedSong(videoId: string, overrides: Partial<typeof songs.$inferInsert> = {}) {
@@ -87,7 +96,7 @@ describe('createPlaylist / listPlaylists', () => {
 		expect(list[0].name).toBe('My Mix');
 	});
 
-	it('does not list another user\'s playlists', async () => {
+	it("does not list another user's playlists", async () => {
 		await seedUser('u1');
 		await seedUser('u2');
 		await createPlaylist(db, { userId: 'u1', name: 'Owned by u1' });
@@ -98,7 +107,11 @@ describe('createPlaylist / listPlaylists', () => {
 
 	it('stores an optional sourceUrl for imported playlists', async () => {
 		await seedUser('u1');
-		await createPlaylist(db, { userId: 'u1', name: 'Imported', sourceUrl: 'https://youtube.com/playlist?list=x' });
+		await createPlaylist(db, {
+			userId: 'u1',
+			name: 'Imported',
+			sourceUrl: 'https://youtube.com/playlist?list=x'
+		});
 
 		const list = await listPlaylists(db, 'u1');
 		expect(list[0].sourceUrl).toBe('https://youtube.com/playlist?list=x');
@@ -112,7 +125,7 @@ describe('createPlaylist / listPlaylists', () => {
 		expect(list[0].sourceUrl).toBeNull();
 	});
 
-	it('returns up to 4 member songs\' coverKeys in playlist order, skipping songs with none', async () => {
+	it("returns up to 4 member songs' coverKeys in playlist order, skipping songs with none", async () => {
 		await seedUser('u1');
 		await seedSong('a', { coverKey: 'covers/a.avif' });
 		await seedSong('b', { coverKey: null });
@@ -126,7 +139,12 @@ describe('createPlaylist / listPlaylists', () => {
 		}
 
 		const list = await listPlaylistsWithCovers(db, 'u1');
-		expect(list[0].coverKeys).toEqual(['covers/a.avif', 'covers/c.avif', 'covers/d.avif', 'covers/e.avif']);
+		expect(list[0].coverKeys).toEqual([
+			'covers/a.avif',
+			'covers/c.avif',
+			'covers/d.avif',
+			'covers/e.avif'
+		]);
 		expect(list[0].songCount).toBe(6);
 	});
 
@@ -154,7 +172,7 @@ describe('getPlaylistMeta', () => {
 		await expect(getPlaylistMeta(db, id, 'u2')).rejects.toThrow(LibraryError);
 	});
 
-	it('reports the playlist\'s total song count', async () => {
+	it("reports the playlist's total song count", async () => {
 		await seedUser('u1');
 		await seedSong('a');
 		await seedSong('b');
@@ -170,7 +188,9 @@ describe('getPlaylistMeta', () => {
 describe('getPlaylistSongsInRange', () => {
 	it('throws not_found for a nonexistent playlist', async () => {
 		await seedUser('u1');
-		await expect(getPlaylistSongsInRange(db, 'does-not-exist', 'u1', 0, 20)).rejects.toThrow(LibraryError);
+		await expect(getPlaylistSongsInRange(db, 'does-not-exist', 'u1', 0, 20)).rejects.toThrow(
+			LibraryError
+		);
 	});
 
 	it('throws not_found when the playlist belongs to a different user', async () => {
@@ -267,7 +287,11 @@ describe('renamePlaylist', () => {
 
 	it('rejects renaming an auto_generated playlist', async () => {
 		await seedUser('u1');
-		const { id } = await createPlaylist(db, { userId: 'u1', name: 'Radiohead', kind: 'auto_generated' });
+		const { id } = await createPlaylist(db, {
+			userId: 'u1',
+			name: 'Radiohead',
+			kind: 'auto_generated'
+		});
 
 		await expect(renamePlaylist(db, id, 'u1', 'Renamed')).rejects.toThrow(LibraryError);
 	});
@@ -316,7 +340,7 @@ describe('deletePlaylist', () => {
 		expect(user?.defaultPlaylistId).toBe(defaultId);
 	});
 
-	it('deletes a playlist an import job targeted, nulling out the job\'s reference instead of failing', async () => {
+	it("deletes a playlist an import job targeted, nulling out the job's reference instead of failing", async () => {
 		await seedUser('u1');
 		const { id } = await createPlaylist(db, { userId: 'u1', name: 'Imports' });
 		await db.insert(importJobs).values({
@@ -335,7 +359,11 @@ describe('deletePlaylist', () => {
 
 	it('rejects deleting an auto_generated playlist', async () => {
 		await seedUser('u1');
-		const { id } = await createPlaylist(db, { userId: 'u1', name: 'Radiohead', kind: 'auto_generated' });
+		const { id } = await createPlaylist(db, {
+			userId: 'u1',
+			name: 'Radiohead',
+			kind: 'auto_generated'
+		});
 
 		await expect(deletePlaylist(db, id, 'u1')).rejects.toThrow(LibraryError);
 	});
@@ -431,7 +459,11 @@ describe('addSongToPlaylist', () => {
 	it('rejects adding a song to an auto_generated playlist', async () => {
 		await seedUser('u1');
 		await seedSong('a');
-		const { id } = await createPlaylist(db, { userId: 'u1', name: 'Radiohead', kind: 'auto_generated' });
+		const { id } = await createPlaylist(db, {
+			userId: 'u1',
+			name: 'Radiohead',
+			kind: 'auto_generated'
+		});
 
 		await expect(addSongToPlaylist(db, id, 'u1', 'a')).rejects.toThrow(LibraryError);
 	});
@@ -469,7 +501,11 @@ describe('removeSongFromPlaylist', () => {
 	it('rejects removing a song from an auto_generated playlist', async () => {
 		await seedUser('u1');
 		await seedSong('a');
-		const { id } = await createPlaylist(db, { userId: 'u1', name: 'Radiohead', kind: 'auto_generated' });
+		const { id } = await createPlaylist(db, {
+			userId: 'u1',
+			name: 'Radiohead',
+			kind: 'auto_generated'
+		});
 		await db.insert(playlistSongs).values({ playlistId: id, videoId: 'a', position: 0 });
 
 		await expect(removeSongFromPlaylist(db, id, 'u1', 'a')).rejects.toThrow(LibraryError);
@@ -499,7 +535,9 @@ describe('moveSongToPlaylist', () => {
 		const { id: to } = await createPlaylist(db, { userId: 'u1', name: 'To' });
 		await addSongToPlaylist(db, defaultPlaylistId, 'u1', 'a');
 
-		await expect(moveSongToPlaylist(db, 'u1', defaultPlaylistId, to, 'a')).rejects.toThrow(LibraryError);
+		await expect(moveSongToPlaylist(db, 'u1', defaultPlaylistId, to, 'a')).rejects.toThrow(
+			LibraryError
+		);
 
 		const defaultPlaylist = await fetchWholePlaylist(defaultPlaylistId, 'u1');
 		const toPlaylist = await fetchWholePlaylist(to, 'u1');
@@ -557,7 +595,11 @@ describe('reorderPlaylist', () => {
 		await seedUser('u1');
 		await seedSong('a');
 		await seedSong('b');
-		const { id } = await createPlaylist(db, { userId: 'u1', name: 'Radiohead', kind: 'auto_generated' });
+		const { id } = await createPlaylist(db, {
+			userId: 'u1',
+			name: 'Radiohead',
+			kind: 'auto_generated'
+		});
 		await db.insert(playlistSongs).values([
 			{ playlistId: id, videoId: 'a', position: 0 },
 			{ playlistId: id, videoId: 'b', position: 1 }
@@ -568,7 +610,7 @@ describe('reorderPlaylist', () => {
 });
 
 describe('isSongInUserLibrary', () => {
-	it('returns true when the song is in one of the user\'s playlists', async () => {
+	it("returns true when the song is in one of the user's playlists", async () => {
 		await seedUser('u1');
 		await seedSong('a');
 		const { id } = await createPlaylist(db, { userId: 'u1', name: 'Mix' });
@@ -577,7 +619,7 @@ describe('isSongInUserLibrary', () => {
 		await expect(isSongInUserLibrary(db, 'u1', 'a')).resolves.toBe(true);
 	});
 
-	it('returns false when the song exists but only in another user\'s playlist', async () => {
+	it("returns false when the song exists but only in another user's playlist", async () => {
 		await seedUser('u1');
 		await seedUser('u2');
 		await seedSong('shared');
@@ -601,7 +643,12 @@ describe('listUserLibrarySongs', () => {
 		await addSongToPlaylist(db, id, 'u1', 'a');
 
 		const [song] = await listUserLibrarySongs(db, 'u1');
-		expect(song).toMatchObject({ videoId: 'a', artist: 'Radiohead', playCount: 0, lastPlayedAt: null });
+		expect(song).toMatchObject({
+			videoId: 'a',
+			artist: 'Radiohead',
+			playCount: 0,
+			lastPlayedAt: null
+		});
 	});
 
 	it('reports playCount and lastPlayedAt once the song has been played', async () => {
@@ -617,7 +664,7 @@ describe('listUserLibrarySongs', () => {
 		expect(song?.lastPlayedAt).not.toBeNull();
 	});
 
-	it('does not duplicate a song that belongs to multiple of the user\'s playlists', async () => {
+	it("does not duplicate a song that belongs to multiple of the user's playlists", async () => {
 		await seedUser('u1');
 		await seedSong('a');
 		const mix1 = await createPlaylist(db, { userId: 'u1', name: 'Mix 1' });
@@ -629,7 +676,7 @@ describe('listUserLibrarySongs', () => {
 		expect(result).toHaveLength(1);
 	});
 
-	it('only reflects one user\'s own play count for a song shared with another user', async () => {
+	it("only reflects one user's own play count for a song shared with another user", async () => {
 		await seedUser('u1');
 		await seedUser('u2');
 		await seedSong('shared');

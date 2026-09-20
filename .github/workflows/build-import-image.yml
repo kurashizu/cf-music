@@ -4,8 +4,8 @@ on:
   push:
     branches: [main]
     paths:
-      - "docker/import/**"
-      - ".github/workflows/build-import-image.yml"
+      - 'docker/import/**'
+      - '.github/workflows/build-import-image.yml'
   workflow_dispatch: {}
 
 permissions:

@@ -18,7 +18,10 @@ export interface DispatchImportWorkflowInput {
  * response, since workflow_dispatch itself has no return value beyond
  * "accepted" (GitHub queues the run asynchronously).
  */
-export async function dispatchImportWorkflow(config: GithubActionsConfig, input: DispatchImportWorkflowInput): Promise<void> {
+export async function dispatchImportWorkflow(
+	config: GithubActionsConfig,
+	input: DispatchImportWorkflowInput
+): Promise<void> {
 	const url = `https://api.github.com/repos/${config.owner}/${config.repo}/actions/workflows/${config.workflowFileName}/dispatches`;
 
 	const response = await fetch(url, {
@@ -40,6 +43,8 @@ export async function dispatchImportWorkflow(config: GithubActionsConfig, input:
 	});
 
 	if (!response.ok) {
-		throw new Error(`Failed to dispatch import workflow: ${response.status} ${response.statusText}`);
+		throw new Error(
+			`Failed to dispatch import workflow: ${response.status} ${response.statusText}`
+		);
 	}
 }

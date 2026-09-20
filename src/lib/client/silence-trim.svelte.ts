@@ -118,7 +118,7 @@ export function findTrimPoints(samples: Float32Array, sampleRate: number): TrimP
 	const ranked = Array.from(rms)
 		.filter((v) => v > 0)
 		.sort((a, b) => a - b);
-	if (ranked.length === 0) return { start: 0, end: windowCount * windowSize / sampleRate };
+	if (ranked.length === 0) return { start: 0, end: (windowCount * windowSize) / sampleRate };
 	const loudness = ranked[Math.floor(ranked.length * 0.9)];
 	const threshold = loudness * Math.pow(10, SILENCE_BELOW_DB / 20);
 

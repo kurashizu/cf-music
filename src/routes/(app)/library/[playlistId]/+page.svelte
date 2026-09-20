@@ -189,8 +189,7 @@
 	);
 
 	const isThisPlaylistPlaying = $derived(
-		player.isPlaying &&
-			list.items.some((song) => song?.videoId === player.currentTrack?.videoId)
+		player.isPlaying && list.items.some((song) => song?.videoId === player.currentTrack?.videoId)
 	);
 
 	/** Reordering rewrites the playlist's whole order, so it needs every song. */
@@ -578,7 +577,7 @@
 	<div class="mb-6 flex flex-wrap items-center justify-between gap-4">
 		<div class="min-w-0">
 			<h1 class="truncate text-lg font-medium">{data.playlist.name}</h1>
-			<p class="text-sm text-muted-foreground">
+			<p class="text-muted-foreground text-sm">
 				{data.totalSongCount}
 				{data.totalSongCount === 1 ? 'song' : 'songs'}
 				{data.isDefaultPlaylist ? '· Your whole library' : ''}
@@ -617,7 +616,7 @@
 	{#if data.totalSongCount > 0}
 		<div class="mb-3 flex flex-wrap items-center gap-2">
 			<div class="relative min-w-48 flex-1">
-				<SearchIcon class="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+				<SearchIcon class="text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2" />
 				<Input placeholder="Search songs…" bind:value={searchQuery} class="pl-9" />
 			</div>
 			<SongSortFilterBar
@@ -643,7 +642,7 @@
 	     on a different song. -->
 	{#if selection.size > 0}
 		<div
-			class="sticky top-0 z-20 -mb-12 flex h-12 items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 shadow-sm"
+			class="border-border bg-card sticky top-0 z-20 -mb-12 flex h-12 items-center justify-between gap-3 rounded-lg border px-3 shadow-sm"
 			transition:slide={motionParams({ duration: 150 })}
 		>
 			<div class="flex items-center gap-2">
@@ -655,7 +654,7 @@
 				>
 					<XIcon class="size-4" />
 				</Button>
-				<span class="text-sm text-muted-foreground">{selection.size} selected</span>
+				<span class="text-muted-foreground text-sm">{selection.size} selected</span>
 			</div>
 			<div class="flex items-center gap-2">
 				<Button size="sm" variant="outline" class="gap-1.5" onclick={addSelectionToQueue}>
@@ -729,15 +728,15 @@
 
 	{#if data.totalSongCount === 0}
 		<div
-			class="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border py-16 text-center"
+			class="border-border flex flex-col items-center gap-3 rounded-xl border border-dashed py-16 text-center"
 		>
-			<ListMusicIcon class="size-8 text-muted-foreground" />
-			<p class="text-sm text-muted-foreground">
+			<ListMusicIcon class="text-muted-foreground size-8" />
+			<p class="text-muted-foreground text-sm">
 				This playlist is empty. Import some songs to get started.
 			</p>
 		</div>
 	{:else if renderIndices.length === 0}
-		<p class="py-8 text-center text-sm text-muted-foreground">
+		<p class="text-muted-foreground py-8 text-center text-sm">
 			{searchQuery.trim().length > 0
 				? `No songs match "${searchQuery}".`
 				: 'No songs match the current filters.'}
@@ -865,8 +864,8 @@
 		<Dialog.Header>
 			<Dialog.Title>Delete "{deleteTarget?.title}"?</Dialog.Title>
 			<Dialog.Description>
-				This deletes the song from your library entirely, not just this playlist — it disappears from
-				every playlist it's in. This can't be undone.
+				This deletes the song from your library entirely, not just this playlist — it disappears
+				from every playlist it's in. This can't be undone.
 			</Dialog.Description>
 		</Dialog.Header>
 		<Dialog.Footer>

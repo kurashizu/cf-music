@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { formatDuration, formatLongDuration, formatAudioSpec, formatBytes, formatPlaybackTime, formatCompactDuration, formatDateTime } from './format';
+import {
+	formatDuration,
+	formatLongDuration,
+	formatAudioSpec,
+	formatBytes,
+	formatPlaybackTime,
+	formatCompactDuration,
+	formatDateTime
+} from './format';
 
 describe('formatDuration', () => {
 	it('pads seconds so times stay aligned in a list', () => {

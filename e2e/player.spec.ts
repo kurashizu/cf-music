@@ -140,9 +140,7 @@ test.describe('player bar', () => {
 		await playFirstRow(page);
 
 		await expect(page.getByText(tracks[0].title)).toHaveCount(2); // list row + player bar
-		await expect(
-			page.getByRole('button', { name: 'Pause', exact: true }).last()
-		).toBeVisible();
+		await expect(page.getByRole('button', { name: 'Pause', exact: true }).last()).toBeVisible();
 	});
 
 	test('advances to the next track and back to the previous one', async ({ page }) => {
@@ -206,9 +204,7 @@ test.describe('player bar', () => {
 
 		await page.goto(`/library/${playlistId}`);
 		await playFirstRow(page);
-		await expect(
-			page.getByRole('button', { name: 'Pause', exact: true }).last()
-		).toBeVisible();
+		await expect(page.getByRole('button', { name: 'Pause', exact: true }).last()).toBeVisible();
 
 		await page.getByRole('link', { name: 'Library', exact: true }).first().click();
 		await expect(page).toHaveURL('/library');

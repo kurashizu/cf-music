@@ -34,7 +34,10 @@ describe('registerServiceWorker', () => {
 		// a tick for the rejected promise's .catch to actually run.
 		await new Promise((resolve) => setTimeout(resolve, 0));
 
-		expect(consoleError).toHaveBeenCalledWith('Service worker registration failed', expect.any(Error));
+		expect(consoleError).toHaveBeenCalledWith(
+			'Service worker registration failed',
+			expect.any(Error)
+		);
 		consoleError.mockRestore();
 	});
 });

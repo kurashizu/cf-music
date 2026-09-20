@@ -29,13 +29,26 @@ export const POST: RequestHandler = async (event) => {
 	const body: unknown = JSON.parse(rawBody);
 	const fields = pickStrings(body, ['userId', 'jobId', 'videoId']);
 	const estimatedBytes =
-		typeof body === 'object' && body !== null ? (body as Record<string, unknown>).estimatedBytes : undefined;
-	if (!fields || typeof estimatedBytes !== 'number' || !Number.isFinite(estimatedBytes) || estimatedBytes < 0) {
+		typeof body === 'object' && body !== null
+			? (body as Record<string, unknown>).estimatedBytes
+			: undefined;
+	if (
+		!fields ||
+		typeof estimatedBytes !== 'number' ||
+		!Number.isFinite(estimatedBytes) ||
+		estimatedBytes < 0
+	) {
 		error(400, 'userId, jobId, videoId, and a non-negative numeric estimatedBytes are required');
 	}
 
 	const db = getDb(event.platform!.env.DB);
-	const result = await reserveQuota(db, fields.userId, fields.jobId, fields.videoId, estimatedBytes);
+	const result = await reserveQuota(
+		db,
+		fields.userId,
+		fields.jobId,
+		fields.videoId,
+		estimatedBytes
+	);
 
 	return json(result);
 };

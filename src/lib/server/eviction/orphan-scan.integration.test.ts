@@ -47,7 +47,10 @@ async function seedSong(videoId: string, overrides: Partial<typeof songs.$inferI
 }
 
 async function seedUser(id: string) {
-	await db.insert(users).values({ id, username: `user-${id}`, passwordHash: 'x' }).onConflictDoNothing();
+	await db
+		.insert(users)
+		.values({ id, username: `user-${id}`, passwordHash: 'x' })
+		.onConflictDoNothing();
 }
 
 beforeEach(async () => {
@@ -74,7 +77,7 @@ describe('findOrphanedObjects', () => {
 		expect(result.orphanKeys).toEqual(['audio/stray.webm']);
 	});
 
-	it('does not report a song\'s own audioKey or coverKey as orphaned', async () => {
+	it("does not report a song's own audioKey or coverKey as orphaned", async () => {
 		await seedSong('a', { audioKey: 'audio/a.webm', coverKey: 'covers/a.avif' });
 		const storage = new FakeObjectStorage(['audio/a.webm', 'covers/a.avif']);
 		const result = await findOrphanedObjects(db, storage);
@@ -83,7 +86,11 @@ describe('findOrphanedObjects', () => {
 
 	it('reports only the unreferenced keys out of a mixed bucket', async () => {
 		await seedSong('a', { audioKey: 'audio/a.webm', coverKey: null });
-		const storage = new FakeObjectStorage(['audio/a.webm', 'audio/orphan.webm', 'covers/orphan.avif']);
+		const storage = new FakeObjectStorage([
+			'audio/a.webm',
+			'audio/orphan.webm',
+			'covers/orphan.avif'
+		]);
 		const result = await findOrphanedObjects(db, storage);
 		expect(result.orphanKeys.sort()).toEqual(['audio/orphan.webm', 'covers/orphan.avif']);
 	});
@@ -97,7 +104,10 @@ describe('findOrphanedObjects', () => {
 	});
 
 	it('excludes ci-state/ keys from both orphanKeys and totalBucketKeys', async () => {
-		const storage = new FakeObjectStorage(['ci-state/www.youtube.com_cookies.txt', 'audio/stray.webm']);
+		const storage = new FakeObjectStorage([
+			'ci-state/www.youtube.com_cookies.txt',
+			'audio/stray.webm'
+		]);
 		const result = await findOrphanedObjects(db, storage);
 		expect(result.orphanKeys).toEqual(['audio/stray.webm']);
 		expect(result.totalBucketKeys).toBe(1);
@@ -105,25 +115,29 @@ describe('findOrphanedObjects', () => {
 });
 
 describe('findDeadSongReferences', () => {
-	it('reports nothing dead when every song\'s objects exist in the bucket', async () => {
+	it("reports nothing dead when every song's objects exist in the bucket", async () => {
 		await seedSong('a', { audioKey: 'audio/a.webm', coverKey: 'covers/a.avif' });
 		const storage = new FakeObjectStorage(['audio/a.webm', 'covers/a.avif']);
 		const result = await findDeadSongReferences(db, storage);
 		expect(result.deadReferences).toEqual([]);
 	});
 
-	it('reports a song\'s audioKey as dead when it is missing from the bucket', async () => {
+	it("reports a song's audioKey as dead when it is missing from the bucket", async () => {
 		await seedSong('a', { audioKey: 'audio/a.webm', coverKey: null });
 		const storage = new FakeObjectStorage([]);
 		const result = await findDeadSongReferences(db, storage);
-		expect(result.deadReferences).toEqual([{ videoId: 'a', title: 'Song a', field: 'audioKey', key: 'audio/a.webm' }]);
+		expect(result.deadReferences).toEqual([
+			{ videoId: 'a', title: 'Song a', field: 'audioKey', key: 'audio/a.webm' }
+		]);
 	});
 
-	it('reports a song\'s coverKey as dead independently of its audioKey', async () => {
+	it("reports a song's coverKey as dead independently of its audioKey", async () => {
 		await seedSong('a', { audioKey: 'audio/a.webm', coverKey: 'covers/a.avif' });
 		const storage = new FakeObjectStorage(['audio/a.webm']);
 		const result = await findDeadSongReferences(db, storage);
-		expect(result.deadReferences).toEqual([{ videoId: 'a', title: 'Song a', field: 'coverKey', key: 'covers/a.avif' }]);
+		expect(result.deadReferences).toEqual([
+			{ videoId: 'a', title: 'Song a', field: 'coverKey', key: 'covers/a.avif' }
+		]);
 	});
 
 	it('does not report a dead coverKey for a song with no coverKey at all', async () => {
@@ -143,12 +157,14 @@ describe('findDeadSongReferences', () => {
 		]);
 	});
 
-	it('does not flag one song\'s missing object as dead for a different song sharing no keys', async () => {
+	it("does not flag one song's missing object as dead for a different song sharing no keys", async () => {
 		await seedSong('a', { audioKey: 'audio/a.webm', coverKey: null });
 		await seedSong('b', { audioKey: 'audio/b.webm', coverKey: null });
 		const storage = new FakeObjectStorage(['audio/a.webm']);
 		const result = await findDeadSongReferences(db, storage);
-		expect(result.deadReferences).toEqual([{ videoId: 'b', title: 'Song b', field: 'audioKey', key: 'audio/b.webm' }]);
+		expect(result.deadReferences).toEqual([
+			{ videoId: 'b', title: 'Song b', field: 'audioKey', key: 'audio/b.webm' }
+		]);
 	});
 });
 
@@ -157,7 +173,12 @@ describe('resolveDeadSongReference', () => {
 		await seedUser('admin1');
 		await seedSong('a', { audioKey: 'audio/a.webm', coverKey: null });
 
-		await resolveDeadSongReference(db, 'admin1', { videoId: 'a', title: 'Song a', field: 'audioKey', key: 'audio/a.webm' });
+		await resolveDeadSongReference(db, 'admin1', {
+			videoId: 'a',
+			title: 'Song a',
+			field: 'audioKey',
+			key: 'audio/a.webm'
+		});
 
 		const song = await db.query.songs.findFirst({ where: eq(songs.videoId, 'a') });
 		expect(song).toBeUndefined();
@@ -167,7 +188,12 @@ describe('resolveDeadSongReference', () => {
 		await seedUser('admin1');
 		await seedSong('a', { audioKey: 'audio/a.webm', coverKey: 'covers/a.avif', title: 'Keep Me' });
 
-		await resolveDeadSongReference(db, 'admin1', { videoId: 'a', title: 'Song a', field: 'coverKey', key: 'covers/a.avif' });
+		await resolveDeadSongReference(db, 'admin1', {
+			videoId: 'a',
+			title: 'Song a',
+			field: 'coverKey',
+			key: 'covers/a.avif'
+		});
 
 		const song = await db.query.songs.findFirst({ where: eq(songs.videoId, 'a') });
 		expect(song?.coverKey).toBeNull();
@@ -179,7 +205,12 @@ describe('resolveDeadSongReference', () => {
 		await seedUser('admin1');
 		await seedSong('a', { audioKey: 'audio/a.webm', coverKey: null });
 
-		await resolveDeadSongReference(db, 'admin1', { videoId: 'a', title: 'Song a', field: 'audioKey', key: 'audio/a.webm' });
+		await resolveDeadSongReference(db, 'admin1', {
+			videoId: 'a',
+			title: 'Song a',
+			field: 'audioKey',
+			key: 'audio/a.webm'
+		});
 
 		const entry = await db.query.auditLog.findFirst({ where: eq(auditLog.targetId, 'a') });
 		expect(entry?.actorId).toBe('admin1');
@@ -190,7 +221,12 @@ describe('resolveDeadSongReference', () => {
 		await seedUser('admin1');
 		await seedSong('a', { audioKey: 'audio/a.webm', coverKey: 'covers/a.avif' });
 
-		await resolveDeadSongReference(db, 'admin1', { videoId: 'a', title: 'Song a', field: 'coverKey', key: 'covers/a.avif' });
+		await resolveDeadSongReference(db, 'admin1', {
+			videoId: 'a',
+			title: 'Song a',
+			field: 'coverKey',
+			key: 'covers/a.avif'
+		});
 
 		const entry = await db.query.auditLog.findFirst({ where: eq(auditLog.targetId, 'a') });
 		expect(entry?.eventType).toBe('cover_reference_cleared');
@@ -200,7 +236,12 @@ describe('resolveDeadSongReference', () => {
 		await seedUser('admin1');
 		await seedSong('a', { audioKey: 'audio/a.webm', coverKey: null });
 
-		const result = await resolveDeadSongReference(db, 'admin1', { videoId: 'a', title: 'Song a', field: 'audioKey', key: 'audio/a.webm' });
+		const result = await resolveDeadSongReference(db, 'admin1', {
+			videoId: 'a',
+			title: 'Song a',
+			field: 'audioKey',
+			key: 'audio/a.webm'
+		});
 
 		expect(result.resolved).toBe(true);
 	});
@@ -210,11 +251,21 @@ describe('resolveDeadSongReference', () => {
 		await seedUser('admin2');
 		await seedSong('a', { audioKey: 'audio/a.webm', coverKey: null });
 
-		const first = await resolveDeadSongReference(db, 'admin1', { videoId: 'a', title: 'Song a', field: 'audioKey', key: 'audio/a.webm' });
+		const first = await resolveDeadSongReference(db, 'admin1', {
+			videoId: 'a',
+			title: 'Song a',
+			field: 'audioKey',
+			key: 'audio/a.webm'
+		});
 		// The row is already gone - a second admin resolving "the same"
 		// reference (e.g. both had it open in their own scan results) finds
 		// nothing left to delete.
-		const second = await resolveDeadSongReference(db, 'admin2', { videoId: 'a', title: 'Song a', field: 'audioKey', key: 'audio/a.webm' });
+		const second = await resolveDeadSongReference(db, 'admin2', {
+			videoId: 'a',
+			title: 'Song a',
+			field: 'audioKey',
+			key: 'audio/a.webm'
+		});
 
 		expect(first.resolved).toBe(true);
 		expect(second.resolved).toBe(false);
@@ -229,7 +280,12 @@ describe('resolveDeadSongReference', () => {
 
 		// Resolving a stale reference to the *old* cover key, which this
 		// song no longer actually has.
-		const result = await resolveDeadSongReference(db, 'admin1', { videoId: 'a', title: 'Song a', field: 'coverKey', key: 'covers/old.avif' });
+		const result = await resolveDeadSongReference(db, 'admin1', {
+			videoId: 'a',
+			title: 'Song a',
+			field: 'coverKey',
+			key: 'covers/old.avif'
+		});
 
 		expect(result.resolved).toBe(false);
 		const song = await db.query.songs.findFirst({ where: eq(songs.videoId, 'a') });
@@ -351,7 +407,12 @@ describe('resolveUnreferencedSong', () => {
 	it('reports resolved: false when the song no longer exists', async () => {
 		await seedUser('admin1');
 
-		const result = await resolveUnreferencedSong(db, new FakeObjectStorage([]), 'admin1', 'does-not-exist');
+		const result = await resolveUnreferencedSong(
+			db,
+			new FakeObjectStorage([]),
+			'admin1',
+			'does-not-exist'
+		);
 
 		expect(result.resolved).toBe(false);
 	});

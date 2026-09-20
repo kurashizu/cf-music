@@ -24,7 +24,8 @@ export const GET: RequestHandler = async (event) => {
 export const DELETE: RequestHandler = async (event) => {
 	requireAdmin(event);
 	const body: unknown = await event.request.json().catch(() => null);
-	const keys = typeof body === 'object' && body !== null ? (body as Record<string, unknown>).keys : undefined;
+	const keys =
+		typeof body === 'object' && body !== null ? (body as Record<string, unknown>).keys : undefined;
 	if (!Array.isArray(keys) || keys.some((k) => typeof k !== 'string')) {
 		error(400, 'keys must be a string array');
 	}
@@ -38,5 +39,8 @@ export const DELETE: RequestHandler = async (event) => {
 
 	await storage.deleteObjects(toDelete);
 
-	return json({ deletedKeys: toDelete, skippedKeys: (keys as string[]).filter((k) => !stillOrphaned.has(k)) });
+	return json({
+		deletedKeys: toDelete,
+		skippedKeys: (keys as string[]).filter((k) => !stillOrphaned.has(k))
+	});
 };

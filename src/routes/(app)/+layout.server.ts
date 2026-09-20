@@ -18,7 +18,9 @@ export const load: LayoutServerLoad = async ({ platform, locals }) => {
 
 	return {
 		session: locals.session,
-		sidebarPlaylists: allPlaylists.filter((p) => p.kind === 'user').map((p) => ({ id: p.id, name: p.name })),
+		sidebarPlaylists: allPlaylists
+			.filter((p) => p.kind === 'user')
+			.map((p) => ({ id: p.id, name: p.name })),
 		// Only the 6 fixed smart playlists, not Artists groupings — the
 		// sidebar has no room for a whole second category the way the
 		// library page's grid does.

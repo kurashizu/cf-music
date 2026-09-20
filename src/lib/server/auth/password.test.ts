@@ -40,7 +40,9 @@ describe('hashPassword / verifyPassword', () => {
 
 describe('parseStoredHash', () => {
 	it('parses a well-formed hash into its components', () => {
-		const parsed = parseStoredHash('pbkdf2$210000$aabbccddeeff00112233445566778899$' + 'a'.repeat(64));
+		const parsed = parseStoredHash(
+			'pbkdf2$210000$aabbccddeeff00112233445566778899$' + 'a'.repeat(64)
+		);
 		expect(parsed).not.toBeNull();
 		expect(parsed?.iterations).toBe(210000);
 		expect(parsed?.salt).toHaveLength(16);
@@ -68,7 +70,9 @@ describe('parseStoredHash', () => {
 	});
 
 	it('rejects a non-numeric iteration count', () => {
-		expect(parseStoredHash('pbkdf2$not-a-number$' + 'aa'.repeat(16) + '$' + 'a'.repeat(64))).toBeNull();
+		expect(
+			parseStoredHash('pbkdf2$not-a-number$' + 'aa'.repeat(16) + '$' + 'a'.repeat(64))
+		).toBeNull();
 	});
 
 	it('rejects an iteration count of exactly 0', () => {

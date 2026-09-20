@@ -38,7 +38,11 @@ export const POST: RequestHandler = async (event) => {
 		eventType: 'embedding_failed',
 		targetType: 'embedding_job',
 		targetId: fields.jobId,
-		detail: { videoId: typeof videoId === 'string' ? videoId : null, error: fields.error, retryable }
+		detail: {
+			videoId: typeof videoId === 'string' ? videoId : null,
+			error: fields.error,
+			retryable
+		}
 	});
 
 	return json({ ok: true });

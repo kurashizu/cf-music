@@ -17,7 +17,10 @@ const MAX_LIMIT = 50;
 export const GET: RequestHandler = async (event) => {
 	const session = requireSession(event);
 	const limitParam = Number(event.url.searchParams.get('limit'));
-	const limit = Number.isInteger(limitParam) && limitParam > 0 ? Math.min(limitParam, MAX_LIMIT) : DEFAULT_LIMIT;
+	const limit =
+		Number.isInteger(limitParam) && limitParam > 0
+			? Math.min(limitParam, MAX_LIMIT)
+			: DEFAULT_LIMIT;
 
 	const db = getDb(event.platform!.env.DB);
 	const results = await getSimilarSongsInLibrary(db, session.userId, event.params.videoId, limit);

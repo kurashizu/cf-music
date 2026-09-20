@@ -24,11 +24,7 @@
 	import SongCard from '$lib/components/song-card.svelte';
 	import SongSortFilterBar from '$lib/components/song-sort-filter-bar.svelte';
 	import { SongSelection } from '$lib/client/song-selection.svelte';
-	import {
-		sortSongs,
-		type SongSortField,
-		type SortDirection
-	} from '$lib/shared/song-sort-filter';
+	import { sortSongs, type SongSortField, type SortDirection } from '$lib/shared/song-sort-filter';
 	import type { SongRowActions, SongRowData, SongRowFlags } from '$lib/components/song-row-types';
 	import {
 		reconcileAudioCache,
@@ -264,7 +260,11 @@
 		selection.clear();
 	}
 
-	async function playEntry(entry: { videoId: string; title: string; durationSeconds: number | null }) {
+	async function playEntry(entry: {
+		videoId: string;
+		title: string;
+		durationSeconds: number | null;
+	}) {
 		if (player.currentTrack?.videoId === entry.videoId) {
 			await player.togglePlayPause();
 			return;
@@ -458,9 +458,9 @@
 	</div>
 	<h1 class="mb-6 text-lg font-medium">Manage storage</h1>
 
-	<div class="mb-4 rounded-xl border border-border p-4">
+	<div class="border-border mb-4 rounded-xl border p-4">
 		<div class="mb-2 flex items-center justify-between text-sm">
-			<span class="flex items-center gap-1.5 text-muted-foreground">
+			<span class="text-muted-foreground flex items-center gap-1.5">
 				<HardDriveIcon class="size-4" />
 				Account storage (cloud)
 			</span>
@@ -468,17 +468,17 @@
 				>{formatBytes(data.usageBytes)} / {formatBytes(data.quotaBytes)}</span
 			>
 		</div>
-		<div class="h-1.5 overflow-hidden rounded-full bg-muted">
+		<div class="bg-muted h-1.5 overflow-hidden rounded-full">
 			<div
-				class="h-full bg-foreground transition-all duration-300"
+				class="bg-foreground h-full transition-all duration-300"
 				style="width: {usagePercent}%"
 			></div>
 		</div>
 	</div>
 
-	<div class="mb-6 rounded-xl border border-border p-4">
+	<div class="border-border mb-6 rounded-xl border p-4">
 		<div class="mb-2 flex items-center justify-between text-sm">
-			<span class="flex items-center gap-1.5 text-muted-foreground">
+			<span class="text-muted-foreground flex items-center gap-1.5">
 				<GlobeIcon class="size-4" />
 				Browser offline cache (this device)
 			</span>
@@ -489,16 +489,16 @@
 			{/if}
 		</div>
 		{#if browserStorage}
-			<div class="h-1.5 overflow-hidden rounded-full bg-muted">
+			<div class="bg-muted h-1.5 overflow-hidden rounded-full">
 				<div
-					class="h-full bg-foreground transition-all duration-300"
+					class="bg-foreground h-full transition-all duration-300"
 					style="width: {browserUsagePercent}%"
 				></div>
 			</div>
 		{:else}
-			<p class="text-xs text-muted-foreground">Not available in this browser.</p>
+			<p class="text-muted-foreground text-xs">Not available in this browser.</p>
 		{/if}
-		<p class="mt-2 text-xs text-muted-foreground">
+		<p class="text-muted-foreground mt-2 text-xs">
 			Download a song to keep it available for offline playback. Downloaded songs stay cached until
 			you clear them here.
 		</p>
@@ -506,15 +506,15 @@
 
 	{#if entries.length === 0}
 		<div
-			class="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border py-16 text-center"
+			class="border-border flex flex-col items-center gap-3 rounded-xl border border-dashed py-16 text-center"
 		>
-			<HardDriveIcon class="size-8 text-muted-foreground" />
-			<p class="text-sm text-muted-foreground">No songs in your library yet.</p>
+			<HardDriveIcon class="text-muted-foreground size-8" />
+			<p class="text-muted-foreground text-sm">No songs in your library yet.</p>
 		</div>
 	{:else}
 		<div class="mb-3 flex flex-wrap items-center gap-2">
 			<div class="relative min-w-48 flex-1">
-				<SearchIcon class="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+				<SearchIcon class="text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2" />
 				<Input placeholder="Search songs…" bind:value={searchQuery} class="pl-9" />
 			</div>
 			<SongSortFilterBar
@@ -544,7 +544,7 @@
 		     on a different song. -->
 		{#if selection.size > 0}
 			<div
-				class="sticky top-0 z-20 -mb-12 flex h-12 items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 shadow-sm"
+				class="border-border bg-card sticky top-0 z-20 -mb-12 flex h-12 items-center justify-between gap-3 rounded-lg border px-3 shadow-sm"
 				transition:slide={motionParams({ duration: 150 })}
 			>
 				<div class="flex items-center gap-2">
@@ -556,7 +556,7 @@
 					>
 						<XIcon class="size-4" />
 					</Button>
-					<span class="text-sm text-muted-foreground">{selection.size} selected</span>
+					<span class="text-muted-foreground text-sm">{selection.size} selected</span>
 				</div>
 				<div class="flex items-center gap-2">
 					<Button size="sm" variant="outline" class="gap-1.5" onclick={addSelectionToQueue}>
@@ -615,7 +615,7 @@
 		{/if}
 
 		{#if filteredEntries.length === 0}
-			<p class="py-8 text-center text-sm text-muted-foreground">
+			<p class="text-muted-foreground py-8 text-center text-sm">
 				{searchQuery.trim().length > 0
 					? `No songs match "${searchQuery}".`
 					: 'No songs match the current filters.'}
@@ -625,11 +625,7 @@
 				class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8"
 			>
 				{#each visibleEntries as entry (entry.videoId)}
-					<SongCard
-						song={toRowData(entry)}
-						flags={rowFlags(entry)}
-						actions={rowActions(entry)}
-					/>
+					<SongCard song={toRowData(entry)} flags={rowFlags(entry)} actions={rowActions(entry)} />
 				{/each}
 			</div>
 			{#if visibleCount < filteredEntries.length}
@@ -683,7 +679,10 @@
 	</Dialog.Content>
 </Dialog.Root>
 
-<Dialog.Root open={batchDeleteConfirm} onOpenChange={(open) => !open && (batchDeleteConfirm = false)}>
+<Dialog.Root
+	open={batchDeleteConfirm}
+	onOpenChange={(open) => !open && (batchDeleteConfirm = false)}
+>
 	<Dialog.Content class="sm:max-w-sm">
 		<Dialog.Header>
 			<Dialog.Title>Delete {selection.size} songs?</Dialog.Title>

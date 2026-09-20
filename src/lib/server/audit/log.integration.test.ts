@@ -8,7 +8,10 @@ import { recordAuditEvent, listAuditLog } from './log';
 const db = getDb(env.DB);
 
 async function seedUser(id: string) {
-	await db.insert(users).values({ id, username: `user-${id}`, passwordHash: 'x' }).onConflictDoNothing();
+	await db
+		.insert(users)
+		.values({ id, username: `user-${id}`, passwordHash: 'x' })
+		.onConflictDoNothing();
 }
 
 beforeEach(async () => {

@@ -22,7 +22,12 @@
 	import PlaylistCover from '$lib/components/playlist-cover.svelte';
 	import { player } from '$lib/client/player.svelte';
 	import SongSortFilterBar from '$lib/components/song-sort-filter-bar.svelte';
-	import { sortSongs, matchesDurationRange, type SongSortField, type SortDirection } from '$lib/shared/song-sort-filter';
+	import {
+		sortSongs,
+		matchesDurationRange,
+		type SongSortField,
+		type SortDirection
+	} from '$lib/shared/song-sort-filter';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -45,9 +50,9 @@
 	];
 
 	const artistOptions = $derived(
-		[...new Set(data.librarySongs.map((s) => s.artist).filter((a): a is string => a !== null))].sort(
-			(a, b) => a.localeCompare(b)
-		)
+		[
+			...new Set(data.librarySongs.map((s) => s.artist).filter((a): a is string => a !== null))
+		].sort((a, b) => a.localeCompare(b))
 	);
 
 	const normalizedQuery = $derived(searchQuery.trim().toLowerCase());
@@ -94,7 +99,11 @@
 		return sortSongs(filtered, sortField, sortDirection);
 	});
 
-	async function playSong(song: { videoId: string; title: string; durationSeconds: number | null }) {
+	async function playSong(song: {
+		videoId: string;
+		title: string;
+		durationSeconds: number | null;
+	}) {
 		const index = matchingSongs.findIndex((s) => s.videoId === song.videoId);
 		await player.playQueue(matchingSongs, Math.max(0, index));
 	}
@@ -188,7 +197,7 @@
 	{#if data.playlists.length > 0 || data.artistPlaylists.length > 0 || data.recommendedPlaylists.length > 0}
 		<div class="mb-6 flex flex-wrap items-center gap-2">
 			<div class="relative min-w-48 flex-1">
-				<SearchIcon class="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+				<SearchIcon class="text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2" />
 				<Input placeholder="Search playlists and songs…" bind:value={searchQuery} class="pl-9" />
 			</div>
 			<SongSortFilterBar
@@ -236,31 +245,39 @@
 	</div>
 
 	{#if data.playlists.length === 0}
-		<div class="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border py-16 text-center">
-			<ListMusicIcon class="size-8 text-muted-foreground" />
-			<p class="text-sm text-muted-foreground">No playlists yet. Create one, or import from a link.</p>
+		<div
+			class="border-border flex flex-col items-center gap-3 rounded-xl border border-dashed py-16 text-center"
+		>
+			<ListMusicIcon class="text-muted-foreground size-8" />
+			<p class="text-muted-foreground text-sm">
+				No playlists yet. Create one, or import from a link.
+			</p>
 			<Button size="sm" variant="outline" onclick={() => (createOpen = true)}>New playlist</Button>
 		</div>
 	{:else if filteredPlaylists.length > 0}
-		<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
+		<div
+			class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7"
+		>
 			{#each filteredPlaylists as playlist (playlist.id)}
 				<Card.Root
-					class="group relative overflow-hidden py-0 transition-colors active:border-ring/50 hover:border-ring/50"
+					class="group active:border-ring/50 hover:border-ring/50 relative overflow-hidden py-0 transition-colors"
 				>
 					<a href="/library/{playlist.id}" class="flex flex-col gap-3 p-3 sm:p-4">
 						<div
-							class="flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-muted transition-transform duration-200 group-active:scale-[1.02] group-hover:scale-[1.02]"
+							class="bg-muted flex aspect-square items-center justify-center overflow-hidden rounded-lg transition-transform duration-200 group-hover:scale-[1.02] group-active:scale-[1.02]"
 						>
 							<PlaylistCover coverUrls={playlist.coverUrls}>
 								{#snippet fallback()}
-									<ListMusicIcon class="size-8 text-muted-foreground" />
+									<ListMusicIcon class="text-muted-foreground size-8" />
 								{/snippet}
 							</PlaylistCover>
 						</div>
 						<div class="min-w-0">
 							<p class="truncate text-sm font-medium">{playlist.name}</p>
-							<p class="truncate text-xs text-muted-foreground">
-								{playlist.id === data.defaultPlaylistId ? 'Your whole library · ' : ''}{playlist.songCount}
+							<p class="text-muted-foreground truncate text-xs">
+								{playlist.id === data.defaultPlaylistId
+									? 'Your whole library · '
+									: ''}{playlist.songCount}
 								{playlist.songCount === 1 ? 'song' : 'songs'}
 							</p>
 						</div>
@@ -272,7 +289,7 @@
 									{...props}
 									variant="ghost"
 									size="icon-sm"
-									class="absolute top-2 right-2 bg-card/90 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:data-[state=open]:opacity-100"
+									class="bg-card/90 absolute top-2 right-2 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:data-[state=open]:opacity-100"
 								>
 									<MoreVerticalIcon class="size-4" />
 								</Button>
@@ -284,10 +301,7 @@
 									<PencilIcon class="size-4" />
 									Rename
 								</DropdownMenu.Item>
-								<DropdownMenu.Item
-									variant="destructive"
-									onclick={() => (deleteTarget = playlist)}
-								>
+								<DropdownMenu.Item variant="destructive" onclick={() => (deleteTarget = playlist)}>
 									<Trash2Icon class="size-4" />
 									Delete
 								</DropdownMenu.Item>
@@ -300,57 +314,68 @@
 	{/if}
 
 	{#if (searchQuery.trim().length > 0 || artistFilter !== 'all' || minDurationMinutes.trim() !== '' || maxDurationMinutes.trim() !== '') && filteredPlaylists.length === 0 && filteredArtistPlaylists.length === 0 && filteredRecommendedPlaylists.length === 0 && matchingSongs.length === 0}
-		<p class="py-8 text-center text-sm text-muted-foreground">
-			{searchQuery.trim().length > 0 ? `No matches for "${searchQuery}".` : 'No songs match the current filters.'}
+		<p class="text-muted-foreground py-8 text-center text-sm">
+			{searchQuery.trim().length > 0
+				? `No matches for "${searchQuery}".`
+				: 'No songs match the current filters.'}
 		</p>
 	{/if}
 
 	{#if matchingSongs.length > 0}
-		<h2 class="mt-8 mb-3 text-sm font-medium text-muted-foreground sm:mt-10 sm:mb-4">
+		<h2 class="text-muted-foreground mt-8 mb-3 text-sm font-medium sm:mt-10 sm:mb-4">
 			Songs ({matchingSongs.length})
 		</h2>
 		<div class="flex flex-col gap-1">
 			{#each matchingSongs as song (song.videoId)}
 				<button
 					type="button"
-					class="flex items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors active:bg-muted hover:bg-muted"
+					class="active:bg-muted hover:bg-muted flex items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors"
 					onclick={() => playSong(song)}
 					animate:flip={motionParams({ duration: 200 })}
 				>
-					<div class="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted">
-						<MusicIcon class="size-3.5 text-muted-foreground" />
+					<div class="bg-muted flex size-8 shrink-0 items-center justify-center rounded-md">
+						<MusicIcon class="text-muted-foreground size-3.5" />
 					</div>
 					<div class="min-w-0 flex-1">
 						<p class="truncate text-sm font-medium">{song.title}</p>
 						{#if song.artist}
-							<p class="truncate text-xs text-muted-foreground">{song.artist}</p>
+							<p class="text-muted-foreground truncate text-xs">{song.artist}</p>
 						{/if}
 					</div>
-					<span class="shrink-0 text-xs text-muted-foreground">{formatDuration(song.durationSeconds)}</span>
+					<span class="text-muted-foreground shrink-0 text-xs"
+						>{formatDuration(song.durationSeconds)}</span
+					>
 				</button>
 			{/each}
 		</div>
 	{/if}
 
 	{#if filteredRecommendedPlaylists.length > 0}
-		<h2 class="mt-8 mb-3 text-sm font-medium text-muted-foreground sm:mt-10 sm:mb-4">Smart Playlists</h2>
-		<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
+		<h2 class="text-muted-foreground mt-8 mb-3 text-sm font-medium sm:mt-10 sm:mb-4">
+			Smart Playlists
+		</h2>
+		<div
+			class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7"
+		>
 			{#each filteredRecommendedPlaylists as playlist (playlist.id)}
-				<Card.Root class="group relative overflow-hidden py-0 transition-colors active:border-ring/50 hover:border-ring/50">
+				<Card.Root
+					class="group active:border-ring/50 hover:border-ring/50 relative overflow-hidden py-0 transition-colors"
+				>
 					<a href="/library/{playlist.id}" class="flex flex-col gap-3 p-3 sm:p-4">
 						<div
-							class="flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-muted transition-transform duration-200 group-active:scale-[1.02] group-hover:scale-[1.02]"
+							class="bg-muted flex aspect-square items-center justify-center overflow-hidden rounded-lg transition-transform duration-200 group-hover:scale-[1.02] group-active:scale-[1.02]"
 						>
 							<PlaylistCover coverUrls={playlist.coverUrls}>
 								{#snippet fallback()}
-									<SparklesIcon class="size-8 text-muted-foreground" />
+									<SparklesIcon class="text-muted-foreground size-8" />
 								{/snippet}
 							</PlaylistCover>
 						</div>
 						<div class="min-w-0">
 							<p class="truncate text-sm font-medium">{playlist.name}</p>
-							<p class="truncate text-xs text-muted-foreground">
-								{playlist.songCount} {playlist.songCount === 1 ? 'song' : 'songs'}
+							<p class="text-muted-foreground truncate text-xs">
+								{playlist.songCount}
+								{playlist.songCount === 1 ? 'song' : 'songs'}
 							</p>
 						</div>
 					</a>
@@ -360,24 +385,29 @@
 	{/if}
 
 	{#if filteredArtistPlaylists.length > 0}
-		<h2 class="mt-8 mb-3 text-sm font-medium text-muted-foreground sm:mt-10 sm:mb-4">Artists</h2>
-		<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
+		<h2 class="text-muted-foreground mt-8 mb-3 text-sm font-medium sm:mt-10 sm:mb-4">Artists</h2>
+		<div
+			class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7"
+		>
 			{#each filteredArtistPlaylists as playlist (playlist.id)}
-				<Card.Root class="group relative overflow-hidden py-0 transition-colors active:border-ring/50 hover:border-ring/50">
+				<Card.Root
+					class="group active:border-ring/50 hover:border-ring/50 relative overflow-hidden py-0 transition-colors"
+				>
 					<a href="/library/{playlist.id}" class="flex flex-col gap-3 p-3 sm:p-4">
 						<div
-							class="flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-muted transition-transform duration-200 group-active:scale-[1.02] group-hover:scale-[1.02]"
+							class="bg-muted flex aspect-square items-center justify-center overflow-hidden rounded-lg transition-transform duration-200 group-hover:scale-[1.02] group-active:scale-[1.02]"
 						>
 							<PlaylistCover coverUrls={playlist.coverUrls}>
 								{#snippet fallback()}
-									<UserIcon class="size-8 text-muted-foreground" />
+									<UserIcon class="text-muted-foreground size-8" />
 								{/snippet}
 							</PlaylistCover>
 						</div>
 						<div class="min-w-0">
 							<p class="truncate text-sm font-medium">{playlist.name}</p>
-							<p class="truncate text-xs text-muted-foreground">
-								{playlist.songCount} {playlist.songCount === 1 ? 'song' : 'songs'}
+							<p class="text-muted-foreground truncate text-xs">
+								{playlist.songCount}
+								{playlist.songCount === 1 ? 'song' : 'songs'}
 							</p>
 						</div>
 					</a>
@@ -411,8 +441,8 @@
 		<Dialog.Header>
 			<Dialog.Title>Delete "{deleteTarget?.name}"?</Dialog.Title>
 			<Dialog.Description>
-				This removes the playlist. Songs only referenced by this playlist may also be freed from your
-				storage quota.
+				This removes the playlist. Songs only referenced by this playlist may also be freed from
+				your storage quota.
 			</Dialog.Description>
 		</Dialog.Header>
 		<Dialog.Footer>

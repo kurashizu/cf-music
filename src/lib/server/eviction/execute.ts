@@ -55,7 +55,10 @@ export async function evictSongForUser(
 
 	// Remove this user's own playlist references to the song.
 	const ownPlaylistIds = (
-		await db.query.playlists.findMany({ where: eq(playlists.userId, userId), columns: { id: true } })
+		await db.query.playlists.findMany({
+			where: eq(playlists.userId, userId),
+			columns: { id: true }
+		})
 	).map((p) => p.id);
 
 	for (const playlistId of ownPlaylistIds) {
@@ -89,6 +92,10 @@ export async function evictSongForUser(
 		eventType: reason === 'manual_delete' ? 'manual_delete' : 'evict',
 		targetType: 'song',
 		targetId: videoId,
-		detail: { title: song.title, fileSizeBytes: song.fileSizeBytes, hardDeleted: remainingReferences === 0 }
+		detail: {
+			title: song.title,
+			fileSizeBytes: song.fileSizeBytes,
+			hardDeleted: remainingReferences === 0
+		}
 	});
 }

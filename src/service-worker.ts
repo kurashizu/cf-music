@@ -310,9 +310,7 @@ sw.addEventListener('message', (event) => {
 					const hit = await meta.match(metadataCacheKey(videoId));
 					// A track cached before metadata was recorded still plays;
 					// it just has no title to show, so the id stands in.
-					tracks.push(
-						hit ? await hit.json() : { videoId, title: videoId, durationSeconds: null }
-					);
+					tracks.push(hit ? await hit.json() : { videoId, title: videoId, durationSeconds: null });
 				}
 				port?.postMessage({ tracks });
 			})()
@@ -369,7 +367,9 @@ sw.addEventListener('message', (event) => {
 				// the videoId is just the last path segment, not something
 				// extractVideoIdFromAudioPath (which expects a real .ext suffix)
 				// can parse.
-				const videoIds = keys.map((request) => new URL(request.url).pathname.split('/').pop() ?? '');
+				const videoIds = keys.map(
+					(request) => new URL(request.url).pathname.split('/').pop() ?? ''
+				);
 				port?.postMessage({ videoIds: videoIds.filter((id) => id.length > 0) });
 			})()
 		);

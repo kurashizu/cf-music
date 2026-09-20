@@ -108,7 +108,7 @@ describe('evictSongForUser', () => {
 		expect(storage.deletedKeys).toEqual(['audio/a.webm', 'covers/a.avif']);
 	});
 
-	it('only unlinks the reference (no S3 delete) when another user\'s playlist still references the song', async () => {
+	it("only unlinks the reference (no S3 delete) when another user's playlist still references the song", async () => {
 		await seedUser('u1');
 		await seedUser('u2');
 		await seedSong('shared');
@@ -137,7 +137,9 @@ describe('evictSongForUser', () => {
 
 		await evictSongForUser(db, storage, 'u1', 'a');
 
-		const remaining = await db.query.playlistSongs.findMany({ where: eq(playlistSongs.videoId, 'a') });
+		const remaining = await db.query.playlistSongs.findMany({
+			where: eq(playlistSongs.videoId, 'a')
+		});
 		expect(remaining).toHaveLength(0);
 	});
 

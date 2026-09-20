@@ -2,7 +2,12 @@ import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getDb } from '$lib/server/db';
 import { requireSession } from '$lib/server/auth/guard';
-import { getPlaylistMeta, renamePlaylist, deletePlaylist, LibraryError } from '$lib/server/library/playlists';
+import {
+	getPlaylistMeta,
+	renamePlaylist,
+	deletePlaylist,
+	LibraryError
+} from '$lib/server/library/playlists';
 import { pickStrings } from '$lib/server/http/validate';
 
 // Metadata only (name, owner, song count) — no client code actually

@@ -1,8 +1,18 @@
-import { sqliteTable, text, integer, blob, primaryKey, index, type AnySQLiteColumn } from 'drizzle-orm/sqlite-core';
+import {
+	sqliteTable,
+	text,
+	integer,
+	blob,
+	primaryKey,
+	index,
+	type AnySQLiteColumn
+} from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
 
 export const users = sqliteTable('users', {
-	id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+	id: text('id')
+		.primaryKey()
+		.$defaultFn(() => crypto.randomUUID()),
 	username: text('username').notNull().unique(),
 	passwordHash: text('password_hash').notNull(),
 	isAdmin: integer('is_admin', { mode: 'boolean' }).notNull().default(false),
@@ -88,43 +98,55 @@ export const songs = sqliteTable('songs', {
 // those are wholly read-only, rebuilt from scratch on each run rather than
 // incrementally updated, so allowing any user edit on them would just be
 // silently undone by the next run anyway.
-export const playlists = sqliteTable('playlists', {
-	id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-	userId: text('user_id')
-		.notNull()
-		.references(() => users.id, { onDelete: 'cascade' }),
-	name: text('name').notNull(),
-	sourceUrl: text('source_url'), // import source; null for app-native playlists
-	kind: text('kind', { enum: ['user', 'auto_generated'] }).notNull().default('user'),
-	createdAt: text('created_at')
-		.notNull()
-		.default(sql`(current_timestamp)`)
-}, (t) => [
-	index('idx_playlists_user_id').on(t.userId),
-	index('idx_playlists_user_id_kind').on(t.userId, t.kind)
-]);
+export const playlists = sqliteTable(
+	'playlists',
+	{
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => crypto.randomUUID()),
+		userId: text('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		name: text('name').notNull(),
+		sourceUrl: text('source_url'), // import source; null for app-native playlists
+		kind: text('kind', { enum: ['user', 'auto_generated'] })
+			.notNull()
+			.default('user'),
+		createdAt: text('created_at')
+			.notNull()
+			.default(sql`(current_timestamp)`)
+	},
+	(t) => [
+		index('idx_playlists_user_id').on(t.userId),
+		index('idx_playlists_user_id_kind').on(t.userId, t.kind)
+	]
+);
 
 // Playlist<->song many-to-many; the same song can be referenced by multiple playlists, sharing one S3 object
-export const playlistSongs = sqliteTable('playlist_songs', {
-	playlistId: text('playlist_id')
-		.notNull()
-		.references(() => playlists.id, { onDelete: 'cascade' }),
-	videoId: text('video_id')
-		.notNull()
-		.references(() => songs.videoId, { onDelete: 'cascade' }),
-	position: integer('position').notNull(), // user-adjustable playback order
-	addedAt: text('added_at')
-		.notNull()
-		.default(sql`(current_timestamp)`)
-}, (t) => [
-	primaryKey({ columns: [t.playlistId, t.videoId] }),
-	index('idx_playlist_songs_video_id').on(t.videoId),
-	// addSongToPlaylist's `max(position) where playlist_id = ?` was a full
-	// table scan of the whole playlist without this — the (playlistId,
-	// videoId) primary key is ordered by videoId second, not position, so
-	// it couldn't help SQLite jump straight to the max row.
-	index('idx_playlist_songs_playlist_id_position').on(t.playlistId, t.position)
-]);
+export const playlistSongs = sqliteTable(
+	'playlist_songs',
+	{
+		playlistId: text('playlist_id')
+			.notNull()
+			.references(() => playlists.id, { onDelete: 'cascade' }),
+		videoId: text('video_id')
+			.notNull()
+			.references(() => songs.videoId, { onDelete: 'cascade' }),
+		position: integer('position').notNull(), // user-adjustable playback order
+		addedAt: text('added_at')
+			.notNull()
+			.default(sql`(current_timestamp)`)
+	},
+	(t) => [
+		primaryKey({ columns: [t.playlistId, t.videoId] }),
+		index('idx_playlist_songs_video_id').on(t.videoId),
+		// addSongToPlaylist's `max(position) where playlist_id = ?` was a full
+		// table scan of the whole playlist without this — the (playlistId,
+		// videoId) primary key is ordered by videoId second, not position, so
+		// it couldn't help SQLite jump straight to the max row.
+		index('idx_playlist_songs_playlist_id_position').on(t.playlistId, t.position)
+	]
+);
 
 // One row per (user, song) relationship: play history (the LFU+LRU blended
 // eviction score input) and offline cache intent, merged together since
@@ -137,61 +159,71 @@ export const playlistSongs = sqliteTable('playlist_songs', {
 // library (see evictSongForUser), so its scoring input needs to be that
 // same user's own history, not everyone's combined.
 //
-export const userSongs = sqliteTable('user_songs', {
-	userId: text('user_id')
-		.notNull()
-		.references(() => users.id, { onDelete: 'cascade' }),
-	videoId: text('video_id')
-		.notNull()
-		.references(() => songs.videoId, { onDelete: 'cascade' }),
-	playCount: integer('play_count').notNull().default(0),
-	lastPlayedAt: text('last_played_at'),
-	updatedAt: text('updated_at')
-		.notNull()
-		.default(sql`(current_timestamp)`)
-}, (t) => [primaryKey({ columns: [t.userId, t.videoId] })]);
+export const userSongs = sqliteTable(
+	'user_songs',
+	{
+		userId: text('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		videoId: text('video_id')
+			.notNull()
+			.references(() => songs.videoId, { onDelete: 'cascade' }),
+		playCount: integer('play_count').notNull().default(0),
+		lastPlayedAt: text('last_played_at'),
+		updatedAt: text('updated_at')
+			.notNull()
+			.default(sql`(current_timestamp)`)
+	},
+	(t) => [primaryKey({ columns: [t.userId, t.videoId] })]
+);
 
 // Import jobs: progress tracking across Worker <-> GitHub Actions <-> Durable Object
-export const importJobs = sqliteTable('import_jobs', {
-	id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-	userId: text('user_id')
-		.notNull()
-		.references(() => users.id, { onDelete: 'cascade' }),
-	sourceUrl: text('source_url').notNull(),
-	targetPlaylistId: text('target_playlist_id').references(() => playlists.id),
-	status: text('status', {
-		enum: ['pending', 'running', 'completed', 'failed', 'cancelled']
-	})
-		.notNull()
-		.default('pending'),
-	totalCount: integer('total_count'),
-	completedCount: integer('completed_count').notNull().default(0),
-	// A song already owned by someone (recordKnownSongLinked) is never
-	// downloaded — it's linked into this job's target playlist as-is —
-	// which is a meaningfully different outcome from completedCount (a real
-	// new download landed) even though both count as "this job produced a
-	// usable song" toward totalCount. Kept separate rather than folded into
-	// completedCount so the UI can show "N skipped (already in library)"
-	// distinctly from "N downloaded".
-	knownCount: integer('known_count').notNull().default(0),
-	failedCount: integer('failed_count').notNull().default(0),
-	failures: text('failures'), // JSON array of failed video_id + reason entries
-	previewEntries: text('preview_entries'), // JSON array of {videoId, title, durationSeconds} found during extraction, informational only
-	fatalError: text('fatal_error'), // set when the whole job failed before/outside the per-song loop (source extraction, WARP setup, etc.) — distinct from per-song entries in `failures`
-	createdAt: text('created_at')
-		.notNull()
-		.default(sql`(current_timestamp)`),
-	// Bumped on every progress-bearing write (start, preview, per-song
-	// success/failure) — the only signal a scheduled sweep has for telling a
-	// genuinely stuck job apart from one that's just slow. Defaults to
-	// created_at's value so a job that dispatch-failed before ever reporting
-	// progress is still eligible for the sweep rather than reading as
-	// "just updated" from a null.
-	updatedAt: text('updated_at')
-		.notNull()
-		.default(sql`(current_timestamp)`),
-	completedAt: text('completed_at')
-}, (t) => [index('idx_import_jobs_user_id').on(t.userId)]);
+export const importJobs = sqliteTable(
+	'import_jobs',
+	{
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => crypto.randomUUID()),
+		userId: text('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		sourceUrl: text('source_url').notNull(),
+		targetPlaylistId: text('target_playlist_id').references(() => playlists.id),
+		status: text('status', {
+			enum: ['pending', 'running', 'completed', 'failed', 'cancelled']
+		})
+			.notNull()
+			.default('pending'),
+		totalCount: integer('total_count'),
+		completedCount: integer('completed_count').notNull().default(0),
+		// A song already owned by someone (recordKnownSongLinked) is never
+		// downloaded — it's linked into this job's target playlist as-is —
+		// which is a meaningfully different outcome from completedCount (a real
+		// new download landed) even though both count as "this job produced a
+		// usable song" toward totalCount. Kept separate rather than folded into
+		// completedCount so the UI can show "N skipped (already in library)"
+		// distinctly from "N downloaded".
+		knownCount: integer('known_count').notNull().default(0),
+		failedCount: integer('failed_count').notNull().default(0),
+		failures: text('failures'), // JSON array of failed video_id + reason entries
+		previewEntries: text('preview_entries'), // JSON array of {videoId, title, durationSeconds} found during extraction, informational only
+		fatalError: text('fatal_error'), // set when the whole job failed before/outside the per-song loop (source extraction, WARP setup, etc.) — distinct from per-song entries in `failures`
+		createdAt: text('created_at')
+			.notNull()
+			.default(sql`(current_timestamp)`),
+		// Bumped on every progress-bearing write (start, preview, per-song
+		// success/failure) — the only signal a scheduled sweep has for telling a
+		// genuinely stuck job apart from one that's just slow. Defaults to
+		// created_at's value so a job that dispatch-failed before ever reporting
+		// progress is still eligible for the sweep rather than reading as
+		// "just updated" from a null.
+		updatedAt: text('updated_at')
+			.notNull()
+			.default(sql`(current_timestamp)`),
+		completedAt: text('completed_at')
+	},
+	(t) => [index('idx_import_jobs_user_id').on(t.userId)]
+);
 
 // Tracks storage a download has claimed but not yet committed to `songs` —
 // closes the race where two concurrent imports for the same user both pass
@@ -205,26 +237,30 @@ export const importJobs = sqliteTable('import_jobs', {
 // reservations are easy to find and clean up via that job's own lifecycle
 // (completion, cancellation, or the zombie-job auto-fail in the Durable
 // Object) rather than needing to reconcile a drifting counter.
-export const quotaReservations = sqliteTable('quota_reservations', {
-	// (job_id, video_id) is the primary key, not a separate autoincrement
-	// id — the whole point of this table is "at most one reservation per
-	// song per job", enforced structurally rather than by a unique index
-	// alongside an unrelated surrogate key.
-	userId: text('user_id')
-		.notNull()
-		.references(() => users.id, { onDelete: 'cascade' }),
-	jobId: text('job_id')
-		.notNull()
-		.references(() => importJobs.id, { onDelete: 'cascade' }),
-	videoId: text('video_id').notNull(),
-	estimatedBytes: integer('estimated_bytes').notNull(),
-	createdAt: text('created_at')
-		.notNull()
-		.default(sql`(current_timestamp)`)
-}, (t) => [
-	primaryKey({ columns: [t.jobId, t.videoId] }),
-	index('idx_quota_reservations_user_id').on(t.userId)
-]);
+export const quotaReservations = sqliteTable(
+	'quota_reservations',
+	{
+		// (job_id, video_id) is the primary key, not a separate autoincrement
+		// id — the whole point of this table is "at most one reservation per
+		// song per job", enforced structurally rather than by a unique index
+		// alongside an unrelated surrogate key.
+		userId: text('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		jobId: text('job_id')
+			.notNull()
+			.references(() => importJobs.id, { onDelete: 'cascade' }),
+		videoId: text('video_id').notNull(),
+		estimatedBytes: integer('estimated_bytes').notNull(),
+		createdAt: text('created_at')
+			.notNull()
+			.default(sql`(current_timestamp)`)
+	},
+	(t) => [
+		primaryKey({ columns: [t.jobId, t.videoId] }),
+		index('idx_quota_reservations_user_id').on(t.userId)
+	]
+);
 
 // Audio-embedding jobs: one row per song, tracks whether its audio has been
 // sent to the embedding model and written to Vectorize yet. Global (not
@@ -237,28 +273,32 @@ export const quotaReservations = sqliteTable('quota_reservations', {
 // run, so the run interval (see .github/workflows/embedding.yml) IS the
 // backoff. Non-retryable failures (bad/corrupt audio, unsupported format)
 // go straight to 'failed' and are never retried automatically.
-export const embeddingJobs = sqliteTable('embedding_jobs', {
-	id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-	videoId: text('video_id')
-		.notNull()
-		.unique()
-		.references(() => songs.videoId, { onDelete: 'cascade' }),
-	status: text('status', {
-		enum: ['pending', 'processing', 'done', 'failed']
-	})
-		.notNull()
-		.default('pending'),
-	attempts: integer('attempts').notNull().default(0),
-	lastError: text('last_error'),
-	createdAt: text('created_at')
-		.notNull()
-		.default(sql`(current_timestamp)`),
-	updatedAt: text('updated_at')
-		.notNull()
-		.default(sql`(current_timestamp)`)
-}, (t) => [
-	index('idx_embedding_jobs_status').on(t.status),
-]);
+export const embeddingJobs = sqliteTable(
+	'embedding_jobs',
+	{
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => crypto.randomUUID()),
+		videoId: text('video_id')
+			.notNull()
+			.unique()
+			.references(() => songs.videoId, { onDelete: 'cascade' }),
+		status: text('status', {
+			enum: ['pending', 'processing', 'done', 'failed']
+		})
+			.notNull()
+			.default('pending'),
+		attempts: integer('attempts').notNull().default(0),
+		lastError: text('last_error'),
+		createdAt: text('created_at')
+			.notNull()
+			.default(sql`(current_timestamp)`),
+		updatedAt: text('updated_at')
+			.notNull()
+			.default(sql`(current_timestamp)`)
+	},
+	(t) => [index('idx_embedding_jobs_status').on(t.status)]
+);
 
 // Stores the raw embedding vector itself (768-dim float32, serialized as a
 // blob — see src/lib/server/embedding/vector-codec.ts). Kept in D1 rather
@@ -281,21 +321,25 @@ export const songEmbeddings = sqliteTable('song_embeddings', {
 // retention/cleanup mechanism exists — rows accumulate indefinitely (no
 // Cron Trigger is configured in wrangler.jsonc, and nothing else in this
 // codebase ever deletes from this table).
-export const auditLog = sqliteTable('audit_log', {
-	id: integer('id').primaryKey({ autoIncrement: true }),
-	userId: text('user_id').references(() => users.id, { onDelete: 'set null' }), // the user the event relates to
-	actorId: text('actor_id').references(() => users.id, { onDelete: 'set null' }), // who performed it (differs from userId when an admin acts on another user's behalf)
-	eventType: text('event_type').notNull(), // import / evict / manual_delete / cover_reference_cleared /
-	// login / login_failed / password_change / invite_used / invite_created / quota_adjusted / force_logout /
-	// embedding_claimed / embedding_completed / embedding_failed
-	// (see AUDIT_EVENT_TYPES in src/lib/shared/audit-event-types.ts for the authoritative list — note:
-	// a handful of existing rows use auto_tag_claimed/auto_tag_completed/auto_tag_playlists_rebuilt from
-	// a reverted feature; those values are no longer in AUDIT_EVENT_TYPES but the historical rows remain)
-	targetType: text('target_type'), // song / user / playlist / import_job / embedding_job
-	targetId: text('target_id'),
-	detail: text('detail'), // JSON blob with event-specific details
-	ipAddress: text('ip_address'),
-	createdAt: text('created_at')
-		.notNull()
-		.default(sql`(current_timestamp)`)
-}, (t) => [index('idx_audit_log_created_at').on(t.createdAt)]);
+export const auditLog = sqliteTable(
+	'audit_log',
+	{
+		id: integer('id').primaryKey({ autoIncrement: true }),
+		userId: text('user_id').references(() => users.id, { onDelete: 'set null' }), // the user the event relates to
+		actorId: text('actor_id').references(() => users.id, { onDelete: 'set null' }), // who performed it (differs from userId when an admin acts on another user's behalf)
+		eventType: text('event_type').notNull(), // import / evict / manual_delete / cover_reference_cleared /
+		// login / login_failed / password_change / invite_used / invite_created / quota_adjusted / force_logout /
+		// embedding_claimed / embedding_completed / embedding_failed
+		// (see AUDIT_EVENT_TYPES in src/lib/shared/audit-event-types.ts for the authoritative list — note:
+		// a handful of existing rows use auto_tag_claimed/auto_tag_completed/auto_tag_playlists_rebuilt from
+		// a reverted feature; those values are no longer in AUDIT_EVENT_TYPES but the historical rows remain)
+		targetType: text('target_type'), // song / user / playlist / import_job / embedding_job
+		targetId: text('target_id'),
+		detail: text('detail'), // JSON blob with event-specific details
+		ipAddress: text('ip_address'),
+		createdAt: text('created_at')
+			.notNull()
+			.default(sql`(current_timestamp)`)
+	},
+	(t) => [index('idx_audit_log_created_at').on(t.createdAt)]
+);

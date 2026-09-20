@@ -5,7 +5,9 @@ describe('encodeVector/decodeVector', () => {
 	it('round-trips a vector through encode and decode', () => {
 		const original = [0.1, -0.2, 3.5, 0, -1.25];
 		const decoded = decodeVector(encodeVector(original));
-		expect(Array.from(decoded)).toEqual(new Float32Array(original).reduce<number[]>((acc, v) => [...acc, v], []));
+		expect(Array.from(decoded)).toEqual(
+			new Float32Array(original).reduce<number[]>((acc, v) => [...acc, v], [])
+		);
 	});
 
 	it('decodes correctly from a slice of a larger buffer (non-zero byteOffset)', () => {
@@ -32,7 +34,10 @@ describe('cosineSimilarity', () => {
 	});
 
 	it('returns -1 for opposite vectors', () => {
-		expect(cosineSimilarity(new Float32Array([1, 2]), new Float32Array([-1, -2]))).toBeCloseTo(-1, 5);
+		expect(cosineSimilarity(new Float32Array([1, 2]), new Float32Array([-1, -2]))).toBeCloseTo(
+			-1,
+			5
+		);
 	});
 
 	it('returns 0 for a zero vector rather than NaN', () => {

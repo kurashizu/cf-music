@@ -162,9 +162,7 @@
 						(r) => deadReferenceKey(r) !== deadReferenceKey(reference)
 					)
 				};
-				toast.success(
-					reference.field === 'audioKey' ? 'Song deleted' : 'Cover reference cleared'
-				);
+				toast.success(reference.field === 'audioKey' ? 'Song deleted' : 'Cover reference cleared');
 			} else {
 				toast.error('No longer a dead reference — it may have already been resolved');
 			}
@@ -299,7 +297,9 @@
 				toast.error('Failed to update quota');
 				return;
 			}
-			users = users.map((u) => (u.id === quotaTarget!.id ? { ...u, storageQuotaBytes: quotaBytes } : u));
+			users = users.map((u) =>
+				u.id === quotaTarget!.id ? { ...u, storageQuotaBytes: quotaBytes } : u
+			);
 			toast.success('Quota updated');
 			quotaTarget = null;
 		} catch {
@@ -308,7 +308,6 @@
 			quotaSubmitting = false;
 		}
 	}
-
 </script>
 
 <svelte:head>
@@ -348,11 +347,13 @@
 				</Button>
 			</div>
 			{#if inviteCodes.length === 0}
-				<p class="py-8 text-center text-sm text-muted-foreground">No invite codes yet.</p>
+				<p class="text-muted-foreground py-8 text-center text-sm">No invite codes yet.</p>
 			{:else}
 				<ul class="flex flex-col gap-1">
 					{#each inviteCodes as invite (invite.code)}
-						<li class="flex items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-muted">
+						<li
+							class="hover:bg-muted flex items-center gap-3 rounded-lg px-2 py-2 transition-colors"
+						>
 							<code class="text-sm">{invite.code}</code>
 							<span
 								class="rounded-full px-2 py-0.5 text-xs {invite.usedBy
@@ -361,7 +362,7 @@
 							>
 								{invite.usedBy ? 'Used' : 'Available'}
 							</span>
-							<span class="flex-1 truncate text-xs text-muted-foreground">
+							<span class="text-muted-foreground flex-1 truncate text-xs">
 								{formatDateTime(invite.createdAt)}
 							</span>
 							<Button variant="ghost" size="icon-sm" onclick={() => copyCode(invite.code)}>
@@ -376,15 +377,17 @@
 		<Tabs.Content value="users" class="pt-4">
 			<ul class="flex flex-col gap-1">
 				{#each users as user (user.id)}
-					<li class="flex items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-muted">
+					<li class="hover:bg-muted flex items-center gap-3 rounded-lg px-2 py-2 transition-colors">
 						<div class="min-w-0 flex-1">
 							<p class="truncate text-sm">
 								{user.username}
 								{#if user.isAdmin}
-									<span class="ml-1 text-xs text-muted-foreground">admin</span>
+									<span class="text-muted-foreground ml-1 text-xs">admin</span>
 								{/if}
 							</p>
-							<p class="text-xs text-muted-foreground">{formatBytes(user.storageQuotaBytes)} quota</p>
+							<p class="text-muted-foreground text-xs">
+								{formatBytes(user.storageQuotaBytes)} quota
+							</p>
 						</div>
 						<Button variant="outline" size="sm" onclick={() => openQuotaDialog(user)}>
 							Edit quota
@@ -400,24 +403,33 @@
 					<div class="mb-3 flex items-center justify-between gap-3">
 						<div>
 							<p class="text-sm font-medium">Orphaned objects</p>
-							<p class="text-xs text-muted-foreground">
+							<p class="text-muted-foreground text-xs">
 								S3 objects with no corresponding song — safe to delete.
 							</p>
 						</div>
-						<Button size="sm" variant="outline" disabled={orphanScanLoading} onclick={runOrphanScan}>
+						<Button
+							size="sm"
+							variant="outline"
+							disabled={orphanScanLoading}
+							onclick={runOrphanScan}
+						>
 							{orphanScanLoading ? 'Scanning…' : 'Run scan'}
 						</Button>
 					</div>
 					{#if orphanScan}
-						<p class="mb-2 text-xs text-muted-foreground">
+						<p class="text-muted-foreground mb-2 text-xs">
 							{orphanScan.orphanKeys.length} orphaned of {orphanScan.totalBucketKeys} objects in the bucket
 						</p>
 						{#if orphanScan.orphanKeys.length === 0}
-							<p class="py-6 text-center text-sm text-muted-foreground">No orphaned objects found.</p>
+							<p class="text-muted-foreground py-6 text-center text-sm">
+								No orphaned objects found.
+							</p>
 						{:else}
 							<ul class="flex flex-col gap-1">
 								{#each orphanScan.orphanKeys as key (key)}
-									<li class="flex items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-muted">
+									<li
+										class="hover:bg-muted flex items-center gap-3 rounded-lg px-2 py-2 transition-colors"
+									>
 										<code class="min-w-0 flex-1 truncate text-xs">{key}</code>
 										<Button
 											variant="ghost"
@@ -425,7 +437,7 @@
 											disabled={orphanDeleting === key}
 											onclick={() => deleteOrphan(key)}
 										>
-											<Trash2Icon class="size-3.5 text-destructive" />
+											<Trash2Icon class="text-destructive size-3.5" />
 										</Button>
 									</li>
 								{/each}
@@ -438,7 +450,7 @@
 					<div class="mb-3 flex items-center justify-between gap-3">
 						<div>
 							<p class="text-sm font-medium">Dead references</p>
-							<p class="text-xs text-muted-foreground">
+							<p class="text-muted-foreground text-xs">
 								Songs whose audio/cover object no longer exists — needs a decision per row.
 							</p>
 						</div>
@@ -452,24 +464,28 @@
 						</Button>
 					</div>
 					{#if deadReferenceScan}
-						<p class="mb-2 text-xs text-muted-foreground">
-							{deadReferenceScan.deadReferences.length} dead reference{deadReferenceScan.deadReferences
-								.length === 1
+						<p class="text-muted-foreground mb-2 text-xs">
+							{deadReferenceScan.deadReferences.length} dead reference{deadReferenceScan
+								.deadReferences.length === 1
 								? ''
 								: 's'} across {deadReferenceScan.totalSongs} songs
 						</p>
 						{#if deadReferenceScan.deadReferences.length === 0}
-							<p class="py-6 text-center text-sm text-muted-foreground">No dead references found.</p>
+							<p class="text-muted-foreground py-6 text-center text-sm">
+								No dead references found.
+							</p>
 						{:else}
 							<ul class="flex flex-col gap-1">
 								{#each deadReferenceScan.deadReferences as reference (deadReferenceKey(reference))}
-									<li class="flex items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-muted">
+									<li
+										class="hover:bg-muted flex items-center gap-3 rounded-lg px-2 py-2 transition-colors"
+									>
 										<div class="min-w-0 flex-1">
 											<p class="truncate text-sm">
 												{reference.title}
-												<span class="ml-1 text-xs text-muted-foreground">{reference.field}</span>
+												<span class="text-muted-foreground ml-1 text-xs">{reference.field}</span>
 											</p>
-											<code class="text-xs text-muted-foreground">{reference.key}</code>
+											<code class="text-muted-foreground text-xs">{reference.key}</code>
 										</div>
 										<Button
 											variant={reference.field === 'audioKey' ? 'destructive' : 'outline'}
@@ -490,7 +506,7 @@
 					<div class="mb-3 flex items-center justify-between gap-3">
 						<div>
 							<p class="text-sm font-medium">Unreferenced songs</p>
-							<p class="text-xs text-muted-foreground">
+							<p class="text-muted-foreground text-xs">
 								Songs with no playlist reaching them at all — invisible everywhere, safe to delete.
 							</p>
 						</div>
@@ -504,15 +520,20 @@
 						</Button>
 					</div>
 					{#if unreferencedScan}
-						<p class="mb-2 text-xs text-muted-foreground">
-							{unreferencedScan.unreferencedSongs.length} unreferenced of {unreferencedScan.totalSongs} songs
+						<p class="text-muted-foreground mb-2 text-xs">
+							{unreferencedScan.unreferencedSongs.length} unreferenced of {unreferencedScan.totalSongs}
+							songs
 						</p>
 						{#if unreferencedScan.unreferencedSongs.length === 0}
-							<p class="py-6 text-center text-sm text-muted-foreground">No unreferenced songs found.</p>
+							<p class="text-muted-foreground py-6 text-center text-sm">
+								No unreferenced songs found.
+							</p>
 						{:else}
 							<ul class="flex flex-col gap-1">
 								{#each unreferencedScan.unreferencedSongs as song (song.videoId)}
-									<li class="flex items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-muted">
+									<li
+										class="hover:bg-muted flex items-center gap-3 rounded-lg px-2 py-2 transition-colors"
+									>
 										<p class="min-w-0 flex-1 truncate text-sm">{song.title}</p>
 										<Button
 											variant="destructive"
@@ -558,21 +579,25 @@
 	</Dialog.Content>
 </Dialog.Root>
 
-<Dialog.Root open={deleteSongTarget !== null} onOpenChange={(open) => !open && (deleteSongTarget = null)}>
+<Dialog.Root
+	open={deleteSongTarget !== null}
+	onOpenChange={(open) => !open && (deleteSongTarget = null)}
+>
 	<Dialog.Content class="sm:max-w-sm">
 		<Dialog.Header>
 			<Dialog.Title>Delete "{deleteSongTarget?.title}"?</Dialog.Title>
 			<Dialog.Description>
 				This song has no audio object left in storage, so it can't be played anyway — deleting
-				removes it permanently, including from every user's playlists that reference it. This
-				cannot be undone.
+				removes it permanently, including from every user's playlists that reference it. This cannot
+				be undone.
 			</Dialog.Description>
 		</Dialog.Header>
 		<Dialog.Footer>
 			<Button variant="outline" onclick={() => (deleteSongTarget = null)}>Cancel</Button>
 			<Button
 				variant="destructive"
-				disabled={deleteSongTarget !== null && deadReferenceResolving === deadReferenceKey(deleteSongTarget)}
+				disabled={deleteSongTarget !== null &&
+					deadReferenceResolving === deadReferenceKey(deleteSongTarget)}
 				onclick={confirmDeleteSong}
 			>
 				{deleteSongTarget !== null && deadReferenceResolving === deadReferenceKey(deleteSongTarget)
@@ -591,8 +616,8 @@
 		<Dialog.Header>
 			<Dialog.Title>Delete "{deleteUnreferencedTarget?.title}"?</Dialog.Title>
 			<Dialog.Description>
-				This song isn't reachable from any playlist, so no one can see or play it anyway —
-				deleting removes it and its storage permanently. This cannot be undone.
+				This song isn't reachable from any playlist, so no one can see or play it anyway — deleting
+				removes it and its storage permanently. This cannot be undone.
 			</Dialog.Description>
 		</Dialog.Header>
 		<Dialog.Footer>

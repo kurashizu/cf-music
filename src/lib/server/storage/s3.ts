@@ -105,7 +105,9 @@ export class S3ObjectStorage implements ObjectStorage {
 			const url = new URL(`${this.baseUrl}/${encodeObjectKey(key)}`);
 			const response = await this.client.fetch(url, { method: 'DELETE' });
 			if (!response.ok && response.status !== 404) {
-				throw new Error(`Failed to delete S3 object ${key}: ${response.status} ${response.statusText}`);
+				throw new Error(
+					`Failed to delete S3 object ${key}: ${response.status} ${response.statusText}`
+				);
 			}
 		}
 	}

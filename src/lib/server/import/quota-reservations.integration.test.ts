@@ -3,7 +3,11 @@ import { env } from 'cloudflare:test';
 import { getDb } from '../db';
 import { users, quotaReservations } from '../db/schema';
 import { createImportJob } from './jobs';
-import { reserveQuota, releaseQuotaReservation, releaseAllQuotaReservationsForJob } from './quota-reservations';
+import {
+	reserveQuota,
+	releaseQuotaReservation,
+	releaseAllQuotaReservationsForJob
+} from './quota-reservations';
 
 const db = getDb(env.DB);
 
@@ -107,7 +111,7 @@ describe('reserveQuota', () => {
 		expect(reservedCount).toBe(1);
 	});
 
-	it('scopes reservations per user — another user\'s reservations do not affect this one\'s remaining quota', async () => {
+	it("scopes reservations per user — another user's reservations do not affect this one's remaining quota", async () => {
 		await seedUser('u1', 1_000_000);
 		await seedUser('u2', 1_000_000);
 		const jobU2 = await seedJob('u2');

@@ -81,7 +81,6 @@
 			submitting = false;
 		}
 	}
-
 </script>
 
 <svelte:head>
@@ -97,7 +96,9 @@
 				<div class="flex flex-col gap-2">
 					<Label for="source-url">Link</Label>
 					<div class="relative">
-						<LinkIcon class="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+						<LinkIcon
+							class="text-muted-foreground absolute top-1/2 left-2.5 size-4 -translate-y-1/2"
+						/>
 						<Input
 							id="source-url"
 							placeholder="https://youtube.com/watch?v=... or a playlist link"
@@ -136,89 +137,118 @@
 
 	{#if jobs.length > 0}
 		<div class="flex flex-col gap-3">
-			<h2 class="text-sm font-medium text-muted-foreground">Importing</h2>
+			<h2 class="text-muted-foreground text-sm font-medium">Importing</h2>
 			{#each jobs as job (job.jobId)}
-				<div animate:flip={motionParams({ duration: 200 })} transition:fade={motionParams({ duration: 150 })}>
-				<Card.Root>
-					<Card.Content class="flex flex-col gap-3">
-						<div class="flex items-center justify-between gap-3">
-							<p class="min-w-0 truncate text-sm text-muted-foreground">{job.sourceUrl}</p>
-							<span class="shrink-0 rounded-full px-2 py-0.5 text-xs text-muted-foreground">
-								{job.status}
-							</span>
-						</div>
+				<div
+					animate:flip={motionParams({ duration: 200 })}
+					transition:fade={motionParams({ duration: 150 })}
+				>
+					<Card.Root>
+						<Card.Content class="flex flex-col gap-3">
+							<div class="flex items-center justify-between gap-3">
+								<p class="text-muted-foreground min-w-0 truncate text-sm">{job.sourceUrl}</p>
+								<span class="text-muted-foreground shrink-0 rounded-full px-2 py-0.5 text-xs">
+									{job.status}
+								</span>
+							</div>
 
-						<!-- The outgoing and incoming states overlap during the fade and are
+							<!-- The outgoing and incoming states overlap during the fade and are
 						     different heights, so they share one grid cell rather than both
 						     taking flow space and growing the card mid-import. -->
-						<div class="grid">
-							{#key job.status === 'failed' ? 'failed' : job.probing ? 'probing' : 'progress'}
-								<div class="col-start-1 row-start-1" transition:fade={motionParams({ duration: 120 })}>
-						{#if job.status === 'failed'}
-							<div class="flex items-start gap-3">
-								<CircleXIcon class="mt-0.5 size-4 shrink-0 text-destructive" />
-								<p class="min-w-0 flex-1 text-sm text-destructive">
-									{job.fatalError ?? 'Import failed'}
-								</p>
-								<Button size="sm" variant="ghost" onclick={() => importStore.cancel(job.jobId)}>
-									Dismiss
-								</Button>
-							</div>
-						{:else if job.probing}
-							<div class="flex items-center gap-3">
-								<LoaderCircleIcon class="size-4 shrink-0 animate-spin text-muted-foreground" />
-								<div class="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+							<div class="grid">
+								{#key job.status === 'failed' ? 'failed' : job.probing ? 'probing' : 'progress'}
 									<div
-										class="h-full bg-foreground transition-all duration-300"
-										style="width: {Math.min(100, (job.probing.checked / job.probing.total) * 100)}%"
-									></div>
-								</div>
-								<span class="shrink-0 text-xs text-muted-foreground">
-									Checking sizes {job.probing.checked} / {job.probing.total}
-								</span>
-								<Button size="sm" variant="ghost" onclick={() => importStore.cancel(job.jobId)}>
-									Cancel
-								</Button>
-							</div>
-						{:else}
-							<div class="flex items-center gap-3">
-								<LoaderCircleIcon class="size-4 shrink-0 animate-spin text-muted-foreground" />
-								<div class="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
-									<div
-										class="h-full bg-foreground transition-all duration-300"
-										style="width: {job.previewEntries?.length
-											? Math.min(
-													100,
-													((job.completedCount + job.failedCount) / job.previewEntries.length) * 100
-												)
-											: 0}%"
-									></div>
-								</div>
-								<span class="shrink-0 text-xs text-muted-foreground">
-									{job.completedCount + job.failedCount} / {job.previewEntries?.length ?? '?'}
-								</span>
-								<Button size="sm" variant="ghost" onclick={() => importStore.cancel(job.jobId)}>
-									Cancel
-								</Button>
-							</div>
-							<!-- Kept in the layout from the start: this appears the moment the
+										class="col-start-1 row-start-1"
+										transition:fade={motionParams({ duration: 120 })}
+									>
+										{#if job.status === 'failed'}
+											<div class="flex items-start gap-3">
+												<CircleXIcon class="text-destructive mt-0.5 size-4 shrink-0" />
+												<p class="text-destructive min-w-0 flex-1 text-sm">
+													{job.fatalError ?? 'Import failed'}
+												</p>
+												<Button
+													size="sm"
+													variant="ghost"
+													onclick={() => importStore.cancel(job.jobId)}
+												>
+													Dismiss
+												</Button>
+											</div>
+										{:else if job.probing}
+											<div class="flex items-center gap-3">
+												<LoaderCircleIcon
+													class="text-muted-foreground size-4 shrink-0 animate-spin"
+												/>
+												<div class="bg-muted h-1.5 flex-1 overflow-hidden rounded-full">
+													<div
+														class="bg-foreground h-full transition-all duration-300"
+														style="width: {Math.min(
+															100,
+															(job.probing.checked / job.probing.total) * 100
+														)}%"
+													></div>
+												</div>
+												<span class="text-muted-foreground shrink-0 text-xs">
+													Checking sizes {job.probing.checked} / {job.probing.total}
+												</span>
+												<Button
+													size="sm"
+													variant="ghost"
+													onclick={() => importStore.cancel(job.jobId)}
+												>
+													Cancel
+												</Button>
+											</div>
+										{:else}
+											<div class="flex items-center gap-3">
+												<LoaderCircleIcon
+													class="text-muted-foreground size-4 shrink-0 animate-spin"
+												/>
+												<div class="bg-muted h-1.5 flex-1 overflow-hidden rounded-full">
+													<div
+														class="bg-foreground h-full transition-all duration-300"
+														style="width: {job.previewEntries?.length
+															? Math.min(
+																	100,
+																	((job.completedCount + job.failedCount) /
+																		job.previewEntries.length) *
+																		100
+																)
+															: 0}%"
+													></div>
+												</div>
+												<span class="text-muted-foreground shrink-0 text-xs">
+													{job.completedCount + job.failedCount} / {job.previewEntries?.length ??
+														'?'}
+												</span>
+												<Button
+													size="sm"
+													variant="ghost"
+													onclick={() => importStore.cancel(job.jobId)}
+												>
+													Cancel
+												</Button>
+											</div>
+											<!-- Kept in the layout from the start: this appears the moment the
 							     first already-known song is seen, and inserting it then would
 							     push every later job card down. -->
-							<div
-								class="flex items-center gap-1.5 text-xs text-muted-foreground {job.knownCount > 0
-									? ''
-									: 'invisible'}"
-								aria-hidden={job.knownCount === 0}
-							>
-								<SkipForwardIcon class="size-4" />
-								{job.knownCount} already in library — skipped, no download needed
+											<div
+												class="text-muted-foreground flex items-center gap-1.5 text-xs {job.knownCount >
+												0
+													? ''
+													: 'invisible'}"
+												aria-hidden={job.knownCount === 0}
+											>
+												<SkipForwardIcon class="size-4" />
+												{job.knownCount} already in library — skipped, no download needed
+											</div>
+										{/if}
+									</div>
+								{/key}
 							</div>
-						{/if}
-								</div>
-							{/key}
-						</div>
-					</Card.Content>
-				</Card.Root>
+						</Card.Content>
+					</Card.Root>
 				</div>
 			{/each}
 		</div>

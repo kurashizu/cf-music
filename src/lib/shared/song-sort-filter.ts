@@ -95,7 +95,10 @@ export function sortIndices<T extends SongSortFilterInput>(
 	return [...indices].sort((ia, ib) => compareSongs(songs[ia], songs[ib], field, direction));
 }
 
-export function matchesDurationRange(durationSeconds: number | null, range: DurationRangeFilter): boolean {
+export function matchesDurationRange(
+	durationSeconds: number | null,
+	range: DurationRangeFilter
+): boolean {
 	if (range.minSeconds === null && range.maxSeconds === null) return true;
 	if (durationSeconds === null) return false;
 	if (range.minSeconds !== null && durationSeconds < range.minSeconds) return false;

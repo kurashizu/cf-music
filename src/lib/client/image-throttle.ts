@@ -38,8 +38,11 @@
  * burst this throttle exists to prevent; only a genuine cache miss queues.
  */
 
-import { coverCacheKey, extractVideoIdFromCoverPath, COVER_CACHE_NAME } from '$lib/shared/audio-cache-key';
-
+import {
+	coverCacheKey,
+	extractVideoIdFromCoverPath,
+	COVER_CACHE_NAME
+} from '$lib/shared/audio-cache-key';
 
 const blobUrlCache = new Map<string, { url: string; refCount: number }>();
 // Tracks a fetch that's already been started (queued or in-flight) for a

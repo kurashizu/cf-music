@@ -2,9 +2,17 @@ import { describe, it, expect } from 'vitest';
 import { verifyWebhookSignature } from './webhook-auth';
 
 async function sign(secret: string, body: string): Promise<string> {
-	const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+	const key = await crypto.subtle.importKey(
+		'raw',
+		new TextEncoder().encode(secret),
+		{ name: 'HMAC', hash: 'SHA-256' },
+		false,
+		['sign']
+	);
 	const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(body));
-	const hex = Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, '0')).join('');
+	const hex = Array.from(new Uint8Array(sig))
+		.map((b) => b.toString(16).padStart(2, '0'))
+		.join('');
 	return `sha256=${hex}`;
 }
 
@@ -21,7 +29,9 @@ describe('verifyWebhookSignature', () => {
 		const secret = 'shared-secret';
 		const header = await sign(secret, '{"jobId":"abc"}');
 
-		await expect(verifyWebhookSignature('{"jobId":"tampered"}', header, secret)).resolves.toBe(false);
+		await expect(verifyWebhookSignature('{"jobId":"tampered"}', header, secret)).resolves.toBe(
+			false
+		);
 	});
 
 	it('rejects a signature produced with the wrong secret', async () => {
@@ -53,9 +63,19 @@ describe('verifyWebhookSignature', () => {
 		const secret = 'shared-secret';
 		const body = '{}';
 		const { hex } = await (async () => {
-			const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+			const key = await crypto.subtle.importKey(
+				'raw',
+				new TextEncoder().encode(secret),
+				{ name: 'HMAC', hash: 'SHA-256' },
+				false,
+				['sign']
+			);
 			const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(body));
-			return { hex: Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, '0')).join('') };
+			return {
+				hex: Array.from(new Uint8Array(sig))
+					.map((b) => b.toString(16).padStart(2, '0'))
+					.join('')
+			};
 		})();
 
 		await expect(verifyWebhookSignature(body, hex, secret)).resolves.toBe(false);

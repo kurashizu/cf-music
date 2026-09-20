@@ -37,7 +37,7 @@
 				<LayersIcon class="size-4" />
 				{#if player.upcoming.length > 0}
 					<span
-						class="absolute -top-1 -right-1 flex size-3.5 items-center justify-center rounded-full bg-foreground text-[9px] font-medium text-background"
+						class="bg-foreground text-background absolute -top-1 -right-1 flex size-3.5 items-center justify-center rounded-full text-[9px] font-medium"
 						transition:scale={motionParams({ duration: 100, start: 0.5 })}
 					>
 						{player.upcoming.length > 9 ? '9+' : player.upcoming.length}

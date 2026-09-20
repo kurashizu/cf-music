@@ -10,7 +10,11 @@
 		value: number;
 	}
 
-	let { points, height = 160, formatValue = (v: number) => String(v) }: {
+	let {
+		points,
+		height = 160,
+		formatValue = (v: number) => String(v)
+	}: {
 		points: Point[];
 		height?: number;
 		formatValue?: (value: number) => string;
@@ -24,16 +28,13 @@
 	const coords = $derived(
 		points.map((p, i) => {
 			const x = points.length > 1 ? (i / (points.length - 1)) * width : width / 2;
-			const y =
-				height - paddingY - (p.value / maxValue) * (height - paddingY * 2);
+			const y = height - paddingY - (p.value / maxValue) * (height - paddingY * 2);
 			return { x, y, ...p };
 		})
 	);
 
 	const linePath = $derived(
-		coords.length > 0
-			? coords.map((c, i) => `${i === 0 ? 'M' : 'L'} ${c.x} ${c.y}`).join(' ')
-			: ''
+		coords.length > 0 ? coords.map((c, i) => `${i === 0 ? 'M' : 'L'} ${c.x} ${c.y}`).join(' ') : ''
 	);
 
 	const areaPath = $derived(
@@ -82,7 +83,7 @@
 </script>
 
 {#if points.length === 0}
-	<p class="text-xs text-muted-foreground">Not enough data yet.</p>
+	<p class="text-muted-foreground text-xs">Not enough data yet.</p>
 {:else}
 	<div class="relative">
 		<svg
@@ -106,7 +107,9 @@
 			<path
 				d={areaPath}
 				fill="url(#{gradientId})"
-				class="text-primary transition-opacity duration-700 ease-out {drawn ? 'opacity-100' : 'opacity-0'}"
+				class="text-primary transition-opacity duration-700 ease-out {drawn
+					? 'opacity-100'
+					: 'opacity-0'}"
 			/>
 			<path
 				bind:this={lineEl}
@@ -144,7 +147,7 @@
 			{@const point = coords[hoverIndex]}
 			{@const percent = Math.min(94, Math.max(6, (point.x / width) * 100))}
 			<div
-				class="pointer-events-none absolute top-0 -translate-x-1/2 rounded-md border border-border bg-popover px-2 py-1 text-xs whitespace-nowrap shadow-md"
+				class="border-border bg-popover pointer-events-none absolute top-0 -translate-x-1/2 rounded-md border px-2 py-1 text-xs whitespace-nowrap shadow-md"
 				style="left: {percent}%"
 			>
 				<div class="font-medium">{formatValue(point.value)}</div>

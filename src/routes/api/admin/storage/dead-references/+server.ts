@@ -26,8 +26,12 @@ export const GET: RequestHandler = async (event) => {
 export const DELETE: RequestHandler = async (event) => {
 	const session = requireAdmin(event);
 	const body: unknown = await event.request.json().catch(() => null);
-	const videoId = typeof body === 'object' && body !== null ? (body as Record<string, unknown>).videoId : undefined;
-	const field = typeof body === 'object' && body !== null ? (body as Record<string, unknown>).field : undefined;
+	const videoId =
+		typeof body === 'object' && body !== null
+			? (body as Record<string, unknown>).videoId
+			: undefined;
+	const field =
+		typeof body === 'object' && body !== null ? (body as Record<string, unknown>).field : undefined;
 	if (typeof videoId !== 'string' || (field !== 'audioKey' && field !== 'coverKey')) {
 		error(400, 'videoId and field ("audioKey" or "coverKey") are required');
 	}

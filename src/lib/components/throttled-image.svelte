@@ -45,7 +45,7 @@
      of these per un-resolved cover, and dozens of simultaneous CSS
      animations measurably cost frames while scrolling on mobile. -->
 <div class="relative {className}">
-	<div class="absolute inset-0 bg-muted"></div>
+	<div class="bg-muted absolute inset-0"></div>
 	{#if blobUrl}
 		<!-- A CSS transition on a stable element, not a Svelte one: the row
 		     around this re-renders as the list loads and sorts, which would

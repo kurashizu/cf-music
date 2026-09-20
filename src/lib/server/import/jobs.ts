@@ -56,7 +56,10 @@ export interface CreateImportJobInput {
 	targetPlaylistId?: string;
 }
 
-export async function createImportJob(db: Db, input: CreateImportJobInput): Promise<{ id: string }> {
+export async function createImportJob(
+	db: Db,
+	input: CreateImportJobInput
+): Promise<{ id: string }> {
 	const id = crypto.randomUUID();
 	await db.insert(importJobs).values({
 		id,
@@ -140,7 +143,12 @@ export async function findStaleImportJobs(db: Db, staleAfterMs: number) {
 export async function failStaleImportJobs(db: Db, staleAfterMs: number): Promise<number> {
 	const stale = await findStaleImportJobs(db, staleAfterMs);
 	for (const job of stale) {
-		await failImportJob(db, job.id, job.userId, 'Import timed out with no progress — the process likely never started or crashed silently');
+		await failImportJob(
+			db,
+			job.id,
+			job.userId,
+			'Import timed out with no progress — the process likely never started or crashed silently'
+		);
 	}
 	return stale.length;
 }
@@ -173,7 +181,11 @@ export async function startImportJob(db: Db, jobId: string, totalCount: number):
  * this deliberately does not touch `status`: there's no confirmation gate
  * to park the job behind anymore, downloading begins right away.
  */
-export async function submitImportPreview(db: Db, jobId: string, entries: PreviewEntry[]): Promise<void> {
+export async function submitImportPreview(
+	db: Db,
+	jobId: string,
+	entries: PreviewEntry[]
+): Promise<void> {
 	await db
 		.update(importJobs)
 		.set({
@@ -205,7 +217,10 @@ const CANCELLABLE_STATUSES = new Set(['pending', 'running', 'failed']);
 export async function cancelImportJob(db: Db, jobId: string, userId: string): Promise<void> {
 	const job = await getOwnedJob(db, jobId, userId);
 	if (!CANCELLABLE_STATUSES.has(job.status)) {
-		throw new ImportJobError('Job cannot be cancelled from its current status', 'invalid_transition');
+		throw new ImportJobError(
+			'Job cannot be cancelled from its current status',
+			'invalid_transition'
+		);
 	}
 
 	await db.update(importJobs).set({ status: 'cancelled' }).where(eq(importJobs.id, jobId));
@@ -248,7 +263,12 @@ async function linkImportedSongToLibrary(
  * into the user's default playlist and the job's target playlist if
  * different, and bumps the job's completed count.
  */
-export async function recordSongImported(db: Db, jobId: string, userId: string, song: SongImportSuccess): Promise<void> {
+export async function recordSongImported(
+	db: Db,
+	jobId: string,
+	userId: string,
+	song: SongImportSuccess
+): Promise<void> {
 	const job = await getOwnedJob(db, jobId, userId);
 
 	await db
@@ -286,7 +306,10 @@ export async function recordSongImported(db: Db, jobId: string, userId: string, 
 
 	await db
 		.update(importJobs)
-		.set({ completedCount: sql`${importJobs.completedCount} + 1`, updatedAt: sql`(current_timestamp)` })
+		.set({
+			completedCount: sql`${importJobs.completedCount} + 1`,
+			updatedAt: sql`(current_timestamp)`
+		})
 		.where(eq(importJobs.id, jobId));
 
 	// The song's real size is now committed as actual usage (via the songs
@@ -313,7 +336,12 @@ export async function recordSongImported(db: Db, jobId: string, userId: string, 
  * meaningfully different outcome to show the user — see the column's own
  * comment in schema.ts.
  */
-export async function recordKnownSongLinked(db: Db, jobId: string, userId: string, videoId: string): Promise<void> {
+export async function recordKnownSongLinked(
+	db: Db,
+	jobId: string,
+	userId: string,
+	videoId: string
+): Promise<void> {
 	const job = await getOwnedJob(db, jobId, userId);
 
 	await linkImportedSongToLibrary(db, userId, job.targetPlaylistId, videoId);
@@ -325,7 +353,12 @@ export async function recordKnownSongLinked(db: Db, jobId: string, userId: strin
 }
 
 /** Records one song that failed to import (per design: skip and continue, report failures at the end). */
-export async function recordSongFailed(db: Db, jobId: string, userId: string, failure: SongImportFailureInput): Promise<void> {
+export async function recordSongFailed(
+	db: Db,
+	jobId: string,
+	userId: string,
+	failure: SongImportFailureInput
+): Promise<void> {
 	const job = await getOwnedJob(db, jobId, userId);
 
 	const existingFailures: SongImportFailureInput[] = job.failures ? JSON.parse(job.failures) : [];
@@ -352,7 +385,12 @@ export async function recordSongFailed(db: Db, jobId: string, userId: string, fa
  * forever, which is what happened before this existed: the CI process just
  * exits non-zero and drops the WebSocket with no way to say why.
  */
-export async function failImportJob(db: Db, jobId: string, userId: string, reason: string): Promise<void> {
+export async function failImportJob(
+	db: Db,
+	jobId: string,
+	userId: string,
+	reason: string
+): Promise<void> {
 	const job = await getOwnedJob(db, jobId, userId);
 	// A late fatal_error/close can race with CI's own successful completion
 	// or a user's cancellation reaching D1 first — once a job has already
@@ -398,7 +436,12 @@ export async function failImportJob(db: Db, jobId: string, userId: string, reaso
  * links to write) is just as much a real result as one CI downloaded
  * itself.
  */
-export async function disconnectImportJob(db: Db, jobId: string, userId: string, reason: string): Promise<void> {
+export async function disconnectImportJob(
+	db: Db,
+	jobId: string,
+	userId: string,
+	reason: string
+): Promise<void> {
 	const job = await getOwnedJob(db, jobId, userId);
 	if (job.status === 'cancelled' || job.status === 'completed' || job.status === 'failed') return;
 
@@ -423,7 +466,8 @@ export async function completeImportJob(db: Db, jobId: string, userId: string): 
 	// already-owned songs, with zero new downloads and zero failures,
 	// should read as `completed`, not `failed` for having completedCount
 	// === 0.
-	const status = job.failedCount > 0 && job.completedCount + job.knownCount === 0 ? 'failed' : 'completed';
+	const status =
+		job.failedCount > 0 && job.completedCount + job.knownCount === 0 ? 'failed' : 'completed';
 
 	await db
 		.update(importJobs)

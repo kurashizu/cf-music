@@ -100,7 +100,9 @@
 			transition:fly={motionParams({ y: 4, duration: 100 })}
 			onclick={(e) => e.stopPropagation()}
 		>
-			<div class="flex flex-col items-center gap-2 rounded-lg border border-border bg-card p-2 shadow-md">
+			<div
+				class="border-border bg-card flex flex-col items-center gap-2 rounded-lg border p-2 shadow-md"
+			>
 				<div
 					bind:this={track}
 					role="slider"
@@ -109,14 +111,14 @@
 					aria-valuemin={0}
 					aria-valuemax={100}
 					aria-valuenow={Math.round(effectiveVolume * 100)}
-					class="relative h-20 w-3 cursor-pointer touch-none rounded-full bg-muted"
+					class="bg-muted relative h-20 w-3 cursor-pointer touch-none rounded-full"
 					onpointerdown={handlePointerDown}
 					onpointermove={handlePointerMove}
 					onpointerup={handlePointerUp}
 					onkeydown={handleKeydown}
 				>
 					<div
-						class="absolute inset-x-0 bottom-0 rounded-full bg-foreground"
+						class="bg-foreground absolute inset-x-0 bottom-0 rounded-full"
 						style="height: {effectiveVolume * 100}%"
 					></div>
 				</div>

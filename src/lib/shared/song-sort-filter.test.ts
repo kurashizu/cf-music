@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { sortSongs, sortIndices, matchesDurationRange, type SongSortFilterInput } from './song-sort-filter';
+import {
+	sortSongs,
+	sortIndices,
+	matchesDurationRange,
+	type SongSortFilterInput
+} from './song-sort-filter';
 
 const songs: SongSortFilterInput[] = [
 	{ videoId: 'b', title: 'Bravo', artist: 'Zeta', durationSeconds: 200, addedAt: '2024-01-02' },
@@ -56,23 +61,64 @@ describe('sortIndices', () => {
 
 describe('sortSongs storage fields', () => {
 	const stored: SongSortFilterInput[] = [
-		{ videoId: 'small', title: 'Small', durationSeconds: 100, fileSizeBytes: 1_000, playCount: 5, lastPlayedAt: '2024-03-01' },
-		{ videoId: 'big', title: 'Big', durationSeconds: 100, fileSizeBytes: 9_000, playCount: 1, lastPlayedAt: '2024-01-01' },
-		{ videoId: 'never', title: 'Never', durationSeconds: 100, fileSizeBytes: 5_000, playCount: 0, lastPlayedAt: null }
+		{
+			videoId: 'small',
+			title: 'Small',
+			durationSeconds: 100,
+			fileSizeBytes: 1_000,
+			playCount: 5,
+			lastPlayedAt: '2024-03-01'
+		},
+		{
+			videoId: 'big',
+			title: 'Big',
+			durationSeconds: 100,
+			fileSizeBytes: 9_000,
+			playCount: 1,
+			lastPlayedAt: '2024-01-01'
+		},
+		{
+			videoId: 'never',
+			title: 'Never',
+			durationSeconds: 100,
+			fileSizeBytes: 5_000,
+			playCount: 0,
+			lastPlayedAt: null
+		}
 	];
 
 	it('sorts by file size', () => {
-		expect(sortSongs(stored, 'fileSize', 'desc').map((s) => s.videoId)).toEqual(['big', 'never', 'small']);
-		expect(sortSongs(stored, 'fileSize', 'asc').map((s) => s.videoId)).toEqual(['small', 'never', 'big']);
+		expect(sortSongs(stored, 'fileSize', 'desc').map((s) => s.videoId)).toEqual([
+			'big',
+			'never',
+			'small'
+		]);
+		expect(sortSongs(stored, 'fileSize', 'asc').map((s) => s.videoId)).toEqual([
+			'small',
+			'never',
+			'big'
+		]);
 	});
 
 	it('sorts by play count', () => {
-		expect(sortSongs(stored, 'playCount', 'desc').map((s) => s.videoId)).toEqual(['small', 'big', 'never']);
+		expect(sortSongs(stored, 'playCount', 'desc').map((s) => s.videoId)).toEqual([
+			'small',
+			'big',
+			'never'
+		]);
 	});
 
 	it('keeps never-played songs last whichever way last-played is sorted', () => {
-		expect(sortSongs(stored, 'lastPlayedAt', 'desc').map((s) => s.videoId)).toEqual(['small', 'big', 'never']);
-		expect(sortSongs(stored, 'lastPlayedAt', 'asc').map((s) => s.videoId)).toEqual(['big', 'small', 'never']);
+		expect(sortSongs(stored, 'lastPlayedAt', 'desc').map((s) => s.videoId)).toEqual([
+			'small',
+			'big',
+			'never'
+		]);
+		expect(sortSongs(stored, 'lastPlayedAt', 'asc').map((s) => s.videoId)).toEqual([
+			'big',
+			'small',
+			'never'
+		]);
 	});
 
 	it('treats a missing storage field as zero rather than throwing', () => {

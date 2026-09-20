@@ -217,7 +217,10 @@ export class ImportProgressDurableObject implements DurableObject {
 		// actually see the job disappear in that case, instead of it
 		// silently staying stuck at 'failed' in the UI even though the D1
 		// row is already 'cancelled'.
-		const cancelledMessage: CiProgressMessage = { jobId: control.jobId, event: { type: 'cancelled' } };
+		const cancelledMessage: CiProgressMessage = {
+			jobId: control.jobId,
+			event: { type: 'cancelled' }
+		};
 		const cancelledRaw = JSON.stringify(cancelledMessage);
 		for (const browserWs of this.ctx.getWebSockets()) {
 			if (!isCiSocket(this.ctx.getTags(browserWs))) {
@@ -276,8 +279,7 @@ export class ImportProgressDurableObject implements DurableObject {
 		// `failed` — reusing it here keeps the broadcast event in sync with
 		// whichever branch the D1 write actually took, without a second
 		// read back.
-		const event =
-			job.completedCount > 0 ? { type: 'complete' } : { type: 'fatal_error', reason };
+		const event = job.completedCount > 0 ? { type: 'complete' } : { type: 'fatal_error', reason };
 		const raw = JSON.stringify({ jobId, event });
 		for (const browserWs of this.ctx.getWebSockets()) {
 			if (!isCiSocket(this.ctx.getTags(browserWs))) {

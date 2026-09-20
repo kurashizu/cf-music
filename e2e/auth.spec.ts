@@ -13,7 +13,10 @@ function registerPanel(page: Page) {
 	return page.getByRole('tabpanel', { name: 'Register' });
 }
 
-async function register(page: Page, opts: { username: string; password: string; inviteCode: string }) {
+async function register(
+	page: Page,
+	opts: { username: string; password: string; inviteCode: string }
+) {
 	await page.getByRole('tab', { name: 'Register' }).click();
 	const panel = registerPanel(page);
 	await panel.getByLabel('Username').fill(opts.username);
@@ -52,7 +55,10 @@ test.describe('login page', () => {
 
 		await page.getByRole('tab', { name: 'Register' }).click();
 
-		await expect(page.getByRole('tab', { name: 'Register' })).toHaveAttribute('data-state', 'active');
+		await expect(page.getByRole('tab', { name: 'Register' })).toHaveAttribute(
+			'data-state',
+			'active'
+		);
 		await expect(registerPanel(page).getByLabel('Invite code')).toBeVisible();
 	});
 
@@ -97,7 +103,11 @@ test.describe('login page', () => {
 		const firstUsername = `e2e-user-${uniqueSuffix()}`;
 
 		await page.goto('/');
-		await register(page, { username: firstUsername, password: 'correct-horse-battery', inviteCode });
+		await register(page, {
+			username: firstUsername,
+			password: 'correct-horse-battery',
+			inviteCode
+		});
 		await expect(page).toHaveURL('/library');
 
 		await logout(page);

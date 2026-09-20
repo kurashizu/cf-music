@@ -27,8 +27,8 @@
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <li
-	class="group flex items-center gap-3 rounded-lg px-2 py-2 transition-colors active:bg-muted hover:bg-muted {flags.selected
-		? 'bg-muted ring-1 ring-inset ring-ring/50'
+	class="group active:bg-muted hover:bg-muted flex items-center gap-3 rounded-lg px-2 py-2 transition-colors {flags.selected
+		? 'bg-muted ring-ring/50 ring-1 ring-inset'
 		: flags.current
 			? 'bg-muted'
 			: ''} {flags.dragging ? 'opacity-50' : ''}"
@@ -50,7 +50,7 @@
 	{#if flags.reorderable}
 		<button
 			type="button"
-			class="cursor-grab touch-none text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 active:cursor-grabbing {flags.draggable
+			class="text-muted-foreground cursor-grab touch-none opacity-0 transition-opacity group-hover:opacity-100 active:cursor-grabbing {flags.draggable
 				? ''
 				: 'invisible'}"
 			aria-label="Drag to reorder"
@@ -63,7 +63,7 @@
 
 	<button
 		type="button"
-		class="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
+		class="text-muted-foreground hover:bg-background hover:text-foreground flex size-8 shrink-0 items-center justify-center rounded-md transition-colors"
 		onclick={(e) => {
 			e.stopPropagation();
 			actions.onPlay();
@@ -77,11 +77,11 @@
 		{/if}
 	</button>
 
-	<div class="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
+	<div class="bg-muted flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-md">
 		{#if song.coverUrl}
 			<ThrottledImage src={song.coverUrl} class="size-8" />
 		{:else}
-			<MusicIcon class="size-3.5 text-muted-foreground" />
+			<MusicIcon class="text-muted-foreground size-3.5" />
 		{/if}
 	</div>
 
@@ -90,13 +90,13 @@
 			{song.title}
 		</p>
 		{#if song.detail}
-			<p class="truncate text-xs text-muted-foreground">{song.detail}</p>
+			<p class="text-muted-foreground truncate text-xs">{song.detail}</p>
 		{/if}
 	</div>
 
 	{#if flags.cached}
 		<span
-			class="hidden shrink-0 items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground sm:flex"
+			class="bg-muted text-muted-foreground hidden shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] sm:flex"
 		>
 			<CheckIcon class="size-3" />
 			Downloaded
@@ -104,7 +104,7 @@
 	{/if}
 
 	<span
-		class="hidden shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground sm:inline-block"
+		class="bg-muted text-muted-foreground hidden shrink-0 rounded-full px-2 py-0.5 text-[11px] sm:inline-block"
 	>
 		{formatAudioSpec(song.codec, song.bitrateKbps)}
 	</span>
@@ -114,7 +114,7 @@
 	     attribute so the meaning is still reachable. -->
 	{#if song.embeddingStatus === 'done'}
 		<span
-			class="hidden shrink-0 items-center rounded-full bg-muted p-1 text-muted-foreground sm:flex"
+			class="bg-muted text-muted-foreground hidden shrink-0 items-center rounded-full p-1 sm:flex"
 			title="Embedded"
 			aria-label="Embedded"
 		>
@@ -122,7 +122,7 @@
 		</span>
 	{/if}
 
-	<span class="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+	<span class="text-muted-foreground flex shrink-0 items-center gap-1 text-xs">
 		<ClockIcon class="size-3" />
 		{formatDuration(song.durationSeconds)}
 	</span>

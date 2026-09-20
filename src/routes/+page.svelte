@@ -82,7 +82,7 @@
 	<title>Login · KRSZ Music</title>
 </svelte:head>
 
-<div class="flex min-h-svh items-center justify-center bg-background p-4">
+<div class="bg-background flex min-h-svh items-center justify-center p-4">
 	<Card.Root class="w-full max-w-sm">
 		<Card.Header>
 			<div class="mb-2 flex items-center gap-2">

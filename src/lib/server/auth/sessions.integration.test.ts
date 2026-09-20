@@ -5,7 +5,11 @@ import { createSession, getSession, deleteSession, deleteAllSessionsForUser } fr
 const kv = env.SESSION_KV;
 
 function makeRecord(userId: string) {
-	return { userId, createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 60_000).toISOString() };
+	return {
+		userId,
+		createdAt: new Date().toISOString(),
+		expiresAt: new Date(Date.now() + 60_000).toISOString()
+	};
 }
 
 async function clearAllKeys(): Promise<void> {
@@ -43,7 +47,7 @@ describe('deleteSession', () => {
 		await expect(deleteSession(kv, 'never-existed')).resolves.not.toThrow();
 	});
 
-	it('removes only the deleted session from the user\'s reverse index, leaving a sibling session resolvable', async () => {
+	it("removes only the deleted session from the user's reverse index, leaving a sibling session resolvable", async () => {
 		await createSession(kv, 'sess-1', makeRecord('u1'));
 		await createSession(kv, 'sess-2', makeRecord('u1'));
 
@@ -68,7 +72,7 @@ describe('deleteAllSessionsForUser', () => {
 		expect(await getSession(kv, 'sess-2')).toBeNull();
 	});
 
-	it('does not affect another user\'s sessions', async () => {
+	it("does not affect another user's sessions", async () => {
 		await createSession(kv, 'sess-1', makeRecord('u1'));
 		await createSession(kv, 'sess-2', makeRecord('u2'));
 

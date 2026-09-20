@@ -1,6 +1,10 @@
 import { redirect } from '@sveltejs/kit';
 import { getDb } from '$lib/server/db';
-import { listPlaylistsWithCovers, ensureDefaultPlaylist, listUserLibrarySongs } from '$lib/server/library/playlists';
+import {
+	listPlaylistsWithCovers,
+	ensureDefaultPlaylist,
+	listUserLibrarySongs
+} from '$lib/server/library/playlists';
 import { SMART_PLAYLIST_NAMES } from '$lib/server/library/smart-playlists';
 import { getObjectStorage } from '$lib/server/storage/factory';
 import type { PageServerLoad } from './$types';

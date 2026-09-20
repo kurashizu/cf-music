@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { LOCAL_STORAGE_KEYS, summarizeLocalData, clearAllLocalData } from './local-storage-inventory';
+import {
+	LOCAL_STORAGE_KEYS,
+	summarizeLocalData,
+	clearAllLocalData
+} from './local-storage-inventory';
 
 function installFakeLocalStorage(initial: Record<string, string> = {}) {
 	const store = new Map(Object.entries(initial));
@@ -38,10 +42,13 @@ describe('summarizeLocalData', () => {
 		installFakeLocalStorage();
 		installFakeCaches();
 
-		await expect(summarizeLocalData()).resolves.toEqual({ localStorageBytes: 0, cacheEntryCount: 0 });
+		await expect(summarizeLocalData()).resolves.toEqual({
+			localStorageBytes: 0,
+			cacheEntryCount: 0
+		});
 	});
 
-	it('counts only this app\'s own localStorage keys, not unrelated ones', async () => {
+	it("counts only this app's own localStorage keys, not unrelated ones", async () => {
 		installFakeLocalStorage({
 			[LOCAL_STORAGE_KEYS[0]]: 'abc',
 			'some-other-site-key': 'should not be counted'

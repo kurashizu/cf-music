@@ -5,7 +5,7 @@
 	import LayoutGridIcon from '@lucide/svelte/icons/layout-grid';
 </script>
 
-<div class="flex items-center rounded-lg border border-border p-0.5">
+<div class="border-border flex items-center rounded-lg border p-0.5">
 	<Button
 		variant={viewMode.mode === 'list' ? 'secondary' : 'ghost'}
 		size="icon-sm"

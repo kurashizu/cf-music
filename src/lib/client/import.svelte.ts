@@ -1,4 +1,8 @@
-import type { ImportProgressMessage, ImportControlMessage, ImportJobStatus } from '$lib/shared/import-events';
+import type {
+	ImportProgressMessage,
+	ImportControlMessage,
+	ImportJobStatus
+} from '$lib/shared/import-events';
 import { applyImportEvent, type ImportJobState } from '$lib/shared/import-job-state';
 
 export type { ImportJobState };

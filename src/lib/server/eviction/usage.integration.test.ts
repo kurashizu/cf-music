@@ -56,7 +56,7 @@ describe('getUserStorageUsageBytes', () => {
 		expect(await getUserStorageUsageBytes(db, 'u1')).toBe(0);
 	});
 
-	it('sums the file sizes of every distinct song across all of a user\'s playlists', async () => {
+	it("sums the file sizes of every distinct song across all of a user's playlists", async () => {
 		await seedUser('u1');
 		await seedSong('a', { fileSizeBytes: 100 });
 		await seedSong('b', { fileSizeBytes: 250 });
@@ -68,7 +68,7 @@ describe('getUserStorageUsageBytes', () => {
 		expect(await getUserStorageUsageBytes(db, 'u1')).toBe(350);
 	});
 
-	it('counts a song referenced by two of the user\'s own playlists only once', async () => {
+	it("counts a song referenced by two of the user's own playlists only once", async () => {
 		await seedUser('u1');
 		await seedSong('a', { fileSizeBytes: 100 });
 		const { id: p1 } = await createPlaylist(db, { userId: 'u1', name: 'Mix 1' });
@@ -79,7 +79,7 @@ describe('getUserStorageUsageBytes', () => {
 		expect(await getUserStorageUsageBytes(db, 'u1')).toBe(100);
 	});
 
-	it('does not count another user\'s playlists', async () => {
+	it("does not count another user's playlists", async () => {
 		await seedUser('u1');
 		await seedUser('u2');
 		await seedSong('a', { fileSizeBytes: 100 });
@@ -91,7 +91,7 @@ describe('getUserStorageUsageBytes', () => {
 });
 
 describe('getUserQuotaBytes', () => {
-	it('returns the user\'s configured quota', async () => {
+	it("returns the user's configured quota", async () => {
 		await seedUser('u1', 555_000);
 		expect(await getUserQuotaBytes(db, 'u1')).toBe(555_000);
 	});
@@ -121,7 +121,10 @@ describe('setUserQuotaBytes', () => {
 		expect(entry.eventType).toBe('quota_adjusted');
 		expect(entry.userId).toBe('u1');
 		expect(entry.actorId).toBe('admin-1');
-		expect(JSON.parse(entry.detail!)).toEqual({ previousQuotaBytes: 1_000_000, newQuotaBytes: 2_000_000 });
+		expect(JSON.parse(entry.detail!)).toEqual({
+			previousQuotaBytes: 1_000_000,
+			newQuotaBytes: 2_000_000
+		});
 	});
 
 	it('throws for a nonexistent user without writing an audit event', async () => {
@@ -169,7 +172,7 @@ describe('getUserEvictionCandidates', () => {
 		expect(candidate.lastPlayedAt).toBeNull();
 	});
 
-	it('does not let another user\'s plays of a shared song inflate this user\'s eviction score for it', async () => {
+	it("does not let another user's plays of a shared song inflate this user's eviction score for it", async () => {
 		await seedUser('u1');
 		await seedUser('u2');
 		await seedSong('shared', { fileSizeBytes: 500 });

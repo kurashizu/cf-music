@@ -61,7 +61,10 @@ export interface AuditLogPage {
  * *username*, which needs a users lookup first since userId/actorId are
  * opaque UUIDs.
  */
-export async function listAuditLog(db: Db, options: ListAuditLogOptions = {}): Promise<AuditLogPage> {
+export async function listAuditLog(
+	db: Db,
+	options: ListAuditLogOptions = {}
+): Promise<AuditLogPage> {
 	const limit = Math.min(options.limit ?? DEFAULT_AUDIT_LOG_PAGE_SIZE, MAX_AUDIT_LOG_PAGE_SIZE);
 	const offset = Math.max(options.offset ?? 0, 0);
 
@@ -145,7 +148,7 @@ async function enrichWithUsernames(db: Db, entries: (typeof auditLog.$inferSelec
 		actorUsername: entry.actorId ? (usernameById.get(entry.actorId) ?? null) : null,
 		targetUsername:
 			entry.targetType === 'user' && entry.targetId
-				? usernameById.get(entry.targetId) ?? null
+				? (usernameById.get(entry.targetId) ?? null)
 				: null
 	}));
 }

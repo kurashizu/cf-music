@@ -37,8 +37,8 @@
 	<title>{offline ? 'Offline' : `${page.status} · KRSZ Music`}</title>
 </svelte:head>
 
-<div class="flex min-h-svh flex-col bg-background">
-	<header class="flex shrink-0 items-center gap-2 border-b border-border p-3">
+<div class="bg-background flex min-h-svh flex-col">
+	<header class="border-border flex shrink-0 items-center gap-2 border-b p-3">
 		<Logo size={22} />
 		<span class="text-sm font-medium">KRSZ Music</span>
 	</header>
@@ -46,16 +46,16 @@
 	<div class="flex flex-1 items-center justify-center p-6">
 		<div class="flex max-w-sm flex-col items-center gap-3 text-center">
 			{#if offline}
-				<CloudOffIcon class="size-8 text-muted-foreground" />
+				<CloudOffIcon class="text-muted-foreground size-8" />
 				<h1 class="text-lg font-medium">You're offline</h1>
-				<p class="text-sm text-muted-foreground">
+				<p class="text-muted-foreground text-sm">
 					This page needs a connection. Your downloaded songs are still here.
 				</p>
 				<Button href="/offline" size="sm" class="mt-2 gap-1.5">Go to downloads</Button>
 			{:else}
-				<TriangleAlertIcon class="size-8 text-muted-foreground" />
+				<TriangleAlertIcon class="text-muted-foreground size-8" />
 				<h1 class="text-lg font-medium">{page.status}</h1>
-				<p class="text-sm text-muted-foreground">
+				<p class="text-muted-foreground text-sm">
 					{page.error?.message ?? 'Something went wrong.'}
 				</p>
 				<div class="mt-2 flex items-center gap-2">

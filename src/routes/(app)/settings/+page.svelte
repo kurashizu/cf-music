@@ -22,7 +22,11 @@
 		readRouteData,
 		type StorageEstimate
 	} from '$lib/client/offline-cache';
-	import { summarizeLocalData, clearAllLocalData, type LocalDataSummary } from '$lib/client/local-storage-inventory';
+	import {
+		summarizeLocalData,
+		clearAllLocalData,
+		type LocalDataSummary
+	} from '$lib/client/local-storage-inventory';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -129,14 +133,14 @@
 	<h1 class="mb-6 text-lg font-medium">Settings</h1>
 
 	<a href="/settings/storage" class="mb-4 block">
-		<Card.Root class="transition-colors hover:border-ring/50">
+		<Card.Root class="hover:border-ring/50 transition-colors">
 			<Card.Content>
 				<div class="mb-2 flex items-center justify-between text-sm">
-					<span class="flex items-center gap-1.5 text-muted-foreground">
+					<span class="text-muted-foreground flex items-center gap-1.5">
 						<HardDriveIcon class="size-4" />
 						Manage storage
 					</span>
-					<div class="flex items-center gap-1.5 text-muted-foreground">
+					<div class="text-muted-foreground flex items-center gap-1.5">
 						{#if account}
 							<span>
 								{formatBytes(account.usageBytes)} / {formatBytes(account.quotaBytes)} cloud
@@ -148,20 +152,20 @@
 					</div>
 				</div>
 				{#if account}
-					<div class="h-1.5 overflow-hidden rounded-full bg-muted">
+					<div class="bg-muted h-1.5 overflow-hidden rounded-full">
 						<div
-							class="h-full bg-foreground transition-all duration-300"
+							class="bg-foreground h-full transition-all duration-300"
 							style="width: {usagePercent}%"
 						></div>
 					</div>
 					{#if accountStale}
-						<p class="mt-1 text-[11px] text-muted-foreground">
+						<p class="text-muted-foreground mt-1 text-[11px]">
 							Cloud figures from the last time you were online.
 						</p>
 					{/if}
 				{/if}
 				{#if browserStorage}
-					<div class="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+					<div class="text-muted-foreground mt-2 flex items-center justify-between text-xs">
 						<span class="flex items-center gap-1.5">
 							<GlobeIcon class="size-3.5" />
 							Offline cache
@@ -172,14 +176,14 @@
 								: ''}
 						</span>
 					</div>
-					<div class="mt-1 h-1.5 overflow-hidden rounded-full bg-muted">
+					<div class="bg-muted mt-1 h-1.5 overflow-hidden rounded-full">
 						<div
-							class="h-full bg-foreground transition-all duration-300"
+							class="bg-foreground h-full transition-all duration-300"
 							style="width: {browserUsagePercent}%"
 						></div>
 					</div>
 				{/if}
-				<p class="mt-2 text-xs text-muted-foreground">
+				<p class="text-muted-foreground mt-2 text-xs">
 					Manage which songs are stored in the cloud and downloaded for offline playback.
 				</p>
 			</Card.Content>
@@ -188,16 +192,16 @@
 
 	{#if account?.session.isAdmin}
 		<a href="/admin" class="mb-4 block">
-			<Card.Root class="transition-colors hover:border-ring/50">
+			<Card.Root class="hover:border-ring/50 transition-colors">
 				<Card.Content class="flex items-center justify-between gap-3">
 					<div class="flex items-center gap-2">
-						<ShieldIcon class="size-4 text-muted-foreground" />
+						<ShieldIcon class="text-muted-foreground size-4" />
 						<div>
 							<p class="text-sm font-medium">Admin</p>
-							<p class="text-xs text-muted-foreground">Invites, users, audit log, storage</p>
+							<p class="text-muted-foreground text-xs">Invites, users, audit log, storage</p>
 						</div>
 					</div>
-					<ChevronRightIcon class="size-4 shrink-0 text-muted-foreground" />
+					<ChevronRightIcon class="text-muted-foreground size-4 shrink-0" />
 				</Card.Content>
 			</Card.Root>
 		</a>
@@ -205,14 +209,14 @@
 
 	<Card.Root class="mb-4">
 		<Card.Content>
-			<div class="mb-2 flex items-center gap-1.5 text-sm text-muted-foreground">
+			<div class="text-muted-foreground mb-2 flex items-center gap-1.5 text-sm">
 				<AudioLinesIcon class="size-4" />
 				Playback
 			</div>
 			<Label class="flex cursor-pointer items-start justify-between gap-3 font-normal">
 				<span class="min-w-0">
 					<span class="block text-sm">Skip silence</span>
-					<span class="block text-xs font-normal text-muted-foreground">
+					<span class="text-muted-foreground block text-xs font-normal">
 						Start past a track's silent intro and move on at its silent tail. Each track is measured
 						once after you've played it, so trimming applies from its next play. This device only;
 						your files aren't changed.
@@ -229,11 +233,11 @@
 
 	<Card.Root class="mb-4">
 		<Card.Content>
-			<div class="mb-2 flex items-center gap-1.5 text-sm text-muted-foreground">
+			<div class="text-muted-foreground mb-2 flex items-center gap-1.5 text-sm">
 				<DatabaseIcon class="size-4" />
 				Local data
 			</div>
-			<p class="mb-3 text-xs text-muted-foreground">
+			<p class="text-muted-foreground mb-3 text-xs">
 				Preferences (view mode, volume, sidebar), your saved playback position, and cached
 				thumbnails/audio all live in this browser only.
 				{#if localData}
@@ -256,7 +260,7 @@
 	<Card.Root>
 		<Card.Content>
 			{#if account}
-				<p class="mb-3 truncate text-xs text-muted-foreground">{account.session.username}</p>
+				<p class="text-muted-foreground mb-3 truncate text-xs">{account.session.username}</p>
 			{/if}
 			<Button variant="outline" size="sm" class="w-full justify-start gap-2" onclick={handleLogout}>
 				<LogOutIcon class="size-4" />
@@ -272,8 +276,8 @@
 			<Dialog.Title>Clear local data?</Dialog.Title>
 			<Dialog.Description>
 				Removes your saved preferences, playback position, and every cached thumbnail/audio file
-				from this browser. Your library and playlists in the cloud are unaffected — this only
-				clears what's stored locally.
+				from this browser. Your library and playlists in the cloud are unaffected — this only clears
+				what's stored locally.
 			</Dialog.Description>
 		</Dialog.Header>
 		<Dialog.Footer>

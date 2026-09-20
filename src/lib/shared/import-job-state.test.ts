@@ -168,16 +168,19 @@ describe('applyImportEvent', () => {
 
 	it('does not mutate the input job object', () => {
 		const job = makeJob({ completedCount: 1 });
-		applyImportEvent(job, { type: 'song_success', song: {
-			videoId: 'a',
-			sourcePlatform: 'youtube',
-			sourceUrl: 'https://x',
-			title: 'Song A',
-			audioKey: 'audio/a.webm',
-			codec: 'opus',
-			container: 'webm',
-			fileSizeBytes: 100
-		} });
+		applyImportEvent(job, {
+			type: 'song_success',
+			song: {
+				videoId: 'a',
+				sourcePlatform: 'youtube',
+				sourceUrl: 'https://x',
+				title: 'Song A',
+				audioKey: 'audio/a.webm',
+				codec: 'opus',
+				container: 'webm',
+				fileSizeBytes: 100
+			}
+		});
 		expect(job.completedCount).toBe(1);
 	});
 });

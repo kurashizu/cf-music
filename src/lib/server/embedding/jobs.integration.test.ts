@@ -16,7 +16,10 @@ import { createImportJob, recordSongImported, type SongImportSuccess } from '../
 const db = getDb(env.DB);
 
 async function seedUser(id: string) {
-	await db.insert(users).values({ id, username: `user-${id}`, passwordHash: 'x' }).onConflictDoNothing();
+	await db
+		.insert(users)
+		.values({ id, username: `user-${id}`, passwordHash: 'x' })
+		.onConflictDoNothing();
 }
 
 function makeSong(videoId: string, overrides: Partial<SongImportSuccess> = {}): SongImportSuccess {
@@ -112,12 +115,17 @@ describe('claimEmbeddingJobs', () => {
 	it('reclaims jobs stuck at processing past the stale threshold', async () => {
 		await seedSongWithoutEmbeddingJob('a');
 		await enqueueEmbeddingJob(db, 'a');
-		await db.update(embeddingJobs).set({ status: 'processing' }).where(eq(embeddingJobs.videoId, 'a'));
+		await db
+			.update(embeddingJobs)
+			.set({ status: 'processing' })
+			.where(eq(embeddingJobs.videoId, 'a'));
 		// Backdate updatedAt well past STALE_PROCESSING_MS (1 hour) using
 		// SQLite's own datetime(), matching the format claimEmbeddingJobs
 		// compares against (see findStaleImportJobs' own comment on why a
 		// JS-generated ISO string would sort wrong here).
-		await db.all(sql`UPDATE embedding_jobs SET updated_at = datetime('now', '-2 hours') WHERE video_id = 'a'`);
+		await db.all(
+			sql`UPDATE embedding_jobs SET updated_at = datetime('now', '-2 hours') WHERE video_id = 'a'`
+		);
 
 		const claimed = await claimEmbeddingJobs(db, 10);
 
@@ -127,7 +135,10 @@ describe('claimEmbeddingJobs', () => {
 	it('does not reclaim a processing job that is not yet stale', async () => {
 		await seedSongWithoutEmbeddingJob('a');
 		await enqueueEmbeddingJob(db, 'a');
-		await db.update(embeddingJobs).set({ status: 'processing' }).where(eq(embeddingJobs.videoId, 'a'));
+		await db
+			.update(embeddingJobs)
+			.set({ status: 'processing' })
+			.where(eq(embeddingJobs.videoId, 'a'));
 
 		const claimed = await claimEmbeddingJobs(db, 10);
 
@@ -153,7 +164,10 @@ describe('markEmbeddingJobDone', () => {
 	it('marks the job done and clears any prior error', async () => {
 		await seedSongWithoutEmbeddingJob('a');
 		await enqueueEmbeddingJob(db, 'a');
-		await db.update(embeddingJobs).set({ lastError: 'previous failure' }).where(eq(embeddingJobs.videoId, 'a'));
+		await db
+			.update(embeddingJobs)
+			.set({ lastError: 'previous failure' })
+			.where(eq(embeddingJobs.videoId, 'a'));
 
 		const [job] = await claimEmbeddingJobs(db, 10);
 		await markEmbeddingJobDone(db, job.id);
@@ -203,7 +217,9 @@ describe('failEmbeddingJob', () => {
 	});
 
 	it('is a no-op for an unknown job id', async () => {
-		await expect(failEmbeddingJob(db, { jobId: 'missing', error: 'x', retryable: true })).resolves.not.toThrow();
+		await expect(
+			failEmbeddingJob(db, { jobId: 'missing', error: 'x', retryable: true })
+		).resolves.not.toThrow();
 	});
 });
 

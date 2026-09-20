@@ -18,7 +18,9 @@ export const load: PageServerLoad = async ({ platform, locals, url }) => {
 
 	const eventTypesParam = url.searchParams.get('eventTypes');
 	const eventTypes = eventTypesParam
-		? (eventTypesParam.split(',').filter((t) => AUDIT_EVENT_TYPES.includes(t as AuditEventType)) as AuditEventType[])
+		? (eventTypesParam
+				.split(',')
+				.filter((t) => AUDIT_EVENT_TYPES.includes(t as AuditEventType)) as AuditEventType[])
 		: undefined;
 
 	const page = Math.max(Number(url.searchParams.get('page')) || 1, 1);

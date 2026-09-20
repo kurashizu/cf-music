@@ -92,7 +92,9 @@ describe('throttledFetchBlobUrl', () => {
 		// still sitting in the queue (not yet fetched) when it's made,
 		// exercising the "re-check after the throttle wait" path rather
 		// than the immediate-cache-hit path the previous test covers.
-		const fillers = Array.from({ length: 20 }, (_, i) => throttledFetchBlobUrl(`https://example.test/filler-${i}`));
+		const fillers = Array.from({ length: 20 }, (_, i) =>
+			throttledFetchBlobUrl(`https://example.test/filler-${i}`)
+		);
 		await vi.advanceTimersByTimeAsync(0);
 		expect(fetch).toHaveBeenCalledTimes(20);
 

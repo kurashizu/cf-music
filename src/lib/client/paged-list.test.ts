@@ -8,7 +8,10 @@ function backend(total: number) {
 		calls,
 		fetchRange: vi.fn(async (offset: number, count: number) => {
 			calls.push([offset, count]);
-			return Array.from({ length: Math.min(count, total - offset) }, (_, i) => `item-${offset + i}`);
+			return Array.from(
+				{ length: Math.min(count, total - offset) },
+				(_, i) => `item-${offset + i}`
+			);
 		})
 	};
 }

@@ -81,14 +81,14 @@
 	></button>
 	<div
 		{style}
-		class="fixed inset-x-0 bottom-0 z-40 flex max-h-[70vh] origin-bottom flex-col overflow-hidden rounded-t-xl border border-border bg-card shadow-lg sm:inset-x-auto sm:bottom-auto sm:origin-bottom-right sm:rounded-xl"
+		class="border-border bg-card fixed inset-x-0 bottom-0 z-40 flex max-h-[70vh] origin-bottom flex-col overflow-hidden rounded-t-xl border shadow-lg sm:inset-x-auto sm:bottom-auto sm:origin-bottom-right sm:rounded-xl"
 		transition:scale={motionParams({ duration: 150, start: 0.95, opacity: 0 })}
 	>
-		<div class="flex shrink-0 items-center justify-between border-b border-border px-3 py-2.5">
+		<div class="border-border flex shrink-0 items-center justify-between border-b px-3 py-2.5">
 			<p class="text-sm font-medium">Queue</p>
 			<button
 				type="button"
-				class="rounded p-2.5 text-muted-foreground transition-colors active:scale-90 hover:text-foreground sm:p-1"
+				class="text-muted-foreground hover:text-foreground rounded p-2.5 transition-colors active:scale-90 sm:p-1"
 				onclick={() => (queuePanelState.open = false)}
 				aria-label="Close queue"
 			>
@@ -96,10 +96,10 @@
 			</button>
 		</div>
 		{#if player.currentTrack}
-			<div class="border-b border-border">
+			<div class="border-border border-b">
 				<button
 					type="button"
-					class="flex w-full items-center gap-2 px-3 py-2.5 text-left transition-colors active:bg-muted hover:bg-muted"
+					class="active:bg-muted hover:bg-muted flex w-full items-center gap-2 px-3 py-2.5 text-left transition-colors"
 					onclick={() => (nowPlayingExpanded = !nowPlayingExpanded)}
 					aria-expanded={nowPlayingExpanded}
 				>
@@ -111,41 +111,46 @@
 					     open, which is the reason cover placeholders are a
 					     static fill too (see throttled-image). -->
 					{#if player.isPlaying}
-						<PlayIcon class="size-3 shrink-0 fill-current text-foreground" />
+						<PlayIcon class="text-foreground size-3 shrink-0 fill-current" />
 					{:else}
-						<PauseIcon class="size-3 shrink-0 fill-current text-muted-foreground" />
+						<PauseIcon class="text-muted-foreground size-3 shrink-0 fill-current" />
 					{/if}
 					<p class="min-w-0 flex-1 truncate text-sm font-medium">{player.currentTrack.title}</p>
-					<span class="shrink-0 text-xs text-muted-foreground">
+					<span class="text-muted-foreground shrink-0 text-xs">
 						{formatPlaybackTime(player.currentTimeSeconds)}
 					</span>
 					<ChevronDownIcon
-						class="size-3.5 shrink-0 text-muted-foreground transition-transform {nowPlayingExpanded
+						class="text-muted-foreground size-3.5 shrink-0 transition-transform {nowPlayingExpanded
 							? ''
 							: '-rotate-90'}"
 					/>
 				</button>
 				{#if nowPlayingExpanded && player.audioSpec}
-					<p class="px-3 pb-2.5 font-mono text-[10px] text-muted-foreground">
-						{player.audioSpec.codec}{player.audioSpec.bitrateKbps ? ` · ${player.audioSpec.bitrateKbps}kbps` : ''}
+					<p class="text-muted-foreground px-3 pb-2.5 font-mono text-[10px]">
+						{player.audioSpec.codec}{player.audioSpec.bitrateKbps
+							? ` · ${player.audioSpec.bitrateKbps}kbps`
+							: ''}
 					</p>
 				{/if}
 			</div>
 		{/if}
 		{#if player.upcoming.length === 0}
-			<p class="px-3 py-6 text-center text-xs text-muted-foreground">Nothing queued up next.</p>
+			<p class="text-muted-foreground px-3 py-6 text-center text-xs">Nothing queued up next.</p>
 		{:else}
 			<div class="flex max-h-80 flex-col overflow-y-auto p-1.5">
-				<p class="px-1.5 py-1 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+				<p
+					class="text-muted-foreground px-1.5 py-1 text-[11px] font-medium tracking-wide uppercase"
+				>
 					Next up
 				</p>
 				{#each visibleUpcoming as { track, queueArrayIndex }, position (queueArrayIndex)}
 					<div
-						class="group flex items-center gap-2.5 rounded-md px-1.5 py-1.5 transition-colors active:bg-muted hover:bg-muted"
+						class="group active:bg-muted hover:bg-muted flex items-center gap-2.5 rounded-md px-1.5 py-1.5 transition-colors"
 						animate:flip={motionParams({ duration: 200 })}
 						transition:scale={motionParams({ duration: 150, start: 0.9, opacity: 0 })}
 					>
-						<span class="w-4 shrink-0 text-right text-xs text-muted-foreground">{position + 1}</span>
+						<span class="text-muted-foreground w-4 shrink-0 text-right text-xs">{position + 1}</span
+						>
 						<button
 							type="button"
 							class="min-w-0 flex-1 truncate text-left text-sm"
@@ -154,13 +159,13 @@
 							{track.title}
 						</button>
 						{#if track.durationSeconds !== null}
-							<span class="shrink-0 text-xs text-muted-foreground">
+							<span class="text-muted-foreground shrink-0 text-xs">
 								{formatPlaybackTime(track.durationSeconds)}
 							</span>
 						{/if}
 						<button
 							type="button"
-							class="shrink-0 rounded p-2 text-muted-foreground opacity-100 transition-opacity active:scale-90 hover:text-foreground sm:p-1 sm:opacity-0 sm:group-hover:opacity-100"
+							class="text-muted-foreground hover:text-foreground shrink-0 rounded p-2 opacity-100 transition-opacity active:scale-90 sm:p-1 sm:opacity-0 sm:group-hover:opacity-100"
 							onclick={() => player.removeFromQueue(queueArrayIndex)}
 							aria-label="Remove {track.title} from queue"
 						>

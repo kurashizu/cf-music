@@ -5,7 +5,7 @@ on:
     # 4 times a day, per the product decision this generation cadence is
     # based on — matches embedding.yml's own interval for the same reason
     # neither job needs finer granularity than that.
-    - cron: "0 */6 * * *"
+    - cron: '0 */6 * * *'
   workflow_dispatch:
 
 permissions:

@@ -23,17 +23,17 @@
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
-	class="group relative flex flex-col gap-2 rounded-xl border border-transparent p-3 transition-colors active:bg-muted hover:bg-muted sm:p-4 {flags.selected
+	class="group active:bg-muted hover:bg-muted relative flex flex-col gap-2 rounded-xl border border-transparent p-3 transition-colors sm:p-4 {flags.selected
 		? 'border-ring/50 bg-muted'
 		: ''}"
 	onclick={(e) => actions.onSelect(e)}
 >
-	<div class="relative aspect-square overflow-hidden rounded-lg bg-muted">
+	<div class="bg-muted relative aspect-square overflow-hidden rounded-lg">
 		{#if song.coverUrl}
 			<ThrottledImage src={song.coverUrl} class="size-full" />
 		{:else}
 			<div class="flex size-full items-center justify-center">
-				<MusicIcon class="size-8 text-muted-foreground" />
+				<MusicIcon class="text-muted-foreground size-8" />
 			</div>
 		{/if}
 
@@ -115,7 +115,7 @@
 		<p class="truncate text-sm {flags.current ? 'text-foreground' : 'text-foreground/90'}">
 			{song.title}
 		</p>
-		<p class="truncate text-xs text-muted-foreground">
+		<p class="text-muted-foreground truncate text-xs">
 			{song.detail ?? formatDuration(song.durationSeconds)}
 		</p>
 	</div>

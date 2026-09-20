@@ -80,7 +80,7 @@
      bg-card/95 background, and without a shadow they read as one merged
      bar instead of two stacked layers. -->
 <div
-	class="relative z-10 mb-14 shrink-0 border-t border-border bg-card shadow-[0_-6px_16px_rgba(0,0,0,0.45)] backdrop-blur-sm md:mb-0 md:bg-card/95 md:shadow-none"
+	class="border-border bg-card md:bg-card/95 relative z-10 mb-14 shrink-0 border-t shadow-[0_-6px_16px_rgba(0,0,0,0.45)] backdrop-blur-sm md:mb-0 md:shadow-none"
 >
 	<!-- Custom seek track (not a native <input type="range">, whose
 	     browser-default styling looked out of place against the rest of
@@ -103,14 +103,18 @@
 		onpointerup={handlePointerUp}
 		onkeydown={handleTrackKeydown}
 	>
-		<div class="absolute inset-x-3 top-1/2 h-1 -translate-y-1/2 overflow-hidden rounded-full bg-muted md:inset-x-4">
+		<div
+			class="bg-muted absolute inset-x-3 top-1/2 h-1 -translate-y-1/2 overflow-hidden rounded-full md:inset-x-4"
+		>
 			<div
-				class="h-full rounded-full bg-foreground {dragging ? '' : 'transition-[width] duration-150'}"
+				class="bg-foreground h-full rounded-full {dragging
+					? ''
+					: 'transition-[width] duration-150'}"
 				style="width: {progressPercent}%"
 			></div>
 		</div>
 		<div
-			class="absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-foreground opacity-0 shadow-sm transition-opacity group-hover/seek:opacity-100 {dragging
+			class="bg-foreground absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full opacity-0 shadow-sm transition-opacity group-hover/seek:opacity-100 {dragging
 				? 'opacity-100'
 				: ''}"
 			style="left: calc(0.75rem + (100% - 1.5rem) * {progressPercent / 100})"
@@ -118,14 +122,14 @@
 	</div>
 
 	<div class="flex items-center gap-3 px-3 py-2 md:px-4">
-		<div class="relative flex size-10 shrink-0 items-center justify-center rounded-md bg-muted">
+		<div class="bg-muted relative flex size-10 shrink-0 items-center justify-center rounded-md">
 			{#key player.currentTrack?.videoId}
 				<div class="absolute inset-0" transition:fade={motionParams({ duration: 150 })}>
 					{#if player.coverUrl}
 						<img src={player.coverUrl} alt="" class="size-10 rounded-md object-cover" />
 					{:else}
 						<div class="flex size-10 items-center justify-center">
-							<MusicIcon class="size-4 text-muted-foreground" />
+							<MusicIcon class="text-muted-foreground size-4" />
 						</div>
 					{/if}
 				</div>
@@ -147,14 +151,21 @@
 					</p>
 				{/key}
 			</div>
-			<p class="flex items-center gap-1.5 text-xs text-muted-foreground">
+			<p class="text-muted-foreground flex items-center gap-1.5 text-xs">
 				{#if player.currentTrack}
-					<span>{formatPlaybackTime(player.currentTimeSeconds)} / {formatPlaybackTime(player.durationSeconds)}</span>
+					<span
+						>{formatPlaybackTime(player.currentTimeSeconds)} / {formatPlaybackTime(
+							player.durationSeconds
+						)}</span
+					>
 					{#if player.audioSpec}
 						<span
-							class="hidden rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] leading-normal text-muted-foreground sm:inline"
+							class="bg-muted text-muted-foreground hidden rounded px-1.5 py-0.5 font-mono text-[10px] leading-normal sm:inline"
 						>
-							{formatAudioSpec(player.audioSpec?.codec ?? null, player.audioSpec?.bitrateKbps ?? null)}
+							{formatAudioSpec(
+								player.audioSpec?.codec ?? null,
+								player.audioSpec?.bitrateKbps ?? null
+							)}
 						</span>
 					{/if}
 				{:else}
@@ -268,7 +279,11 @@
 					{/snippet}
 				</Tooltip.Trigger>
 				<Tooltip.Content>
-					{player.repeatMode === 'off' ? 'Repeat off' : player.repeatMode === 'one' ? 'Repeat one' : 'Repeat all'}
+					{player.repeatMode === 'off'
+						? 'Repeat off'
+						: player.repeatMode === 'one'
+							? 'Repeat one'
+							: 'Repeat all'}
 				</Tooltip.Content>
 			</Tooltip.Root>
 		</div>

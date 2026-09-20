@@ -2,7 +2,11 @@ import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getDb } from '$lib/server/db';
 import { requireSession } from '$lib/server/auth/guard';
-import { addSongToPlaylist, getPlaylistSongsInRange, LibraryError } from '$lib/server/library/playlists';
+import {
+	addSongToPlaylist,
+	getPlaylistSongsInRange,
+	LibraryError
+} from '$lib/server/library/playlists';
 import { getObjectStorage } from '$lib/server/storage/factory';
 import { pickStrings } from '$lib/server/http/validate';
 
@@ -21,7 +25,12 @@ export const GET: RequestHandler = async (event) => {
 
 	const offsetParam = Number(event.url.searchParams.get('offset'));
 	const limitParam = Number(event.url.searchParams.get('limit'));
-	if (!Number.isInteger(offsetParam) || offsetParam < 0 || !Number.isInteger(limitParam) || limitParam <= 0) {
+	if (
+		!Number.isInteger(offsetParam) ||
+		offsetParam < 0 ||
+		!Number.isInteger(limitParam) ||
+		limitParam <= 0
+	) {
 		error(400, 'offset (>= 0) and limit (> 0) query params are required');
 	}
 	const limit = Math.min(limitParam, MAX_RANGE_LIMIT);
@@ -29,7 +38,13 @@ export const GET: RequestHandler = async (event) => {
 	const db = getDb(event.platform!.env.DB);
 	let rows;
 	try {
-		rows = await getPlaylistSongsInRange(db, event.params.playlistId, session.userId, offsetParam, limit);
+		rows = await getPlaylistSongsInRange(
+			db,
+			event.params.playlistId,
+			session.userId,
+			offsetParam,
+			limit
+		);
 	} catch (err) {
 		if (err instanceof LibraryError) error(404, err.message);
 		throw err;

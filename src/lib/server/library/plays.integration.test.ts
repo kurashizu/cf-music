@@ -8,7 +8,10 @@ import { recordSongPlay } from './plays';
 const db = getDb(env.DB);
 
 async function seedUser(id: string) {
-	await db.insert(users).values({ id, username: `user-${id}`, passwordHash: 'x' }).onConflictDoNothing();
+	await db
+		.insert(users)
+		.values({ id, username: `user-${id}`, passwordHash: 'x' })
+		.onConflictDoNothing();
 }
 
 async function seedSong(videoId: string) {
@@ -40,7 +43,9 @@ describe('recordSongPlay', () => {
 
 		await recordSongPlay(db, 'u1', 'a');
 
-		const row = await db.query.userSongs.findFirst({ where: and(eq(userSongs.userId, 'u1'), eq(userSongs.videoId, 'a')) });
+		const row = await db.query.userSongs.findFirst({
+			where: and(eq(userSongs.userId, 'u1'), eq(userSongs.videoId, 'a'))
+		});
 		expect(row?.playCount).toBe(1);
 		expect(row?.lastPlayedAt).not.toBeNull();
 	});
@@ -53,7 +58,9 @@ describe('recordSongPlay', () => {
 		await recordSongPlay(db, 'u1', 'a');
 		await recordSongPlay(db, 'u1', 'a');
 
-		const row = await db.query.userSongs.findFirst({ where: and(eq(userSongs.userId, 'u1'), eq(userSongs.videoId, 'a')) });
+		const row = await db.query.userSongs.findFirst({
+			where: and(eq(userSongs.userId, 'u1'), eq(userSongs.videoId, 'a'))
+		});
 		expect(row?.playCount).toBe(3);
 	});
 
@@ -66,8 +73,12 @@ describe('recordSongPlay', () => {
 		await recordSongPlay(db, 'u2', 'shared');
 		await recordSongPlay(db, 'u2', 'shared');
 
-		const u1Row = await db.query.userSongs.findFirst({ where: and(eq(userSongs.userId, 'u1'), eq(userSongs.videoId, 'shared')) });
-		const u2Row = await db.query.userSongs.findFirst({ where: and(eq(userSongs.userId, 'u2'), eq(userSongs.videoId, 'shared')) });
+		const u1Row = await db.query.userSongs.findFirst({
+			where: and(eq(userSongs.userId, 'u1'), eq(userSongs.videoId, 'shared'))
+		});
+		const u2Row = await db.query.userSongs.findFirst({
+			where: and(eq(userSongs.userId, 'u2'), eq(userSongs.videoId, 'shared'))
+		});
 		expect(u1Row?.playCount).toBe(1);
 		expect(u2Row?.playCount).toBe(2);
 	});
@@ -82,7 +93,9 @@ describe('recordSongPlay', () => {
 		// value captured before either write landed.
 		await Promise.all([recordSongPlay(db, 'u1', 'a'), recordSongPlay(db, 'u1', 'a')]);
 
-		const row = await db.query.userSongs.findFirst({ where: and(eq(userSongs.userId, 'u1'), eq(userSongs.videoId, 'a')) });
+		const row = await db.query.userSongs.findFirst({
+			where: and(eq(userSongs.userId, 'u1'), eq(userSongs.videoId, 'a'))
+		});
 		expect(row?.playCount).toBe(2);
 	});
 });

@@ -52,7 +52,10 @@ describe('sliceRangeFromCachedResponse', () => {
 	});
 
 	it('returns null for a header it cannot parse', async () => {
-		const result = await sliceRangeFromCachedResponse(makeCachedResponse(1000), 'not-a-range-header');
+		const result = await sliceRangeFromCachedResponse(
+			makeCachedResponse(1000),
+			'not-a-range-header'
+		);
 
 		expect(result).toBeNull();
 	});

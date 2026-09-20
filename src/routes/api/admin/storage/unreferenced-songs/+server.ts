@@ -25,7 +25,10 @@ export const GET: RequestHandler = async (event) => {
 export const DELETE: RequestHandler = async (event) => {
 	const session = requireAdmin(event);
 	const body: unknown = await event.request.json().catch(() => null);
-	const videoId = typeof body === 'object' && body !== null ? (body as Record<string, unknown>).videoId : undefined;
+	const videoId =
+		typeof body === 'object' && body !== null
+			? (body as Record<string, unknown>).videoId
+			: undefined;
 	if (typeof videoId !== 'string') {
 		error(400, 'videoId is required');
 	}
