@@ -1,6 +1,7 @@
 import { hasReachedPlayThreshold } from '$lib/shared/playback';
 import { shuffleOrder, nextQueueIndex, cycleRepeatMode, moveIndexToFront, type RepeatMode } from '$lib/shared/queue';
 import { precacheAudio } from '$lib/client/offline-cache';
+import { silenceTrim, getTrimPoints, analyzeTrackIfCached } from '$lib/client/silence-trim.svelte';
 
 export interface QueueTrack {
 	videoId: string;
@@ -110,6 +111,8 @@ class PlayerStore {
 	private pendingPlay: Promise<void> | null = null;
 	/** Guards against a single plug/unplug's repeated devicechange events each restarting playback. */
 	private rebindingOutput = false;
+	/** Where the current track's audio ends, when that has been measured and trimming is on. */
+	private trimEndSeconds: number | null = null;
 
 	constructor() {
 		this.restoreSession();
@@ -212,6 +215,7 @@ class PlayerStore {
 			this.audio.preload = 'none';
 			this.audio.addEventListener('timeupdate', () => {
 				this.currentTimeSeconds = this.audio!.currentTime;
+				this.maybeEndAtTrimPoint();
 				this.maybeRecordPlay();
 				this.maybeSaveSession();
 			});
@@ -461,11 +465,38 @@ class PlayerStore {
 		const audio = this.getAudio();
 		audio.src = data.audioUrl;
 
+		// Trim points are known before playback starts (measured after an
+		// earlier play — see analyzeTrackIfCached), so the leading silence is
+		// never heard: this seeks past it through the same deferred path
+		// session restore uses, rather than skipping once playback is audible.
+		this.trimEndSeconds = null;
+		if (silenceTrim.enabled) {
+			const points = getTrimPoints(track.videoId);
+			if (points) {
+				if (points.start > 0) this.pendingResumeSeconds = points.start;
+				this.trimEndSeconds = points.end;
+			}
+		}
+
 		if (autoplay) {
 			await this.startPlayback();
 		}
 		this.isLoading = false;
 		this.saveSessionNow();
+	}
+
+	/**
+	 * Moves on at the measured end of the audio instead of sitting through the
+	 * silent tail. Only ever fires past a measured point, so a track without
+	 * trim points plays to its real end as before.
+	 */
+	private maybeEndAtTrimPoint(): void {
+		if (this.trimEndSeconds === null || !this.audio || this.audio.paused) return;
+		if (this.audio.currentTime < this.trimEndSeconds) return;
+		// Consumed here so the handleEnded below can't re-enter through the
+		// timeupdate events that fire while the next track loads.
+		this.trimEndSeconds = null;
+		void this.handleEnded();
 	}
 
 	private maybeRecordPlay(): void {
@@ -502,9 +533,17 @@ class PlayerStore {
 		if (!fullyBuffered) return;
 
 		this.autoCacheTriggered = true;
-		precacheAudio(this.currentTrack.videoId, this.audioUrl).catch(() => {
-			// Best-effort: same as maybeRecordPlay above, a missed cache write isn't worth surfacing.
-		});
+		const videoId = this.currentTrack.videoId;
+		precacheAudio(videoId, this.audioUrl)
+			.then((cached) => {
+				// Measure only once the audio is in the cache, so the analysis
+				// reads it from disk instead of pulling it over the network
+				// again. The result applies from this track's next play on.
+				if (cached && silenceTrim.enabled) return analyzeTrackIfCached(videoId);
+			})
+			.catch(() => {
+				// Best-effort: same as maybeRecordPlay above, a missed cache write isn't worth surfacing.
+			});
 	}
 
 	private maybeSaveSession(): void {

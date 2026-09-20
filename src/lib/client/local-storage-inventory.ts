@@ -9,7 +9,12 @@ export const LOCAL_STORAGE_KEYS = [
 	'krsz-music:volume',
 	'krsz-music:player-session',
 	'krsz-music:view-mode',
-	'krsz-music:sidebar-collapsed'
+	'krsz-music:sidebar-collapsed',
+	'krsz-music:trim-silence',
+	// Measured per track, so this is the one key here that grows with the
+	// library — it counts toward the reported size and is cleared with the
+	// rest. The measurements are re-derived from cached audio on later plays.
+	'krsz-music:trim-points'
 ] as const;
 
 export interface LocalDataSummary {

@@ -11,6 +11,10 @@
 	import ShieldIcon from '@lucide/svelte/icons/shield';
 	import LogOutIcon from '@lucide/svelte/icons/log-out';
 	import DatabaseIcon from '@lucide/svelte/icons/database';
+	import AudioLinesIcon from '@lucide/svelte/icons/audio-lines';
+	import { Switch } from '$lib/components/ui/switch/index.js';
+	import { Label } from '$lib/components/ui/label/index.js';
+	import { silenceTrim } from '$lib/client/silence-trim.svelte';
 	import { estimateBrowserStorage, type StorageEstimate } from '$lib/client/offline-cache';
 	import { summarizeLocalData, clearAllLocalData, type LocalDataSummary } from '$lib/client/local-storage-inventory';
 	import type { PageProps } from './$types';
@@ -148,6 +152,30 @@
 			</Card.Root>
 		</a>
 	{/if}
+
+	<Card.Root class="mb-4">
+		<Card.Content>
+			<div class="mb-2 flex items-center gap-1.5 text-sm text-muted-foreground">
+				<AudioLinesIcon class="size-4" />
+				Playback
+			</div>
+			<Label class="flex cursor-pointer items-start justify-between gap-3 font-normal">
+				<span class="min-w-0">
+					<span class="block text-sm">Skip silence</span>
+					<span class="block text-xs font-normal text-muted-foreground">
+						Start past a track's silent intro and move on at its silent tail. Each track is measured
+						once after you've played it, so trimming applies from its next play. This device only;
+						your files aren't changed.
+					</span>
+				</span>
+				<Switch
+					class="mt-0.5"
+					checked={silenceTrim.enabled}
+					onCheckedChange={(checked) => silenceTrim.set(checked)}
+				/>
+			</Label>
+		</Card.Content>
+	</Card.Root>
 
 	<Card.Root class="mb-4">
 		<Card.Content>
