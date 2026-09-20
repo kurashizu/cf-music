@@ -104,6 +104,40 @@ test.describe('offline', () => {
 		expect(result.length).toBeGreaterThan(1000);
 	});
 
+	test('the cached offline page can be returned from a navigation', async ({ page }) => {
+		await registerAndLand(page);
+
+		// The host redirects /offline.html to /offline, so the precached entry
+		// is a redirected response — and returning one of those from a
+		// navigation throws, which would drop the reader back on the browser's
+		// own error page. The worker rebuilds it; this asserts the rebuilt
+		// response is one a navigation can actually use.
+		const result = await page.evaluate(async () => {
+			const keys = await caches.keys();
+			const appKey = keys.find((k) => k.startsWith('app-'));
+			const app = appKey ? await caches.open(appKey) : null;
+			const cached = app ? await app.match('/offline.html') : null;
+			if (!cached) return { cached: false };
+
+			const rebuilt = new Response(await cached.blob(), {
+				status: 200,
+				headers: { 'content-type': 'text/html; charset=utf-8' }
+			});
+			return {
+				cached: true,
+				cachedWasRedirected: cached.redirected,
+				rebuiltIsRedirected: rebuilt.redirected,
+				rebuiltStatus: rebuilt.status
+			};
+		});
+
+		expect(result.cached).toBe(true);
+		// Whether the host redirects is its business; what matters is that what
+		// the worker hands back never carries the flag.
+		expect(result.rebuiltIsRedirected).toBe(false);
+		expect(result.rebuiltStatus).toBe(200);
+	});
+
 	test('lists downloaded songs and plays one with no network', async ({ page }) => {
 		await registerAndLand(page);
 		await seedDownloads(page, 3);

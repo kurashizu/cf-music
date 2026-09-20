@@ -108,10 +108,23 @@ sw.addEventListener('fetch', (event) => {
 					} catch {
 						const cache = await caches.open(APP_CACHE);
 						const offline = await cache.match(OFFLINE_PAGE);
-						return (
-							offline ??
-							new Response('Offline', { status: 503, headers: { 'content-type': 'text/plain' } })
-						);
+						if (!offline) {
+							return new Response('Offline', {
+								status: 503,
+								headers: { 'content-type': 'text/plain' }
+							});
+						}
+						// Rebuilt rather than returned as-is: the host redirects
+						// /offline.html to /offline, so the cached entry is a
+						// redirected response, and returning one of those from a
+						// navigation throws ("Failed to convert value to
+						// 'Response'") — the browser then shows its own error
+						// page, which is the whole thing this avoids. Copying the
+						// body into a fresh Response drops the redirect flag.
+						return new Response(await offline.blob(), {
+							status: 200,
+							headers: { 'content-type': 'text/html; charset=utf-8' }
+						});
 					}
 				})()
 			);

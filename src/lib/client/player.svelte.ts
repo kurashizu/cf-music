@@ -361,18 +361,22 @@ class PlayerStore {
 	 * track without art rather than blocking playback.
 	 */
 	private async publishArtwork(videoId: string, coverUrl: string | null): Promise<void> {
-		const track = this.currentTrack;
-		if (!coverUrl || !track || track.videoId !== videoId) return;
+		if (!coverUrl || this.currentTrack?.videoId !== videoId) return;
 		try {
 			const blobUrl = await throttledFetchBlobUrl(coverUrl);
-			// The track may have moved on while this resolved.
-			if (this.currentTrack?.videoId !== videoId) {
+			// Cover fetches go through a shared per-second throttle, so this can
+			// resolve seconds later — by which time the reader may well have
+			// picked a different song. Re-reading currentTrack (rather than the
+			// one captured on entry) is what keeps a slow cover from
+			// republishing the title it belonged to over the one now playing.
+			const current = this.currentTrack;
+			if (current?.videoId !== videoId) {
 				releaseBlobUrl(coverUrl);
 				return;
 			}
 			if (this.artworkSourceUrl) releaseBlobUrl(this.artworkSourceUrl);
 			this.artworkSourceUrl = coverUrl;
-			setMediaSessionTrack({ title: track.title, artworkUrl: blobUrl });
+			setMediaSessionTrack({ title: current.title, artworkUrl: blobUrl });
 		} catch {
 			// No cover to show; the title is already published.
 		}
@@ -553,11 +557,20 @@ class PlayerStore {
 		this.pendingResumeSeconds = null;
 
 		const response = await fetch(`/api/stream-url/${track.videoId}`);
+		// Two loads can be in flight at once — restoring a session and then
+		// picking a different song, or simply skipping twice quickly. Whichever
+		// request resolves last would otherwise win and point the element (and
+		// the OS metadata) at a track nobody chose, which is how a finished
+		// restore could overwrite the song actually playing. Anything no longer
+		// current stops here — leaving isLoading alone, since the load that
+		// superseded this one owns that flag now and will clear it itself.
+		if (this.currentTrack?.videoId !== track.videoId) return;
 		if (!response.ok) {
 			this.isLoading = false;
 			return;
 		}
 		const data: StreamUrlResponse = await response.json();
+		if (this.currentTrack?.videoId !== track.videoId) return;
 
 		this.audioUrl = data.audioUrl;
 		this.coverUrl = data.coverUrl;
