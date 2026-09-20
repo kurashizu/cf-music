@@ -7,6 +7,14 @@ import {
 	type RepeatMode
 } from '$lib/shared/queue';
 import {
+	readStoredSession,
+	readStoredVolume,
+	writeStoredSession,
+	writeStoredVolume,
+	type PersistedSession
+} from '$lib/client/player-session';
+import { isAtEndOfMedia } from '$lib/client/audio-end-detection';
+import {
 	precacheAudio,
 	storeTrackMetadata,
 	cachedAudioUrl,
@@ -44,51 +52,10 @@ export interface AudioSpec {
 	sampleRate: number | null;
 }
 
-const VOLUME_STORAGE_KEY = 'krsz-music:volume';
-const SESSION_STORAGE_KEY = 'krsz-music:player-session';
 // Rewriting localStorage on every timeupdate (multiple times/second) would
 // be wasteful for a value only ever read back after a full page reload —
 // this bounds how often the position actually gets persisted.
 const SESSION_SAVE_INTERVAL_MS = 5000;
-
-function readStoredVolume(): number {
-	if (typeof localStorage === 'undefined') return 1;
-	const raw = localStorage.getItem(VOLUME_STORAGE_KEY);
-	if (raw === null) return 1;
-	const parsed = Number(raw);
-	return Number.isFinite(parsed) ? Math.min(1, Math.max(0, parsed)) : 1;
-}
-
-interface PersistedSession {
-	queue: QueueTrack[];
-	queueIndex: number;
-	shuffleEnabled: boolean;
-	shuffleIndices: number[];
-	repeatMode: RepeatMode;
-	currentTimeSeconds: number;
-}
-
-function readStoredSession(): PersistedSession | null {
-	if (typeof localStorage === 'undefined') return null;
-	const raw = localStorage.getItem(SESSION_STORAGE_KEY);
-	if (raw === null) return null;
-	try {
-		const parsed = JSON.parse(raw) as Partial<PersistedSession>;
-		if (!Array.isArray(parsed.queue) || typeof parsed.queueIndex !== 'number') return null;
-		return {
-			queue: parsed.queue,
-			queueIndex: parsed.queueIndex,
-			shuffleEnabled: parsed.shuffleEnabled === true,
-			shuffleIndices: Array.isArray(parsed.shuffleIndices) ? parsed.shuffleIndices : [],
-			repeatMode:
-				parsed.repeatMode === 'one' || parsed.repeatMode === 'all' ? parsed.repeatMode : 'off',
-			currentTimeSeconds:
-				typeof parsed.currentTimeSeconds === 'number' ? parsed.currentTimeSeconds : 0
-		};
-	} catch {
-		return null;
-	}
-}
 
 class PlayerStore {
 	queue = $state<QueueTrack[]>([]);
@@ -215,10 +182,7 @@ class PlayerStore {
 	 */
 	private isAtEndOfMedia(): boolean {
 		const audio = this.audio;
-		if (!audio) return false;
-		if (audio.ended) return true;
-		const { duration, currentTime } = audio;
-		return Number.isFinite(duration) && duration > 0 && currentTime >= duration - 0.25;
+		return audio ? isAtEndOfMedia(audio) : false;
 	}
 
 	private async rebindOutputDevice(): Promise<void> {
@@ -354,9 +318,7 @@ class PlayerStore {
 		this.volume = Math.min(1, Math.max(0, volume));
 		this.muted = false;
 		this.applyVolume();
-		if (typeof localStorage !== 'undefined') {
-			localStorage.setItem(VOLUME_STORAGE_KEY, String(this.volume));
-		}
+		writeStoredVolume(this.volume);
 	}
 
 	toggleMute(): void {
@@ -856,11 +818,6 @@ class PlayerStore {
 	 * silently lost if the tab closes before the next tick.
 	 */
 	private saveSessionNow(): void {
-		if (typeof localStorage === 'undefined') return;
-		if (this.queue.length === 0) {
-			localStorage.removeItem(SESSION_STORAGE_KEY);
-			return;
-		}
 		const session: PersistedSession = {
 			queue: this.queue,
 			queueIndex: this.queueIndex,
@@ -869,7 +826,7 @@ class PlayerStore {
 			repeatMode: this.repeatMode,
 			currentTimeSeconds: this.currentTimeSeconds
 		};
-		localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+		writeStoredSession(this.queue.length === 0 ? null : session);
 	}
 
 	/**
@@ -880,9 +837,10 @@ class PlayerStore {
 	 * saved position for once its duration becomes known.
 	 */
 	private restoreSession(): void {
+		// An empty queue or an index outside it is already rejected by
+		// parseStoredSession, which is where that rule is tested.
 		const session = readStoredSession();
-		if (!session || session.queue.length === 0) return;
-		if (session.queueIndex < 0 || session.queueIndex >= session.queue.length) return;
+		if (!session) return;
 
 		this.queue = session.queue;
 		this.queueIndex = session.queueIndex;
