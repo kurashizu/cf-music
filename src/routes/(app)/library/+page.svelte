@@ -4,7 +4,6 @@
 	import { toast } from 'svelte-sonner';
 	import { flip } from 'svelte/animate';
 	import { motionParams } from '$lib/client/motion';
-	import * as Card from '$lib/components/ui/card/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -19,7 +18,7 @@
 	import SparklesIcon from '@lucide/svelte/icons/sparkles';
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import MusicIcon from '@lucide/svelte/icons/music';
-	import PlaylistCover from '$lib/components/playlist-cover.svelte';
+	import PlaylistCard from '$lib/components/playlist-card.svelte';
 	import { player } from '$lib/client/player.svelte';
 	import SongSortFilterBar from '$lib/components/song-sort-filter-bar.svelte';
 	import {
@@ -259,56 +258,49 @@
 			class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7"
 		>
 			{#each filteredPlaylists as playlist (playlist.id)}
-				<Card.Root
-					class="group active:border-ring/50 hover:border-ring/50 relative overflow-hidden py-0 transition-colors"
+				<PlaylistCard
+					href="/library/{playlist.id}"
+					name={playlist.name}
+					coverUrls={playlist.coverUrls}
+					subtitle="{playlist.id === data.defaultPlaylistId
+						? 'Your whole library · '
+						: ''}{playlist.songCount} {playlist.songCount === 1 ? 'song' : 'songs'}"
 				>
-					<a href="/library/{playlist.id}" class="flex flex-col gap-3 p-3 sm:p-4">
-						<div
-							class="bg-muted flex aspect-square items-center justify-center overflow-hidden rounded-lg transition-transform duration-200 group-hover:scale-[1.02] group-active:scale-[1.02]"
-						>
-							<PlaylistCover coverUrls={playlist.coverUrls}>
-								{#snippet fallback()}
-									<ListMusicIcon class="text-muted-foreground size-8" />
+					{#snippet emptyIcon()}
+						<ListMusicIcon class="text-muted-foreground size-8" />
+					{/snippet}
+					{#snippet menu()}
+						<DropdownMenu.Root>
+							<DropdownMenu.Trigger>
+								{#snippet child({ props })}
+									<Button
+										{...props}
+										variant="ghost"
+										size="icon-sm"
+										class="bg-card/90 absolute top-2 right-2 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:data-[state=open]:opacity-100"
+									>
+										<MoreVerticalIcon class="size-4" />
+									</Button>
 								{/snippet}
-							</PlaylistCover>
-						</div>
-						<div class="min-w-0">
-							<p class="truncate text-sm font-medium">{playlist.name}</p>
-							<p class="text-muted-foreground truncate text-xs">
-								{playlist.id === data.defaultPlaylistId
-									? 'Your whole library · '
-									: ''}{playlist.songCount}
-								{playlist.songCount === 1 ? 'song' : 'songs'}
-							</p>
-						</div>
-					</a>
-					<DropdownMenu.Root>
-						<DropdownMenu.Trigger>
-							{#snippet child({ props })}
-								<Button
-									{...props}
-									variant="ghost"
-									size="icon-sm"
-									class="bg-card/90 absolute top-2 right-2 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:data-[state=open]:opacity-100"
-								>
-									<MoreVerticalIcon class="size-4" />
-								</Button>
-							{/snippet}
-						</DropdownMenu.Trigger>
-						<DropdownMenu.Content align="end">
-							{#if playlist.kind === 'user' && playlist.id !== data.defaultPlaylistId}
-								<DropdownMenu.Item onclick={() => openRename(playlist)}>
-									<PencilIcon class="size-4" />
-									Rename
-								</DropdownMenu.Item>
-								<DropdownMenu.Item variant="destructive" onclick={() => (deleteTarget = playlist)}>
-									<Trash2Icon class="size-4" />
-									Delete
-								</DropdownMenu.Item>
-							{/if}
-						</DropdownMenu.Content>
-					</DropdownMenu.Root>
-				</Card.Root>
+							</DropdownMenu.Trigger>
+							<DropdownMenu.Content align="end">
+								{#if playlist.kind === 'user' && playlist.id !== data.defaultPlaylistId}
+									<DropdownMenu.Item onclick={() => openRename(playlist)}>
+										<PencilIcon class="size-4" />
+										Rename
+									</DropdownMenu.Item>
+									<DropdownMenu.Item
+										variant="destructive"
+										onclick={() => (deleteTarget = playlist)}
+									>
+										<Trash2Icon class="size-4" />
+										Delete
+									</DropdownMenu.Item>
+								{/if}
+							</DropdownMenu.Content>
+						</DropdownMenu.Root>
+					{/snippet}
+				</PlaylistCard>
 			{/each}
 		</div>
 	{/if}
@@ -358,28 +350,16 @@
 			class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7"
 		>
 			{#each filteredRecommendedPlaylists as playlist (playlist.id)}
-				<Card.Root
-					class="group active:border-ring/50 hover:border-ring/50 relative overflow-hidden py-0 transition-colors"
+				<PlaylistCard
+					href="/library/{playlist.id}"
+					name={playlist.name}
+					coverUrls={playlist.coverUrls}
+					subtitle="{playlist.songCount} {playlist.songCount === 1 ? 'song' : 'songs'}"
 				>
-					<a href="/library/{playlist.id}" class="flex flex-col gap-3 p-3 sm:p-4">
-						<div
-							class="bg-muted flex aspect-square items-center justify-center overflow-hidden rounded-lg transition-transform duration-200 group-hover:scale-[1.02] group-active:scale-[1.02]"
-						>
-							<PlaylistCover coverUrls={playlist.coverUrls}>
-								{#snippet fallback()}
-									<SparklesIcon class="text-muted-foreground size-8" />
-								{/snippet}
-							</PlaylistCover>
-						</div>
-						<div class="min-w-0">
-							<p class="truncate text-sm font-medium">{playlist.name}</p>
-							<p class="text-muted-foreground truncate text-xs">
-								{playlist.songCount}
-								{playlist.songCount === 1 ? 'song' : 'songs'}
-							</p>
-						</div>
-					</a>
-				</Card.Root>
+					{#snippet emptyIcon()}
+						<SparklesIcon class="text-muted-foreground size-8" />
+					{/snippet}
+				</PlaylistCard>
 			{/each}
 		</div>
 	{/if}
@@ -390,28 +370,16 @@
 			class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7"
 		>
 			{#each filteredArtistPlaylists as playlist (playlist.id)}
-				<Card.Root
-					class="group active:border-ring/50 hover:border-ring/50 relative overflow-hidden py-0 transition-colors"
+				<PlaylistCard
+					href="/library/{playlist.id}"
+					name={playlist.name}
+					coverUrls={playlist.coverUrls}
+					subtitle="{playlist.songCount} {playlist.songCount === 1 ? 'song' : 'songs'}"
 				>
-					<a href="/library/{playlist.id}" class="flex flex-col gap-3 p-3 sm:p-4">
-						<div
-							class="bg-muted flex aspect-square items-center justify-center overflow-hidden rounded-lg transition-transform duration-200 group-hover:scale-[1.02] group-active:scale-[1.02]"
-						>
-							<PlaylistCover coverUrls={playlist.coverUrls}>
-								{#snippet fallback()}
-									<UserIcon class="text-muted-foreground size-8" />
-								{/snippet}
-							</PlaylistCover>
-						</div>
-						<div class="min-w-0">
-							<p class="truncate text-sm font-medium">{playlist.name}</p>
-							<p class="text-muted-foreground truncate text-xs">
-								{playlist.songCount}
-								{playlist.songCount === 1 ? 'song' : 'songs'}
-							</p>
-						</div>
-					</a>
-				</Card.Root>
+					{#snippet emptyIcon()}
+						<UserIcon class="text-muted-foreground size-8" />
+					{/snippet}
+				</PlaylistCard>
 			{/each}
 		</div>
 	{/if}

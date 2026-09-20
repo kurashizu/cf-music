@@ -129,6 +129,28 @@ test.describe('playlist detail page', () => {
 	});
 });
 
+test.describe('library index', () => {
+	test('renders playlist cards, including the empty-cover fallback', async ({ page }) => {
+		const { userId } = await registerViaApi(page);
+		const playlistId = `e2e-playlist-${uniqueSuffix()}`;
+		seedPlaylistWithSongs(userId, playlistId, 'Card Render Playlist', 2);
+
+		await page.goto('/library');
+
+		// The shared PlaylistCard draws its no-covers icon through a snippet.
+		// Naming that snippet the same as the prop it renders made it recurse
+		// into itself until the render stack blew — a 500 that both typecheck
+		// and every other test missed, because nothing else rendered this page
+		// with a coverless playlist.
+		// Scoped to the grid: the sidebar lists the same playlist by name.
+		await expect(
+			page.locator('main').getByRole('link', { name: /Card Render Playlist/ })
+		).toBeVisible();
+		await expect(page.locator('main').getByText('2 songs')).toBeVisible();
+		await expect(page.getByText('500')).toHaveCount(0);
+	});
+});
+
 test.describe('player bar', () => {
 	test('starts playing the clicked track and shows it as the current track', async ({ page }) => {
 		await stubStreamUrls(page);

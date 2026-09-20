@@ -8,9 +8,8 @@
 	import AppShell from '$lib/components/app-shell.svelte';
 	import SongRow from '$lib/components/song-row.svelte';
 	import SongCard from '$lib/components/song-card.svelte';
-	import PlaylistCover from '$lib/components/playlist-cover.svelte';
+	import PlaylistCard from '$lib/components/playlist-card.svelte';
 	import ViewModeToggle from '$lib/components/view-mode-toggle.svelte';
-	import * as Card from '$lib/components/ui/card/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import SearchIcon from '@lucide/svelte/icons/search';
@@ -239,32 +238,18 @@
 		class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7"
 	>
 		{#each items as playlist (playlist.id)}
-			<Card.Root
-				class="group active:border-ring/50 hover:border-ring/50 relative overflow-hidden py-0 transition-colors"
+			<PlaylistCard
+				name={playlist.name}
+				coverUrls={mosaicFor(playlist)}
+				subtitle="{playlist.videoIds.length} {playlist.videoIds.length === 1
+					? 'song'
+					: 'songs'} downloaded"
+				onclick={() => openPlaylistView(playlist.id)}
 			>
-				<button
-					type="button"
-					class="flex w-full flex-col gap-3 p-3 text-left sm:p-4"
-					onclick={() => openPlaylistView(playlist.id)}
-				>
-					<div
-						class="bg-muted flex aspect-square items-center justify-center overflow-hidden rounded-lg transition-transform duration-200 group-hover:scale-[1.02] group-active:scale-[1.02]"
-					>
-						<PlaylistCover coverUrls={mosaicFor(playlist)}>
-							{#snippet fallback()}
-								<ListMusicIcon class="text-muted-foreground size-8" />
-							{/snippet}
-						</PlaylistCover>
-					</div>
-					<div class="min-w-0">
-						<p class="truncate text-sm font-medium">{playlist.name}</p>
-						<p class="text-muted-foreground truncate text-xs">
-							{playlist.videoIds.length}
-							{playlist.videoIds.length === 1 ? 'song' : 'songs'} downloaded
-						</p>
-					</div>
-				</button>
-			</Card.Root>
+				{#snippet emptyIcon()}
+					<ListMusicIcon class="text-muted-foreground size-8" />
+				{/snippet}
+			</PlaylistCard>
 		{/each}
 	</div>
 {/snippet}
