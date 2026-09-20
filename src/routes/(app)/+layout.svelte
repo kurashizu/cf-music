@@ -1,5 +1,7 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { page } from '$app/state';
+	import { isTouchDevice } from '$lib/client/motion';
 	import { Toaster } from '$lib/components/ui/sonner/index.js';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import Logo from '$lib/components/logo.svelte';
@@ -42,11 +44,22 @@
 	// context of which playlist you're in — otherwise defaults open, like
 	// YouTube's own sidebar "Library" section.
 	let playlistsExpanded = $state(true);
+
+	// Resolved after mount so SSR and the first client render agree (the
+	// server can't know the pointer type); tooltips simply stay enabled for
+	// the first frame, which no touch user can act on that fast anyway.
+	let tooltipsDisabled = $state(false);
+	onMount(() => {
+		tooltipsDisabled = isTouchDevice();
+	});
 </script>
 
 <Toaster />
 
-<Tooltip.Provider>
+<!-- Suppressed on touch devices: see isTouchDevice. Read once on mount
+     rather than reactively, since a device doesn't change pointer type
+     mid-session in any way worth re-rendering the whole app for. -->
+<Tooltip.Provider disabled={tooltipsDisabled}>
 <div class="flex h-svh bg-background">
 	<!-- Desktop sidebar -->
 	<aside
@@ -74,7 +87,7 @@
 										<a
 											{...props}
 											href={item.href}
-											class="flex flex-1 items-center justify-center rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground {isActive(
+											class="flex flex-1 items-center justify-center rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:bg-muted active:text-foreground {isActive(
 												item.href
 											)
 												? 'bg-muted text-foreground'
@@ -89,7 +102,7 @@
 						{:else}
 							<a
 								href={item.href}
-								class="flex flex-1 items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground {isActive(
+								class="flex flex-1 items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:bg-muted active:text-foreground {isActive(
 									item.href
 								)
 									? 'bg-muted text-foreground'
@@ -101,7 +114,7 @@
 							{#if data.sidebarPlaylists.length > 0 || data.sidebarSmartPlaylists.length > 0}
 								<button
 									type="button"
-									class="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+									class="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:bg-muted active:text-foreground"
 									onclick={() => (playlistsExpanded = !playlistsExpanded)}
 									aria-label={playlistsExpanded ? 'Collapse playlists' : 'Expand playlists'}
 									aria-expanded={playlistsExpanded}
@@ -118,7 +131,7 @@
 							{#each data.sidebarSmartPlaylists as playlist (playlist.id)}
 								<a
 									href="/library/{playlist.id}"
-									class="flex items-center gap-2 truncate rounded-lg px-2.5 py-1.5 text-[13px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground {isActive(
+									class="flex items-center gap-2 truncate rounded-lg px-2.5 py-1.5 text-[13px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:bg-muted active:text-foreground {isActive(
 										`/library/${playlist.id}`
 									)
 										? 'bg-muted text-foreground'
@@ -131,7 +144,7 @@
 							{#each data.sidebarPlaylists as playlist (playlist.id)}
 								<a
 									href="/library/{playlist.id}"
-									class="flex items-center gap-2 truncate rounded-lg px-2.5 py-1.5 text-[13px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground {isActive(
+									class="flex items-center gap-2 truncate rounded-lg px-2.5 py-1.5 text-[13px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:bg-muted active:text-foreground {isActive(
 										`/library/${playlist.id}`
 									)
 										? 'bg-muted text-foreground'
@@ -150,7 +163,7 @@
 								<a
 									{...props}
 									href={item.href}
-									class="flex items-center justify-center rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground {isActive(
+									class="flex items-center justify-center rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:bg-muted active:text-foreground {isActive(
 										item.href
 									)
 										? 'bg-muted text-foreground'
@@ -165,7 +178,7 @@
 				{:else}
 					<a
 						href={item.href}
-						class="flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground {isActive(
+						class="flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:bg-muted active:text-foreground {isActive(
 							item.href
 						)
 							? 'bg-muted text-foreground'
@@ -186,7 +199,7 @@
 							<a
 								{...props}
 								href={settingsItem.href}
-								class="flex items-center justify-center rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground {isActive(
+								class="flex items-center justify-center rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:bg-muted active:text-foreground {isActive(
 									settingsItem.href
 								)
 									? 'bg-muted text-foreground'
@@ -201,7 +214,7 @@
 			{:else}
 				<a
 					href={settingsItem.href}
-					class="flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground {isActive(
+					class="flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:bg-muted active:text-foreground {isActive(
 						settingsItem.href
 					)
 						? 'bg-muted text-foreground'
@@ -218,7 +231,7 @@
 						<button
 							{...props}
 							type="button"
-							class="flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground {sidebar.collapsed
+							class="flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:bg-muted active:text-foreground {sidebar.collapsed
 								? 'justify-center'
 								: ''}"
 							onclick={() => sidebar.toggle()}

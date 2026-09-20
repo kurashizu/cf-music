@@ -126,6 +126,24 @@
 	}
 	html {
 		@apply font-sans;
+		/* The platform's own grey flash is suppressed in favour of the
+		   explicit active: states the app's controls carry: it lands on a
+		   rectangle that ignores our rounded corners, and it fires on any
+		   tapped element, including ones that aren't interactive. */
+		-webkit-tap-highlight-color: transparent;
+	}
+}
+
+/* A tap can be shorter than a transition, so a press state that fades in
+   over the usual duration is often gone before it ever renders. Pressed
+   feedback is therefore immediate, while the release still eases back out.
+   Touch-only: a mouse cursor's hover already telegraphs the target, and
+   desktop buttons keep their full animation. */
+@media (hover: none) {
+	button:active,
+	a:active,
+	[role='button']:active {
+		transition-duration: 0ms;
 	}
 }
 
