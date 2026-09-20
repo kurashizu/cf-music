@@ -304,6 +304,8 @@
 			await clearCachedAudio([videoId]);
 			cachedVideoIds = new Set([...cachedVideoIds].filter((id) => id !== videoId));
 			toast.success('Removed from offline cache');
+		} catch {
+			toast.error('Failed to remove from offline cache');
 		} finally {
 			workingVideoId = null;
 		}
@@ -322,6 +324,8 @@
 			selection.retain(new Set(entries.map((e) => e.videoId)));
 			toast.success('Song deleted');
 			await invalidateAll();
+		} catch {
+			toast.error('Failed to delete song');
 		} finally {
 			workingVideoId = null;
 		}
@@ -382,6 +386,8 @@
 			cachedVideoIds = new Set([...cachedVideoIds].filter((id) => !selection.has(id)));
 			toast.success('Removed from offline cache');
 			selection.clear();
+		} catch {
+			toast.error('Failed to remove from offline cache');
 		} finally {
 			batchWorking = false;
 		}
@@ -397,7 +403,10 @@
 		if (videoIds.length === 0) return;
 		copySubmitting = true;
 		try {
-			const results = await Promise.all(
+			// allSettled, not all: a dropped connection rejects Promise.all
+			// outright, leaving the dialog open with no toast for a copy that
+			// partly went through.
+			const results = await Promise.allSettled(
 				videoIds.map((videoId) =>
 					fetch(`/api/playlists/${toPlaylistId}/songs`, {
 						method: 'POST',
@@ -406,7 +415,7 @@
 					})
 				)
 			);
-			const failures = results.filter((r) => !r.ok).length;
+			const failures = results.filter((r) => r.status === 'rejected' || !r.value.ok).length;
 			toast[failures === 0 ? 'success' : 'error'](
 				failures === 0
 					? videoIds.length === 1
@@ -425,10 +434,14 @@
 	async function handleBatchDelete() {
 		batchWorking = true;
 		try {
-			const results = await Promise.all(
+			// allSettled, not all: a dropped connection part-way through rejects
+			// Promise.all outright, so the toast, the local pruning and the
+			// refetch below are all skipped and the reader is told nothing at
+			// all about a batch that partly went through.
+			const results = await Promise.allSettled(
 				[...selection.ids].map((videoId) => fetch(`/api/songs/${videoId}`, { method: 'DELETE' }))
 			);
-			const failures = results.filter((r) => !r.ok).length;
+			const failures = results.filter((r) => r.status === 'rejected' || !r.value.ok).length;
 			entries = entries.filter((e) => !selection.has(e.videoId));
 			cachedVideoIds = new Set([...cachedVideoIds].filter((id) => !selection.has(id)));
 			toast[failures === 0 ? 'success' : 'error'](

@@ -305,7 +305,11 @@
 		copySubmitting = true;
 		copyingPlaylistId = toPlaylistId;
 		try {
-			const results = await Promise.all(
+			// allSettled, not all: a dropped connection rejects Promise.all
+			// outright, so the toast and the refetch below are skipped and the
+			// reader is told nothing about songs that did move — which for a
+			// move means they still show in the source playlist.
+			const results = await Promise.allSettled(
 				videoIds.map((videoId) =>
 					fetch(`/api/playlists/${data.playlist.id}/songs/${videoId}`, {
 						method: 'PUT',
@@ -314,7 +318,7 @@
 					})
 				)
 			);
-			const failures = results.filter((response) => !response.ok).length;
+			const failures = results.filter((r) => r.status === 'rejected' || !r.value.ok).length;
 			const verb = mode === 'move' ? 'Moved' : 'Copied';
 			toast[failures === 0 ? 'success' : 'error'](
 				failures === 0
@@ -407,12 +411,13 @@
 	async function handleBatchRemove() {
 		batchWorking = true;
 		try {
-			const results = await Promise.all(
+			// allSettled, not all — see handleCopyOrMove for why.
+			const results = await Promise.allSettled(
 				[...selection.ids].map((videoId) =>
 					fetch(`/api/playlists/${data.playlist.id}/songs/${videoId}`, { method: 'DELETE' })
 				)
 			);
-			const failures = results.filter((response) => !response.ok).length;
+			const failures = results.filter((r) => r.status === 'rejected' || !r.value.ok).length;
 			toast[failures === 0 ? 'success' : 'error'](
 				failures === 0 ? 'Removed from playlist' : `Failed to remove ${failures} song(s)`
 			);
@@ -427,10 +432,11 @@
 	async function handleBatchDelete() {
 		batchWorking = true;
 		try {
-			const results = await Promise.all(
+			// allSettled, not all — see handleCopyOrMove for why.
+			const results = await Promise.allSettled(
 				[...selection.ids].map((videoId) => fetch(`/api/songs/${videoId}`, { method: 'DELETE' }))
 			);
-			const failures = results.filter((response) => !response.ok).length;
+			const failures = results.filter((r) => r.status === 'rejected' || !r.value.ok).length;
 			toast[failures === 0 ? 'success' : 'error'](
 				failures === 0 ? 'Songs deleted' : `Failed to delete ${failures} song(s)`
 			);
