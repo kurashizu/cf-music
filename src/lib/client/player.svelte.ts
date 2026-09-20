@@ -1,6 +1,6 @@
 import { hasReachedPlayThreshold } from '$lib/shared/playback';
 import { shuffleOrder, nextQueueIndex, cycleRepeatMode, moveIndexToFront, type RepeatMode } from '$lib/shared/queue';
-import { precacheAudio, storeTrackMetadata } from '$lib/client/offline-cache';
+import { precacheAudio, storeTrackMetadata, cachedAudioUrl } from '$lib/client/offline-cache';
 import { throttledFetchBlobUrl, releaseBlobUrl } from '$lib/client/image-throttle';
 import {
 	bindMediaSessionHandlers,
@@ -135,6 +135,8 @@ class PlayerStore {
 	private switchingTrack = false;
 	/** Cover URL whose blob the OS is currently displaying, so it can be released. */
 	private artworkSourceUrl: string | null = null;
+	/** Blob URL for audio served from the offline cache, released on track change. */
+	private cachedObjectUrl: string | null = null;
 
 	constructor() {
 		this.restoreSession();
@@ -382,6 +384,48 @@ class PlayerStore {
 		}
 	}
 
+	/**
+	 * Finishes a load from the offline cache.
+	 *
+	 * Mirrors the tail of loadCurrent, minus everything that only makes sense
+	 * with a signed URL: there is no cover to presign and no expiry to track,
+	 * and auto-caching is pointless for audio that is already cached. The blob
+	 * URL is revoked when the next track replaces it, so a long queue played
+	 * offline doesn't accumulate them.
+	 */
+	private playFromCachedUrl(track: QueueTrack, blobUrl: string, autoplay: boolean): void {
+		if (this.cachedObjectUrl) URL.revokeObjectURL(this.cachedObjectUrl);
+		this.cachedObjectUrl = blobUrl;
+
+		this.audioUrl = blobUrl;
+		this.coverUrl = null;
+		this.audioSpec = null;
+		// Already local, so it never expires and never needs re-signing.
+		this.urlExpiresAt = Number.POSITIVE_INFINITY;
+		setMediaSessionTrack({ title: track.title });
+
+		this.switchingTrack = true;
+		try {
+			const audio = this.getAudio();
+			audio.src = blobUrl;
+
+			this.trimEndSeconds = null;
+			if (silenceTrim.enabled) {
+				const points = getTrimPoints(track.videoId);
+				if (points) {
+					if (points.start > 0) this.pendingResumeSeconds = points.start;
+					this.trimEndSeconds = points.end;
+				}
+			}
+
+			if (autoplay) void this.startPlayback();
+		} finally {
+			this.switchingTrack = false;
+		}
+		this.isLoading = false;
+		this.saveSessionNow();
+	}
+
 	/** Resumes without toggling — for callers that mean "play", such as the OS. */
 	async resume(): Promise<void> {
 		if (!this.currentTrack || this.isPlaying) return;
@@ -556,7 +600,18 @@ class PlayerStore {
 		// would get consumed by the *next* track's durationchange instead.
 		this.pendingResumeSeconds = null;
 
-		const response = await fetch(`/api/stream-url/${track.videoId}`);
+		// Signing a stream URL needs the network. With none, a song already in
+		// the offline cache can still play from it — so a failure here falls
+		// back rather than ending the load, which is what makes the ordinary
+		// player work offline instead of only a separate page.
+		let data: StreamUrlResponse | null = null;
+		try {
+			const response = await fetch(`/api/stream-url/${track.videoId}`);
+			if (response.ok) data = await response.json();
+		} catch {
+			// Offline, or the request failed outright; the cache is tried below.
+		}
+
 		// Two loads can be in flight at once — restoring a session and then
 		// picking a different song, or simply skipping twice quickly. Whichever
 		// request resolves last would otherwise win and point the element (and
@@ -565,12 +620,20 @@ class PlayerStore {
 		// current stops here — leaving isLoading alone, since the load that
 		// superseded this one owns that flag now and will clear it itself.
 		if (this.currentTrack?.videoId !== track.videoId) return;
-		if (!response.ok) {
-			this.isLoading = false;
+
+		if (!data) {
+			const offlineUrl = await cachedAudioUrl(track.videoId);
+			if (this.currentTrack?.videoId !== track.videoId) {
+				if (offlineUrl) URL.revokeObjectURL(offlineUrl);
+				return;
+			}
+			if (!offlineUrl) {
+				this.isLoading = false;
+				return;
+			}
+			this.playFromCachedUrl(track, offlineUrl, autoplay);
 			return;
 		}
-		const data: StreamUrlResponse = await response.json();
-		if (this.currentTrack?.videoId !== track.videoId) return;
 
 		this.audioUrl = data.audioUrl;
 		this.coverUrl = data.coverUrl;

@@ -36,6 +36,7 @@
 		clearCachedAudio,
 		downloadSongForOffline,
 		downloadSongsForOffline,
+		backfillTrackMetadata,
 		estimateBrowserStorage,
 		type StorageEstimate
 	} from '$lib/client/offline-cache';
@@ -164,6 +165,17 @@
 		listCachedVideoIds().then((ids) => {
 			cachedVideoIds = new Set(ids);
 		});
+
+		// Songs downloaded before metadata was recorded have no title of their
+		// own, so they list as a raw id offline. This page holds the whole
+		// library, which is the only place those names exist.
+		void backfillTrackMetadata(
+			entries.map((entry) => ({
+				videoId: entry.videoId,
+				title: entry.title,
+				durationSeconds: entry.durationSeconds
+			}))
+		);
 	});
 
 	/** Adapts a library entry to what the shared row and card render. */

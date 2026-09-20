@@ -7,7 +7,7 @@
 // deploy produced, `files` is everything under static/, `version` changes
 // on every deploy. Precaching these is what makes the app shell itself
 // (not song audio — see below) available offline.
-import { build, files, version } from '$service-worker';
+import { build, files, prerendered, version } from '$service-worker';
 import {
 	audioCacheKey,
 	extractVideoIdFromAudioPath,
@@ -34,24 +34,29 @@ const METADATA_CACHE = METADATA_CACHE_NAME;
 /**
  * The page served for any navigation the network can't answer.
  *
- * Every real route is server-rendered against the user's session, so none of
- * them can be precached as HTML — offline, there is no server to render one.
- * This standalone page ships with the build, runs entirely in the browser,
- * and plays what is already in the audio cache.
+ * A prerendered route (see routes/offline), so it ships as static HTML with
+ * the build and needs no server — while still being the real app: it hydrates
+ * the same components the online library uses, and reads the audio cache
+ * instead of the server. Every other route renders against the user's session
+ * and so cannot be precached at all.
  */
-const OFFLINE_PAGE = '/offline.html';
+const OFFLINE_PAGE = '/offline';
 
 /**
  * Paths this deploy precached, as a set so the fetch handler can decide
  * whether a request is one of them without opening the cache.
  */
-const PRECACHED_PATHS = new Set([...build, ...files]);
+const PRECACHED_PATHS = new Set([...build, ...files, ...prerendered]);
 
 sw.addEventListener('install', (event) => {
 	event.waitUntil(
 		(async () => {
 			const cache = await caches.open(APP_CACHE);
-			await cache.addAll([...build, ...files]);
+			// `prerendered` matters as much as the other two: the offline page
+			// is a prerendered route, and `files` covers only static/, so
+			// without it the one page this worker exists to serve would not be
+			// cached at all.
+			await cache.addAll([...build, ...files, ...prerendered]);
 			// Without this, a new service worker sits in "waiting" until every
 			// tab running the old one closes — so a deploy's old APP_CACHE
 			// (and the old JS chunk hashes its HTML still references) stays
@@ -114,13 +119,13 @@ sw.addEventListener('fetch', (event) => {
 								headers: { 'content-type': 'text/plain' }
 							});
 						}
-						// Rebuilt rather than returned as-is: the host redirects
-						// /offline.html to /offline, so the cached entry is a
-						// redirected response, and returning one of those from a
+						// Rebuilt rather than returned as-is: a cached entry can
+						// carry a redirect flag (the host rewrites prerendered
+						// paths), and returning a redirected response from a
 						// navigation throws ("Failed to convert value to
 						// 'Response'") — the browser then shows its own error
 						// page, which is the whole thing this avoids. Copying the
-						// body into a fresh Response drops the redirect flag.
+						// body into a fresh Response drops the flag.
 						return new Response(await offline.blob(), {
 							status: 200,
 							headers: { 'content-type': 'text/html; charset=utf-8' }

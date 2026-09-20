@@ -6,7 +6,13 @@
  */
 
 import { analyzeTrackIfCached } from '$lib/client/silence-trim.svelte';
-import type { CachedTrackMetadata } from '$lib/shared/audio-cache-key';
+import {
+	AUDIO_CACHE_NAME,
+	METADATA_CACHE_NAME,
+	audioCacheKey,
+	metadataCacheKey,
+	type CachedTrackMetadata
+} from '$lib/shared/audio-cache-key';
 
 interface StreamUrlResponse {
 	audioUrl: string;
@@ -192,6 +198,83 @@ export async function storeTrackMetadata(tracks: CachedTrackMetadata[]): Promise
 		await postToServiceWorker({ type: 'STORE_TRACK_METADATA', tracks });
 	} catch {
 		// Nothing to recover: the song is cached either way.
+	}
+}
+
+/**
+ * A playable local URL for a cached song, or null if it isn't cached.
+ *
+ * The cache key the service worker uses is a lookup handle it invents, not
+ * something that can be fetched — so the bytes are read out and handed back
+ * as a blob URL the audio element can actually load. This is what lets
+ * playback work with no network at all.
+ */
+export async function cachedAudioUrl(videoId: string): Promise<string | null> {
+	if (typeof caches === 'undefined') return null;
+	try {
+		const cache = await caches.open(AUDIO_CACHE_NAME);
+		const hit = await cache.match(audioCacheKey(videoId));
+		if (!hit) return null;
+		return URL.createObjectURL(await hit.blob());
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Fills in metadata for songs cached before it was being recorded.
+ *
+ * Without this, a download made by an earlier version of the app lists as a
+ * raw videoId offline — there is nothing in the audio cache to derive a title
+ * from. Called from the pages that already hold the library, since that is
+ * the only place those names exist.
+ */
+export async function backfillTrackMetadata(known: CachedTrackMetadata[]): Promise<void> {
+	if (typeof caches === 'undefined' || known.length === 0) return;
+	try {
+		const [audio, meta] = await Promise.all([
+			caches.open(AUDIO_CACHE_NAME),
+			caches.open(METADATA_CACHE_NAME)
+		]);
+		const cachedIds = new Set(
+			(await audio.keys()).map((request) => new URL(request.url).pathname.split('/').pop() ?? '')
+		);
+		const missing: CachedTrackMetadata[] = [];
+		for (const track of known) {
+			if (!cachedIds.has(track.videoId)) continue;
+			if (await meta.match(metadataCacheKey(track.videoId))) continue;
+			missing.push(track);
+		}
+		if (missing.length > 0) await storeTrackMetadata(missing);
+	} catch {
+		// Best-effort: a song without a title still plays.
+	}
+}
+
+/** Every cached song, with whatever is known about it. For offline listing. */
+export async function listCachedTracks(): Promise<CachedTrackMetadata[]> {
+	if (typeof caches === 'undefined') return [];
+	try {
+		const [audio, meta] = await Promise.all([
+			caches.open(AUDIO_CACHE_NAME),
+			caches.open(METADATA_CACHE_NAME)
+		]);
+		const ids = (await audio.keys())
+			.map((request) => new URL(request.url).pathname.split('/').pop() ?? '')
+			.filter((id) => id.length > 0);
+
+		return await Promise.all(
+			ids.map(async (videoId) => {
+				const hit = await meta.match(metadataCacheKey(videoId));
+				// A song cached before metadata was recorded still plays; it
+				// just has no title of its own to show.
+				return hit
+					? ((await hit.json()) as CachedTrackMetadata)
+					: { videoId, title: videoId, durationSeconds: null };
+			})
+		);
+	} catch {
+		return [];
 	}
 }
 

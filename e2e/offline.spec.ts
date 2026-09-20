@@ -5,7 +5,7 @@ import { issueInviteCode, uniqueSuffix } from './fixtures';
  * The offline experience: an installed app whose connection drops should
  * still open, and still play whatever is already downloaded.
  *
- * These drive /offline.html directly rather than by cutting the network.
+ * These drive /offline directly rather than by cutting the network.
  * Neither Playwright's setOffline nor CDP's network emulation reaches a
  * service worker's own fetch() in this setup — the navigation either fails
  * before the worker sees it or succeeds against the real server — so a test
@@ -96,7 +96,7 @@ test.describe('offline', () => {
 			const keys = await caches.keys();
 			const appKey = keys.find((k) => k.startsWith('app-'));
 			const app = appKey ? await caches.open(appKey) : null;
-			const cached = app ? await app.match('/offline.html') : null;
+			const cached = app ? await app.match('/offline') : null;
 			return { precached: !!cached, length: cached ? (await cached.text()).length : 0 };
 		});
 
@@ -107,8 +107,8 @@ test.describe('offline', () => {
 	test('the cached offline page can be returned from a navigation', async ({ page }) => {
 		await registerAndLand(page);
 
-		// The host redirects /offline.html to /offline, so the precached entry
-		// is a redirected response — and returning one of those from a
+		// A cached entry can carry a redirect flag (the host rewrites
+		// prerendered paths), and returning a redirected response from a
 		// navigation throws, which would drop the reader back on the browser's
 		// own error page. The worker rebuilds it; this asserts the rebuilt
 		// response is one a navigation can actually use.
@@ -116,7 +116,7 @@ test.describe('offline', () => {
 			const keys = await caches.keys();
 			const appKey = keys.find((k) => k.startsWith('app-'));
 			const app = appKey ? await caches.open(appKey) : null;
-			const cached = app ? await app.match('/offline.html') : null;
+			const cached = app ? await app.match('/offline') : null;
 			if (!cached) return { cached: false };
 
 			const rebuilt = new Response(await cached.blob(), {
@@ -142,20 +142,16 @@ test.describe('offline', () => {
 		await registerAndLand(page);
 		await seedDownloads(page, 3);
 
-		await page.goto('/offline.html');
+		await page.goto('/offline');
 
-		await expect(page.getByRole('heading', { name: "You're offline" })).toBeVisible();
-		await expect(page.getByText('3 downloaded songs are available.')).toBeVisible();
+		await expect(page.getByRole('heading', { name: 'Downloaded' })).toBeVisible();
+		await expect(page.getByText('3 songs · available without a connection')).toBeVisible();
 		await expect(page.getByText('Offline Song 1')).toBeVisible();
 
-		// Playback comes entirely from the cache — no request is made for it.
-		await page.locator('#list li button').first().click();
-		await expect(page.locator('#bar')).toBeVisible();
-		await expect(page.locator('#now-title')).toHaveText('Offline Song 1');
-		// The element is detached (new Audio()), so the button's own label is
-		// the observable signal that playback actually started: it only flips
-		// to "Pause" from the element's own 'play' event.
-		await expect(page.locator('#toggle')).toHaveAttribute('aria-label', 'Pause');
+		// Playback comes entirely from the cache — the real player bar, the
+		// same one the online app uses, picks it up.
+		await page.locator('main li button[aria-label="Play"]').first().click();
+		await expect(page.locator('p.text-sm.font-medium', { hasText: 'Offline Song 1' })).toBeVisible();
 	});
 
 	test('says so plainly when nothing is downloaded', async ({ page }) => {
@@ -165,13 +161,13 @@ test.describe('offline', () => {
 			await caches.delete('audio-meta-v1');
 		});
 
-		await page.goto('/offline.html');
+		await page.goto('/offline');
 
-		await expect(page.getByRole('heading', { name: "You're offline" })).toBeVisible();
-		await expect(page.getByText('Nothing is downloaded on this device.')).toBeVisible();
+		await expect(page.getByRole('heading', { name: 'Downloaded' })).toBeVisible();
+		await expect(page.getByText('No songs are downloaded on this device.')).toBeVisible();
 	});
 
-	test('a track cached before metadata existed still plays, listed by its id', async ({ page }) => {
+	test('a track cached before metadata existed still lists, by its id', async ({ page }) => {
 		await registerAndLand(page);
 		await page.evaluate(async () => {
 			await caches.delete('audio-v1');
@@ -183,7 +179,7 @@ test.describe('offline', () => {
 			);
 		});
 
-		await page.goto('/offline.html');
+		await page.goto('/offline');
 
 		await expect(page.getByText('legacy-song')).toBeVisible();
 	});
