@@ -581,12 +581,14 @@
 				disabled={data.totalSongCount === 0}
 				onclick={() => playAll()}
 			>
+				<!-- Fixed width: "Playing" is wider than "Play", and letting the
+				     button resize slides Shuffle sideways mid-playback. -->
 				{#if isThisPlaylistPlaying}
 					<PauseIcon class="size-4" />
-					Playing
+					<span class="w-12 text-left">Playing</span>
 				{:else}
 					<PlayIcon class="size-4" />
-					Play
+					<span class="w-12 text-left">Play</span>
 				{/if}
 			</Button>
 			<Button
@@ -625,9 +627,13 @@
 		</div>
 	{/if}
 
+	<!-- Overlaid rather than inserted into the flow: taking layout space would
+	     push the list down the moment a song is selected, moving the row that
+	     was just clicked out from under the pointer — so a second click lands
+	     on a different song. -->
 	{#if selection.size > 0}
 		<div
-			class="sticky top-0 z-10 mb-2 flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2"
+			class="sticky top-0 z-20 -mb-12 flex h-12 items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 shadow-sm"
 			transition:slide={motionParams({ duration: 150 })}
 		>
 			<div class="flex items-center gap-2">

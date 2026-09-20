@@ -86,20 +86,23 @@
 		</Select.Content>
 	</Select.Root>
 
-	{#if sortField !== 'custom'}
-		<Button
-			size="icon-sm"
-			variant="outline"
-			onclick={() => (sortDirection = sortDirection === 'asc' ? 'desc' : 'asc')}
-			aria-label={sortDirection === 'asc' ? 'Sort ascending' : 'Sort descending'}
-		>
-			{#if sortDirection === 'asc'}
-				<ArrowUpIcon class="size-4" />
-			{:else}
-				<ArrowDownIcon class="size-4" />
-			{/if}
-		</Button>
-	{/if}
+	<!-- Kept in place under the stored order, where it has nothing to toggle,
+	     so changing sort doesn't shift every control to its right. -->
+	<Button
+		size="icon-sm"
+		variant="outline"
+		class={sortField === 'custom' ? 'invisible' : ''}
+		disabled={sortField === 'custom'}
+		tabindex={sortField === 'custom' ? -1 : 0}
+		onclick={() => (sortDirection = sortDirection === 'asc' ? 'desc' : 'asc')}
+		aria-label={sortDirection === 'asc' ? 'Sort ascending' : 'Sort descending'}
+	>
+		{#if sortDirection === 'asc'}
+			<ArrowUpIcon class="size-4" />
+		{:else}
+			<ArrowDownIcon class="size-4" />
+		{/if}
+	</Button>
 
 	{#if artistOptions && artistOptions.length > 0}
 		<Select.Root type="single" bind:value={artistFilter as string}>

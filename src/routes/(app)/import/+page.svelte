@@ -148,8 +148,12 @@
 							</span>
 						</div>
 
-						{#key job.status === 'failed' ? 'failed' : job.probing ? 'probing' : 'progress'}
-						<div transition:fade={motionParams({ duration: 120 })}>
+						<!-- The outgoing and incoming states overlap during the fade and are
+						     different heights, so they share one grid cell rather than both
+						     taking flow space and growing the card mid-import. -->
+						<div class="grid">
+							{#key job.status === 'failed' ? 'failed' : job.probing ? 'probing' : 'progress'}
+								<div class="col-start-1 row-start-1" transition:fade={motionParams({ duration: 120 })}>
 						{#if job.status === 'failed'}
 							<div class="flex items-start gap-3">
 								<CircleXIcon class="mt-0.5 size-4 shrink-0 text-destructive" />
@@ -197,15 +201,22 @@
 									Cancel
 								</Button>
 							</div>
-							{#if job.knownCount > 0}
-								<div class="flex items-center gap-1.5 text-xs text-muted-foreground">
-									<SkipForwardIcon class="size-4" />
-									{job.knownCount} already in library — skipped, no download needed
-								</div>
-							{/if}
+							<!-- Kept in the layout from the start: this appears the moment the
+							     first already-known song is seen, and inserting it then would
+							     push every later job card down. -->
+							<div
+								class="flex items-center gap-1.5 text-xs text-muted-foreground {job.knownCount > 0
+									? ''
+									: 'invisible'}"
+								aria-hidden={job.knownCount === 0}
+							>
+								<SkipForwardIcon class="size-4" />
+								{job.knownCount} already in library — skipped, no download needed
+							</div>
 						{/if}
+								</div>
+							{/key}
 						</div>
-						{/key}
 					</Card.Content>
 				</Card.Root>
 				</div>
