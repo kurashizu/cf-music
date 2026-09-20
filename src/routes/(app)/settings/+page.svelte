@@ -16,11 +16,30 @@
 	import { Switch } from '$lib/components/ui/switch/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { silenceTrim } from '$lib/client/silence-trim.svelte';
-	import { estimateBrowserStorage, type StorageEstimate } from '$lib/client/offline-cache';
+	import {
+		estimateBrowserStorage,
+		storeRouteData,
+		readRouteData,
+		type StorageEstimate
+	} from '$lib/client/offline-cache';
 	import { summarizeLocalData, clearAllLocalData, type LocalDataSummary } from '$lib/client/local-storage-inventory';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
+
+	interface AccountUsage {
+		quotaBytes: number;
+		usageBytes: number;
+		session: { username: string; isAdmin: boolean };
+	}
+
+	// Fetched here rather than loaded server-side so this page opens with no
+	// connection: skip silence, clearing local data and the cache figures all
+	// work offline, and none of them should be unreachable because one cloud
+	// total needs the server. The last known figures are kept so they show
+	// something truthful rather than nothing, marked as out of date.
+	let account = $state<AccountUsage | null>(null);
+	let accountStale = $state(false);
 
 	let browserStorage = $state<StorageEstimate | null>(null);
 	let localData = $state<LocalDataSummary | null>(null);
@@ -64,19 +83,41 @@
 	}
 
 	const usagePercent = $derived(
-		data.quotaBytes > 0 ? Math.min(100, (data.usageBytes / data.quotaBytes) * 100) : 0
-	);
-	const browserUsagePercent = $derived(
-		browserStorage && data.quotaBytes > 0
-			? Math.min(100, (browserStorage.usageBytes / data.quotaBytes) * 100)
+		account && account.quotaBytes > 0
+			? Math.min(100, (account.usageBytes / account.quotaBytes) * 100)
 			: 0
 	);
+	const browserUsagePercent = $derived(
+		browserStorage && account && account.quotaBytes > 0
+			? Math.min(100, (browserStorage.usageBytes / account.quotaBytes) * 100)
+			: 0
+	);
+
+	async function loadAccountUsage() {
+		try {
+			const response = await fetch('/api/account-usage');
+			if (!response.ok) throw new Error(String(response.status));
+			const fresh: AccountUsage = await response.json();
+			account = fresh;
+			accountStale = false;
+			void storeRouteData('account-usage', fresh);
+			return;
+		} catch {
+			// Offline, or the request failed — fall through to the last copy.
+		}
+		const cached = await readRouteData<AccountUsage>('account-usage');
+		if (cached) {
+			account = cached.data;
+			accountStale = true;
+		}
+	}
 
 	onMount(() => {
 		estimateBrowserStorage().then((estimate) => {
 			browserStorage = estimate;
 		});
 		refreshLocalData();
+		void loadAccountUsage();
 	});
 </script>
 
@@ -96,20 +137,40 @@
 						Manage storage
 					</span>
 					<div class="flex items-center gap-1.5 text-muted-foreground">
-						<span>{formatBytes(data.usageBytes)} / {formatBytes(data.quotaBytes)} cloud</span>
+						{#if account}
+							<span>
+								{formatBytes(account.usageBytes)} / {formatBytes(account.quotaBytes)} cloud
+							</span>
+						{:else}
+							<span>Offline</span>
+						{/if}
 						<ChevronRightIcon class="size-4 shrink-0" />
 					</div>
 				</div>
-				<div class="h-1.5 overflow-hidden rounded-full bg-muted">
-					<div class="h-full bg-foreground transition-all duration-300" style="width: {usagePercent}%"></div>
-				</div>
+				{#if account}
+					<div class="h-1.5 overflow-hidden rounded-full bg-muted">
+						<div
+							class="h-full bg-foreground transition-all duration-300"
+							style="width: {usagePercent}%"
+						></div>
+					</div>
+					{#if accountStale}
+						<p class="mt-1 text-[11px] text-muted-foreground">
+							Cloud figures from the last time you were online.
+						</p>
+					{/if}
+				{/if}
 				{#if browserStorage}
 					<div class="mt-2 flex items-center justify-between text-xs text-muted-foreground">
 						<span class="flex items-center gap-1.5">
 							<GlobeIcon class="size-3.5" />
 							Offline cache
 						</span>
-						<span>{formatBytes(browserStorage.usageBytes)} / {formatBytes(data.quotaBytes)}</span>
+						<span>
+							{formatBytes(browserStorage.usageBytes)}{account
+								? ` / ${formatBytes(account.quotaBytes)}`
+								: ''}
+						</span>
 					</div>
 					<div class="mt-1 h-1.5 overflow-hidden rounded-full bg-muted">
 						<div
@@ -125,7 +186,7 @@
 		</Card.Root>
 	</a>
 
-	{#if data.session.isAdmin}
+	{#if account?.session.isAdmin}
 		<a href="/admin" class="mb-4 block">
 			<Card.Root class="transition-colors hover:border-ring/50">
 				<Card.Content class="flex items-center justify-between gap-3">
@@ -194,7 +255,9 @@
 
 	<Card.Root>
 		<Card.Content>
-			<p class="mb-3 truncate text-xs text-muted-foreground">{data.session.username}</p>
+			{#if account}
+				<p class="mb-3 truncate text-xs text-muted-foreground">{account.session.username}</p>
+			{/if}
 			<Button variant="outline" size="sm" class="w-full justify-start gap-2" onclick={handleLogout}>
 				<LogOutIcon class="size-4" />
 				Log out

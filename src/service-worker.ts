@@ -32,6 +32,8 @@ const AUDIO_CACHE = AUDIO_CACHE_NAME;
 const COVER_CACHE = COVER_CACHE_NAME;
 const METADATA_CACHE = METADATA_CACHE_NAME;
 const LIBRARY_CACHE = LIBRARY_CACHE_NAME;
+/** Last good __data.json per route, so client navigation survives offline. */
+const ROUTE_DATA_CACHE = 'route-data-v1';
 
 /**
  * The page served for any navigation the network can't answer.
@@ -87,7 +89,14 @@ sw.addEventListener('activate', (event) => {
 			// Listed in one place deliberately: a cache missing from here is
 			// silently deleted on the next deploy, which is how the library
 			// snapshot vanished the first time.
-			const KEEP = new Set([APP_CACHE, AUDIO_CACHE, COVER_CACHE, METADATA_CACHE, LIBRARY_CACHE]);
+			const KEEP = new Set([
+				APP_CACHE,
+				AUDIO_CACHE,
+				COVER_CACHE,
+				METADATA_CACHE,
+				LIBRARY_CACHE,
+				ROUTE_DATA_CACHE
+			]);
 			for (const key of await caches.keys()) {
 				if (!KEEP.has(key)) await caches.delete(key);
 			}
@@ -116,7 +125,14 @@ sw.addEventListener('fetch', (event) => {
 						return await fetch(event.request);
 					} catch {
 						const cache = await caches.open(APP_CACHE);
-						const offline = await cache.match(OFFLINE_PAGE);
+						// A route this deploy precached is served as itself:
+						// /settings works with no connection (its cloud figures
+						// are fetched separately), so sending it to the offline
+						// page would hide a page that does work.
+						const own = PRECACHED_PATHS.has(url.pathname)
+							? await cache.match(url.pathname)
+							: undefined;
+						const offline = own ?? (await cache.match(OFFLINE_PAGE));
 						if (!offline) {
 							return new Response('Offline', {
 								status: 503,
@@ -134,6 +150,30 @@ sw.addEventListener('fetch', (event) => {
 							status: 200,
 							headers: { 'content-type': 'text/html; charset=utf-8' }
 						});
+					}
+				})()
+			);
+			return;
+		}
+
+		// SvelteKit asks for a route's data as __data.json on every
+		// client-side navigation. Offline that fetch throws, and the router
+		// reports it as a server error — so the last successful copy is kept
+		// and replayed, which is what lets a page whose own content is
+		// device-local (see settings) still open with no connection. Only
+		// ever a fallback: a reachable server always wins.
+		if (url.origin === sw.location.origin && url.pathname.endsWith('__data.json')) {
+			event.respondWith(
+				(async () => {
+					const cache = await caches.open(ROUTE_DATA_CACHE);
+					try {
+						const response = await fetch(event.request);
+						if (response.status === 200) await cache.put(url.pathname, response.clone());
+						return response;
+					} catch {
+						const hit = await cache.match(url.pathname);
+						if (hit) return hit;
+						throw new Error(`Offline and no cached data for ${url.pathname}`);
 					}
 				})()
 			);

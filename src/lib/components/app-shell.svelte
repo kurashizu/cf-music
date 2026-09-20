@@ -42,6 +42,11 @@
 		 * it in place.
 		 */
 		onPlaylistSelect?: (id: string) => void;
+		/**
+		 * Hides destinations that cannot work without a server. Offering a
+		 * control that does nothing is worse than not offering it.
+		 */
+		offline?: boolean;
 	}
 
 	let {
@@ -49,7 +54,8 @@
 		sidebarSmartPlaylists,
 		children,
 		statusBadge,
-		onPlaylistSelect
+		onPlaylistSelect,
+		offline = false
 	}: Props = $props();
 
 	// Settings lives at the bottom of the desktop sidebar, separate from
@@ -57,11 +63,21 @@
 	// sidebar" area, so it stays in the same list there instead (see the
 	// mobile bottom nav below, which renders navItems + settingsItem
 	// together).
-	const navItems = $derived([
-		{ href: '/library', label: 'Library', icon: LibraryIcon },
-		{ href: '/import', label: 'Import', icon: UploadIcon },
-		{ href: '/stats', label: 'Stats', icon: ChartColumnIcon }
-	]);
+	// Import dispatches jobs to the server and Stats is entirely derived from
+	// a server query, so neither can do anything offline — they are dropped
+	// rather than left to fail on tap. Settings stays: most of what it offers
+	// is device-local.
+	const navItems = $derived(
+		offline
+			? // Library points at the offline page, which *is* the library with
+				// no connection — linking to /library would only bounce back here.
+				[{ href: '/offline', label: 'Library', icon: LibraryIcon }]
+			: [
+					{ href: '/library', label: 'Library', icon: LibraryIcon },
+					{ href: '/import', label: 'Import', icon: UploadIcon },
+					{ href: '/stats', label: 'Stats', icon: ChartColumnIcon }
+				]
+	);
 	const settingsItem = { href: '/settings', label: 'Settings', icon: SettingsIcon };
 
 	function isActive(href: string): boolean {

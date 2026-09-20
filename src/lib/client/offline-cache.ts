@@ -15,6 +15,7 @@ import {
 	coverCacheKey,
 	librarySnapshotKey,
 	metadataCacheKey,
+	routeDataKey,
 	type CachedPlaylist,
 	type CachedTrackMetadata,
 	type LibrarySnapshot
@@ -318,6 +319,42 @@ export async function syncLibrarySnapshot(): Promise<void> {
 		await storeLibrarySnapshot(playlists);
 	} catch {
 		// Offline already, or the request failed; keep whatever was stored.
+	}
+}
+
+/**
+ * Keeps a copy of a route's server data, so the page still renders offline.
+ *
+ * Only for pages whose data is small and tolerant of being a little stale —
+ * a storage total or a play count read from the last time there was a
+ * connection is far better than the page being unreachable.
+ */
+export async function storeRouteData(routeId: string, data: unknown): Promise<void> {
+	if (typeof caches === 'undefined') return;
+	try {
+		const cache = await caches.open(LIBRARY_CACHE_NAME);
+		await cache.put(
+			routeDataKey(routeId),
+			new Response(JSON.stringify({ data, capturedAt: new Date().toISOString() }), {
+				headers: { 'content-type': 'application/json' }
+			})
+		);
+	} catch {
+		// The page works online regardless; this only serves the offline case.
+	}
+}
+
+/** A route's last server data, with when it was captured, or null. */
+export async function readRouteData<T>(
+	routeId: string
+): Promise<{ data: T; capturedAt: string } | null> {
+	if (typeof caches === 'undefined') return null;
+	try {
+		const cache = await caches.open(LIBRARY_CACHE_NAME);
+		const hit = await cache.match(routeDataKey(routeId));
+		return hit ? ((await hit.json()) as { data: T; capturedAt: string }) : null;
+	} catch {
+		return null;
 	}
 }
 

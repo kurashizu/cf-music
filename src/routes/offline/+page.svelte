@@ -295,6 +295,7 @@
 	sidebarSmartPlaylists={smartPlaylists.map((p) => ({ id: p.id, name: p.name }))}
 	statusBadge={offlineBadge}
 	onPlaylistSelect={openPlaylistView}
+	offline
 >
 	<div class="mx-auto max-w-screen-2xl p-4 md:p-8">
 		{#if !loaded}

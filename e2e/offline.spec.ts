@@ -257,23 +257,57 @@ test.describe('offline', () => {
 		await expect(page.getByText('Offline').filter({ visible: true }).first()).toBeVisible();
 	});
 
-	test('navigating to a server-backed page with no connection lands on downloads', async ({
+	test('offers only what works: no Import or Stats, but Settings stays', async ({ page }) => {
+		await registerAndLand(page);
+		await seedDownloads(page, 2);
+
+		await page.goto('/offline');
+
+		// Import dispatches jobs and Stats is derived entirely from a server
+		// query, so neither can do anything here — offering a control that
+		// does nothing is worse than not offering it.
+		await expect(page.getByRole('link', { name: 'Import' })).toHaveCount(0);
+		await expect(page.getByRole('link', { name: 'Stats' })).toHaveCount(0);
+		// Settings is mostly device-local, so it stays reachable. It lives in
+		// the sidebar footer on a wide screen and the bottom bar on a phone,
+		// so this asks for whichever copy is actually on screen.
+		await expect(
+			page.getByRole('link', { name: 'Settings' }).filter({ visible: true }).first()
+		).toBeVisible();
+	});
+
+	test('settings opens with no connection, degrading only its cloud figures', async ({
 		page,
 		context
 	}) => {
 		await registerAndLand(page);
-		await seedDownloads(page, 2);
+		await seedDownloads(page, 1);
+
+		// Reaching settings by a client-side navigation while online is what
+		// populates the cached route data the worker replays later — a full
+		// page load never asks for __data.json, so it caches nothing.
 		await page.goto('/offline');
-		await expect(page.getByRole('heading', { name: 'All downloaded' })).toBeVisible();
+		const settingsLink = page
+			.getByRole('link', { name: 'Settings' })
+			.filter({ visible: true })
+			.first();
+		await settingsLink.click();
+		await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
 
+		// Back to a page that works offline, then return with no connection.
+		await page.goBack();
+		await expect(page.getByRole('heading', { name: 'All downloaded' })).toBeVisible();
 		await context.setOffline(true);
-		// Settings loads its data from the server; without this guard the
-		// client router surfaced a bare "500 Internal Error" page.
-		await page.getByRole('link', { name: 'Settings', exact: true }).first().click();
+		await settingsLink.click();
 
-		await expect(page).toHaveURL(/\/offline$/);
-		await expect(page.getByRole('heading', { name: 'All downloaded' })).toBeVisible();
+		// The page itself renders, and the device-local controls work.
+		await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
+		await expect(page.getByText('Skip silence')).toBeVisible();
+		await expect(page.getByRole('button', { name: 'Clear local data' })).toBeVisible();
+		// Only the cloud total is missing, and it says so rather than showing
+		// a wrong number or a server error.
 		await expect(page.getByText('500')).toHaveCount(0);
+		await expect(page.getByText('Offline').first()).toBeVisible();
 
 		await context.setOffline(false);
 	});

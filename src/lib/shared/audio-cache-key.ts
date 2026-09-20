@@ -61,6 +61,16 @@ export function metadataCacheKey(videoId: string): string {
 	return `https://meta.cf-music.internal/${videoId}`;
 }
 
+/**
+ * Lookup key for one route's last server payload.
+ *
+ * Pages whose data is small and changes slowly (settings, stats) keep a copy
+ * so they still render with no connection, rather than being unreachable.
+ */
+export function routeDataKey(routeId: string): string {
+	return `https://route.cf-music.internal/${encodeURIComponent(routeId)}`;
+}
+
 /** Lookup key for the cached library snapshot. Never fetched. */
 export function librarySnapshotKey(): string {
 	return 'https://library.cf-music.internal/snapshot';

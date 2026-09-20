@@ -7,8 +7,14 @@
 
 	let { children } = $props();
 
-	/** Routes that work with no connection, because nothing they need is remote. */
-	const OFFLINE_ROUTES = ['/offline'];
+	/**
+	 * Routes that work with no connection.
+	 *
+	 * /settings earns its place: skip silence, clearing local data and the
+	 * cache figures are all device-local, and it fetches its cloud totals
+	 * separately so their absence degrades one card rather than the page.
+	 */
+	const OFFLINE_ROUTES = ['/offline', '/settings'];
 
 	/**
 	 * Sends a navigation to the downloads page when there is no connection.
