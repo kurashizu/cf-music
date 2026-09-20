@@ -257,6 +257,27 @@ test.describe('offline', () => {
 		await expect(page.getByText('Offline').filter({ visible: true }).first()).toBeVisible();
 	});
 
+	test('navigating to a server-backed page with no connection lands on downloads', async ({
+		page,
+		context
+	}) => {
+		await registerAndLand(page);
+		await seedDownloads(page, 2);
+		await page.goto('/offline');
+		await expect(page.getByRole('heading', { name: 'All downloaded' })).toBeVisible();
+
+		await context.setOffline(true);
+		// Settings loads its data from the server; without this guard the
+		// client router surfaced a bare "500 Internal Error" page.
+		await page.getByRole('link', { name: 'Settings', exact: true }).first().click();
+
+		await expect(page).toHaveURL(/\/offline$/);
+		await expect(page.getByRole('heading', { name: 'All downloaded' })).toBeVisible();
+		await expect(page.getByText('500')).toHaveCount(0);
+
+		await context.setOffline(false);
+	});
+
 	test('says so plainly when nothing is downloaded', async ({ page }) => {
 		await registerAndLand(page);
 		await page.evaluate(async () => {
