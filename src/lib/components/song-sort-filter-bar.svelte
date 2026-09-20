@@ -34,9 +34,13 @@
 	const sortLabel = $derived(sortOptions.find((o) => o.value === sortField)?.label ?? 'Sort');
 </script>
 
+<!-- The controls are fluid below sm: fixed widths made them wrap one per
+     row on a phone and clipped the duration placeholders. Each one takes an
+     equal share of the row instead, and reverts to its natural width once
+     there's room. -->
 <div class="flex flex-wrap items-center gap-2">
 	<Select.Root type="single" bind:value={sortField as string}>
-		<Select.Trigger class="w-36">
+		<Select.Trigger class="min-w-0 flex-1 sm:w-36 sm:flex-none">
 			{sortLabel}
 		</Select.Trigger>
 		<Select.Content>
@@ -63,7 +67,7 @@
 
 	{#if artistOptions && artistOptions.length > 0}
 		<Select.Root type="single" bind:value={artistFilter as string}>
-			<Select.Trigger class="w-40">
+			<Select.Trigger class="min-w-0 flex-1 sm:w-40 sm:flex-none">
 				{artistFilter === 'all' || !artistFilter ? 'All artists' : artistFilter}
 			</Select.Trigger>
 			<Select.Content>
@@ -76,13 +80,15 @@
 	{/if}
 
 	{#if showDurationFilter}
-		<div class="flex items-center gap-1.5">
+		<!-- Takes a row of its own on a phone: sharing one with the selects
+		     left each input too narrow to show its own placeholder. -->
+		<div class="flex w-full min-w-0 items-center gap-1.5 sm:w-auto sm:flex-none">
 			<Input
 				type="number"
 				min="0"
 				placeholder="Min min"
 				bind:value={minDurationMinutes}
-				class="w-20"
+				class="w-full min-w-0 sm:w-20"
 			/>
 			<span class="text-sm text-muted-foreground">–</span>
 			<Input
@@ -90,7 +96,7 @@
 				min="0"
 				placeholder="Max min"
 				bind:value={maxDurationMinutes}
-				class="w-20"
+				class="w-full min-w-0 sm:w-20"
 			/>
 		</div>
 	{/if}

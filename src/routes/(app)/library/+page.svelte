@@ -253,7 +253,7 @@
 				<Card.Root
 					class="group relative overflow-hidden py-0 transition-colors active:border-ring/50 hover:border-ring/50"
 				>
-					<a href="/library/{playlist.id}" class="flex flex-col gap-3 p-4">
+					<a href="/library/{playlist.id}" class="flex flex-col gap-3 p-3 sm:p-4">
 						<div
 							class="flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-muted transition-transform duration-200 group-active:scale-[1.02] group-hover:scale-[1.02]"
 						>
@@ -312,7 +312,7 @@
 	{/if}
 
 	{#if matchingSongs.length > 0}
-		<h2 class="mt-10 mb-4 text-sm font-medium text-muted-foreground">
+		<h2 class="mt-8 mb-3 text-sm font-medium text-muted-foreground sm:mt-10 sm:mb-4">
 			Songs ({matchingSongs.length})
 		</h2>
 		<div class="flex flex-col gap-1">
@@ -339,11 +339,11 @@
 	{/if}
 
 	{#if filteredRecommendedPlaylists.length > 0}
-		<h2 class="mt-10 mb-4 text-sm font-medium text-muted-foreground">Smart Playlists</h2>
+		<h2 class="mt-8 mb-3 text-sm font-medium text-muted-foreground sm:mt-10 sm:mb-4">Smart Playlists</h2>
 		<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
 			{#each filteredRecommendedPlaylists as playlist (playlist.id)}
 				<Card.Root class="group relative overflow-hidden py-0 transition-colors active:border-ring/50 hover:border-ring/50">
-					<a href="/library/{playlist.id}" class="flex flex-col gap-3 p-4">
+					<a href="/library/{playlist.id}" class="flex flex-col gap-3 p-3 sm:p-4">
 						<div
 							class="flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-muted transition-transform duration-200 group-active:scale-[1.02] group-hover:scale-[1.02]"
 						>
@@ -366,11 +366,11 @@
 	{/if}
 
 	{#if filteredArtistPlaylists.length > 0}
-		<h2 class="mt-10 mb-4 text-sm font-medium text-muted-foreground">Artists</h2>
+		<h2 class="mt-8 mb-3 text-sm font-medium text-muted-foreground sm:mt-10 sm:mb-4">Artists</h2>
 		<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
 			{#each filteredArtistPlaylists as playlist (playlist.id)}
 				<Card.Root class="group relative overflow-hidden py-0 transition-colors active:border-ring/50 hover:border-ring/50">
-					<a href="/library/{playlist.id}" class="flex flex-col gap-3 p-4">
+					<a href="/library/{playlist.id}" class="flex flex-col gap-3 p-3 sm:p-4">
 						<div
 							class="flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-muted transition-transform duration-200 group-active:scale-[1.02] group-hover:scale-[1.02]"
 						>
