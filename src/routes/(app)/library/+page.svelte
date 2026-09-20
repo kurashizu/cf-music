@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { formatDuration } from '$lib/shared/format';
+	import SearchField from '$lib/components/search-field.svelte';
 	import { invalidateAll } from '$app/navigation';
 	import { toast } from 'svelte-sonner';
 	import { flip } from 'svelte/animate';
@@ -16,9 +17,9 @@
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import UserIcon from '@lucide/svelte/icons/user';
 	import SparklesIcon from '@lucide/svelte/icons/sparkles';
-	import SearchIcon from '@lucide/svelte/icons/search';
 	import MusicIcon from '@lucide/svelte/icons/music';
 	import PlaylistCard from '$lib/components/playlist-card.svelte';
+	import EmptyState from '$lib/components/empty-state.svelte';
 	import { player } from '$lib/client/player.svelte';
 	import SongSortFilterBar from '$lib/components/song-sort-filter-bar.svelte';
 	import {
@@ -195,10 +196,7 @@
 <div class="mx-auto max-w-screen-2xl p-4 md:p-8">
 	{#if data.playlists.length > 0 || data.artistPlaylists.length > 0 || data.recommendedPlaylists.length > 0}
 		<div class="mb-6 flex flex-wrap items-center gap-2">
-			<div class="relative min-w-48 flex-1">
-				<SearchIcon class="text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2" />
-				<Input placeholder="Search playlists and songs…" bind:value={searchQuery} class="pl-9" />
-			</div>
+			<SearchField bind:value={searchQuery} placeholder="Search playlists and songs…" />
 			<SongSortFilterBar
 				bind:sortField
 				bind:sortDirection
@@ -244,15 +242,12 @@
 	</div>
 
 	{#if data.playlists.length === 0}
-		<div
-			class="border-border flex flex-col items-center gap-3 rounded-xl border border-dashed py-16 text-center"
-		>
-			<ListMusicIcon class="text-muted-foreground size-8" />
-			<p class="text-muted-foreground text-sm">
-				No playlists yet. Create one, or import from a link.
-			</p>
+		<EmptyState message="No playlists yet. Create one, or import from a link.">
+			{#snippet icon()}
+				<ListMusicIcon class="text-muted-foreground size-8" />
+			{/snippet}
 			<Button size="sm" variant="outline" onclick={() => (createOpen = true)}>New playlist</Button>
-		</div>
+		</EmptyState>
 	{:else if filteredPlaylists.length > 0}
 		<div
 			class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7"

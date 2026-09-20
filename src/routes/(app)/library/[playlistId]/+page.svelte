@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
+	import SearchField from '$lib/components/search-field.svelte';
 	import { toast } from 'svelte-sonner';
 	import { untrack, onMount } from 'svelte';
 	import { player } from '$lib/client/player.svelte';
@@ -13,12 +14,12 @@
 		clearCachedAudio
 	} from '$lib/client/offline-cache';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import { Input } from '$lib/components/ui/input/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import ViewModeToggle from '$lib/components/view-mode-toggle.svelte';
 	import InfiniteScrollSentinel from '$lib/components/infinite-scroll-sentinel.svelte';
 	import SongSortFilterBar from '$lib/components/song-sort-filter-bar.svelte';
 	import SelectionToolbar from '$lib/components/selection-toolbar.svelte';
+	import EmptyState from '$lib/components/empty-state.svelte';
 	import SongRow from '$lib/components/song-row.svelte';
 	import SongCard from '$lib/components/song-card.svelte';
 	import type { SongRowActions, SongRowFlags } from '$lib/components/song-row-types';
@@ -28,7 +29,6 @@
 	import ListMusicIcon from '@lucide/svelte/icons/list-music';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle';
-	import SearchIcon from '@lucide/svelte/icons/search';
 	import {
 		sortIndices,
 		matchesDurationRange,
@@ -611,10 +611,7 @@
 
 	{#if data.totalSongCount > 0}
 		<div class="mb-3 flex flex-wrap items-center gap-2">
-			<div class="relative min-w-48 flex-1">
-				<SearchIcon class="text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2" />
-				<Input placeholder="Search songs…" bind:value={searchQuery} class="pl-9" />
-			</div>
+			<SearchField bind:value={searchQuery} placeholder="Search songs…" />
 			<SongSortFilterBar
 				bind:sortField
 				bind:sortDirection
@@ -693,14 +690,11 @@
 	{/if}
 
 	{#if data.totalSongCount === 0}
-		<div
-			class="border-border flex flex-col items-center gap-3 rounded-xl border border-dashed py-16 text-center"
-		>
-			<ListMusicIcon class="text-muted-foreground size-8" />
-			<p class="text-muted-foreground text-sm">
-				This playlist is empty. Import some songs to get started.
-			</p>
-		</div>
+		<EmptyState message="This playlist is empty. Import some songs to get started.">
+			{#snippet icon()}
+				<ListMusicIcon class="text-muted-foreground size-8" />
+			{/snippet}
+		</EmptyState>
 	{:else if renderIndices.length === 0}
 		<p class="text-muted-foreground py-8 text-center text-sm">
 			{searchQuery.trim().length > 0

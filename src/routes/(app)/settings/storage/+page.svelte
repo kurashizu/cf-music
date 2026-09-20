@@ -1,15 +1,14 @@
 <script lang="ts">
 	import { formatBytes } from '$lib/shared/format';
+	import SearchField from '$lib/components/search-field.svelte';
 	import { untrack, onMount } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
 	import { toast } from 'svelte-sonner';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import { Input } from '$lib/components/ui/input/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import HardDriveIcon from '@lucide/svelte/icons/hard-drive';
 	import GlobeIcon from '@lucide/svelte/icons/globe';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
-	import SearchIcon from '@lucide/svelte/icons/search';
 	import ListMusicIcon from '@lucide/svelte/icons/list-music';
 	import { player } from '$lib/client/player.svelte';
 	import { viewMode } from '$lib/client/view-mode.svelte';
@@ -18,6 +17,7 @@
 	import SongCard from '$lib/components/song-card.svelte';
 	import SongSortFilterBar from '$lib/components/song-sort-filter-bar.svelte';
 	import SelectionToolbar from '$lib/components/selection-toolbar.svelte';
+	import EmptyState from '$lib/components/empty-state.svelte';
 	import { SongSelection } from '$lib/client/song-selection.svelte';
 	import { sortSongs, type SongSortField, type SortDirection } from '$lib/shared/song-sort-filter';
 	import type { SongRowActions, SongRowData, SongRowFlags } from '$lib/components/song-row-types';
@@ -500,18 +500,14 @@
 	</div>
 
 	{#if entries.length === 0}
-		<div
-			class="border-border flex flex-col items-center gap-3 rounded-xl border border-dashed py-16 text-center"
-		>
-			<HardDriveIcon class="text-muted-foreground size-8" />
-			<p class="text-muted-foreground text-sm">No songs in your library yet.</p>
-		</div>
+		<EmptyState message="No songs in your library yet.">
+			{#snippet icon()}
+				<HardDriveIcon class="text-muted-foreground size-8" />
+			{/snippet}
+		</EmptyState>
 	{:else}
 		<div class="mb-3 flex flex-wrap items-center gap-2">
-			<div class="relative min-w-48 flex-1">
-				<SearchIcon class="text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2" />
-				<Input placeholder="Search songs…" bind:value={searchQuery} class="pl-9" />
-			</div>
+			<SearchField bind:value={searchQuery} placeholder="Search songs…" />
 			<SongSortFilterBar
 				bind:sortField
 				bind:sortDirection

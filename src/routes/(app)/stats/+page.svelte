@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { formatBytes, formatCompactDuration } from '$lib/shared/format';
+	import EmptyState from '$lib/components/empty-state.svelte';
 	import * as Card from '$lib/components/ui/card/index.js';
 	import MusicIcon from '@lucide/svelte/icons/music';
 	import UsersIcon from '@lucide/svelte/icons/users';
@@ -189,12 +190,11 @@
 	<h1 class="mb-6 text-lg font-medium">Stats</h1>
 
 	{#if data.songs.length === 0}
-		<div
-			class="border-border flex flex-col items-center gap-3 rounded-xl border border-dashed py-16 text-center"
-		>
-			<TrendingUpIcon class="text-muted-foreground size-8" />
-			<p class="text-muted-foreground text-sm">Import some songs to see stats here.</p>
-		</div>
+		<EmptyState message="Import some songs to see stats here.">
+			{#snippet icon()}
+				<TrendingUpIcon class="text-muted-foreground size-8" />
+			{/snippet}
+		</EmptyState>
 	{:else}
 		<div class="mb-4 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
 			<Card.Root

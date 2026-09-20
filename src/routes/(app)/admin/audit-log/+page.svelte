@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { formatDateTime } from '$lib/shared/format';
+	import SearchField from '$lib/components/search-field.svelte';
 	import { untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -7,7 +8,6 @@
 	import { Input } from '$lib/components/ui/input/index.js';
 	import * as Select from '$lib/components/ui/select/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
-	import SearchIcon from '@lucide/svelte/icons/search';
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
 	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
@@ -166,15 +166,11 @@
 	</div>
 
 	<div class="mb-4 flex flex-wrap items-center gap-2">
-		<div class="relative min-w-48 flex-1">
-			<SearchIcon class="text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2" />
-			<Input
-				placeholder="Search username, target, error, IP…"
-				bind:value={searchInput}
-				oninput={onSearchInput}
-				class="pl-9"
-			/>
-		</div>
+		<SearchField
+			bind:value={searchInput}
+			placeholder="Search username, target, error, IP…"
+			oninput={onSearchInput}
+		/>
 
 		<Select.Root type="multiple" bind:value={selectedEventTypes} onValueChange={applyFilters}>
 			<Select.Trigger class="w-44">

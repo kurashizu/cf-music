@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import SearchField from '$lib/components/search-field.svelte';
 	import { player } from '$lib/client/player.svelte';
 	import { viewMode } from '$lib/client/view-mode.svelte';
 	import { listCachedTracks, cachedCoverUrl, readLibrarySnapshot } from '$lib/client/offline-cache';
@@ -9,10 +10,9 @@
 	import SongRow from '$lib/components/song-row.svelte';
 	import SongCard from '$lib/components/song-card.svelte';
 	import PlaylistCard from '$lib/components/playlist-card.svelte';
+	import EmptyState from '$lib/components/empty-state.svelte';
 	import ViewModeToggle from '$lib/components/view-mode-toggle.svelte';
-	import { Input } from '$lib/components/ui/input/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import SearchIcon from '@lucide/svelte/icons/search';
 	import CloudOffIcon from '@lucide/svelte/icons/cloud-off';
 	import ListMusicIcon from '@lucide/svelte/icons/list-music';
 	import PlayIcon from '@lucide/svelte/icons/play';
@@ -283,16 +283,15 @@
 		{#if !loaded}
 			<div class="text-muted-foreground py-16 text-center text-sm">Loading…</div>
 		{:else if tracks.length === 0}
-			<div
-				class="border-border flex flex-col items-center gap-3 rounded-xl border border-dashed py-16 text-center"
-			>
-				<CloudOffIcon class="text-muted-foreground size-8" />
-				<p class="text-muted-foreground text-sm">No songs are downloaded on this device.</p>
+			<EmptyState message="No songs are downloaded on this device.">
+				{#snippet icon()}
+					<CloudOffIcon class="text-muted-foreground size-8" />
+				{/snippet}
 				<p class="text-muted-foreground max-w-sm text-xs">
 					Download songs while you're online — from a playlist, or from Settings → Manage storage —
 					and they'll play here with no connection.
 				</p>
-			</div>
+			</EmptyState>
 		{:else if openPlaylist}
 			<!-- A playlist, laid out like its online counterpart. -->
 			<Button variant="ghost" size="sm" class="mb-4 -ml-2 gap-1.5" onclick={backToIndex}>
@@ -321,12 +320,7 @@
 			</div>
 
 			<div class="mb-3 flex flex-wrap items-center gap-2">
-				<div class="relative min-w-48 flex-1">
-					<SearchIcon
-						class="text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2"
-					/>
-					<Input placeholder="Search songs…" bind:value={searchQuery} class="pl-9" />
-				</div>
+				<SearchField bind:value={searchQuery} placeholder="Search songs…" />
 				<ViewModeToggle />
 			</div>
 
@@ -340,12 +334,7 @@
 		{:else}
 			<!-- The library index, laid out like its online counterpart. -->
 			<div class="mb-6 flex flex-wrap items-center gap-2">
-				<div class="relative min-w-48 flex-1">
-					<SearchIcon
-						class="text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2"
-					/>
-					<Input placeholder="Search playlists and songs…" bind:value={searchQuery} class="pl-9" />
-				</div>
+				<SearchField bind:value={searchQuery} placeholder="Search playlists and songs…" />
 				<ViewModeToggle />
 			</div>
 
