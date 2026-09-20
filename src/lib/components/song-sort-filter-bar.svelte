@@ -4,6 +4,8 @@
 	import { Input } from '$lib/components/ui/input/index.js';
 	import ArrowUpIcon from '@lucide/svelte/icons/arrow-up';
 	import ArrowDownIcon from '@lucide/svelte/icons/arrow-down';
+	import SlidersHorizontalIcon from '@lucide/svelte/icons/sliders-horizontal';
+	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import type { SongSortField, SortDirection } from '$lib/shared/song-sort-filter';
 
 	interface SortOption {
@@ -32,13 +34,47 @@
 	} = $props();
 
 	const sortLabel = $derived(sortOptions.find((o) => o.value === sortField)?.label ?? 'Sort');
+
+	// Collapsed on phones, where the full row of controls crowds out the list
+	// itself; always open from sm: up, where it fits on one line.
+	let expanded = $state(false);
+
+	// Surfaced on the collapsed toggle so an active filter is never hidden
+	// without a trace. The sort field is deliberately excluded: every list has
+	// some sort order, so counting it would mean the badge is never absent.
+	const activeFilterCount = $derived(
+		[
+			artistFilter !== null && artistFilter !== 'all',
+			minDurationMinutes.trim() !== '',
+			maxDurationMinutes.trim() !== ''
+		].filter(Boolean).length
+	);
 </script>
+
+<Button
+	variant="outline"
+	size="sm"
+	class="w-full justify-between gap-2 sm:hidden"
+	onclick={() => (expanded = !expanded)}
+	aria-expanded={expanded}
+>
+	<span class="flex items-center gap-2">
+		<SlidersHorizontalIcon class="size-4" />
+		Sort & filter
+		{#if activeFilterCount > 0}
+			<span class="rounded-full bg-primary px-1.5 text-[10px] leading-4 text-primary-foreground">
+				{activeFilterCount}
+			</span>
+		{/if}
+	</span>
+	<ChevronDownIcon class="size-4 transition-transform {expanded ? 'rotate-180' : ''}" />
+</Button>
 
 <!-- The controls are fluid below sm: fixed widths made them wrap one per
      row on a phone and clipped the duration placeholders. Each one takes an
      equal share of the row instead, and reverts to its natural width once
      there's room. -->
-<div class="flex flex-wrap items-center gap-2">
+<div class="flex-wrap items-center gap-2 {expanded ? 'flex' : 'hidden'} sm:flex">
 	<Select.Root type="single" bind:value={sortField as string}>
 		<Select.Trigger class="min-w-0 flex-1 sm:w-36 sm:flex-none">
 			{sortLabel}

@@ -496,12 +496,15 @@ class PlayerStore {
 		this.silenceDetector.resume();
 
 		const { currentTime, duration } = this.audio;
-		if (this.silenceDetector.isLeadingSilence(currentTime)) {
-			// Nudge forward rather than jumping to a computed offset: the
-			// detector only knows the level right now, so it has to keep
-			// sampling until it hears something.
-			this.audio.currentTime = currentTime + 0.25;
-			return;
+		// Seeking makes the element re-buffer, and a stalled element feeds the
+		// analyser zeros — which reads as more silence and seeks again. Only
+		// judge the intro while audio is genuinely flowing, so a track that
+		// has no silence at all is never skipped into.
+		if (this.audio.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA && !this.audio.seeking) {
+			if (this.silenceDetector.isLeadingSilence(currentTime)) {
+				this.audio.currentTime = currentTime + 0.25;
+				return;
+			}
 		}
 		if (this.silenceDetector.isTrailingSilence(currentTime, duration)) {
 			void this.handleEnded();

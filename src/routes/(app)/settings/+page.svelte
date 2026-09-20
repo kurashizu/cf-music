@@ -12,6 +12,8 @@
 	import LogOutIcon from '@lucide/svelte/icons/log-out';
 	import DatabaseIcon from '@lucide/svelte/icons/database';
 	import AudioLinesIcon from '@lucide/svelte/icons/audio-lines';
+	import { Switch } from '$lib/components/ui/switch/index.js';
+	import { Label } from '$lib/components/ui/label/index.js';
 	import { silenceTrim } from '$lib/client/silence-trim.svelte';
 	import { estimateBrowserStorage, type StorageEstimate } from '$lib/client/offline-cache';
 	import { summarizeLocalData, clearAllLocalData, type LocalDataSummary } from '$lib/client/local-storage-inventory';
@@ -157,21 +159,20 @@
 				<AudioLinesIcon class="size-4" />
 				Playback
 			</div>
-			<label class="flex cursor-pointer items-start justify-between gap-3">
+			<Label class="flex cursor-pointer items-start justify-between gap-3 font-normal">
 				<span class="min-w-0">
 					<span class="block text-sm">Skip silence</span>
-					<span class="block text-xs text-muted-foreground">
+					<span class="block text-xs font-normal text-muted-foreground">
 						Jump past a quiet intro and move on once a track's tail goes silent. Affects playback on
 						this device only; your files aren't changed.
 					</span>
 				</span>
-				<input
-					type="checkbox"
-					class="mt-0.5 size-4 shrink-0 accent-primary"
+				<Switch
+					class="mt-0.5"
 					checked={silenceTrim.enabled}
-					onchange={(e) => silenceTrim.set(e.currentTarget.checked)}
+					onCheckedChange={(checked) => silenceTrim.set(checked)}
 				/>
-			</label>
+			</Label>
 		</Card.Content>
 	</Card.Root>
 

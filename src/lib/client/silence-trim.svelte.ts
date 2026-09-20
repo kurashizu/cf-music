@@ -41,12 +41,33 @@ class SilenceTrimStore {
 
 export const silenceTrim = new SilenceTrimStore();
 
-/** Below this peak amplitude (0-1) a moment counts as silence. */
-const SILENCE_PEAK = 0.015;
+// Roughly -72 dBFS: essentially digital silence. Only encoder padding and
+// genuinely empty leaders sit this low — anything a listener would describe
+// as "the song has started", however quiet, is far above it. A looser bar
+// was skipping the openings of tracks that had no silence at all.
+const SILENCE_PEAK = 0.00025;
+/**
+ * Consecutive silent reads before the intro is treated as dead air.
+ *
+ * timeupdate fires roughly every 250ms, so this is about a second of
+ * uninterrupted near-zero signal — long enough that a soft attack, a gap
+ * between opening notes, or one unlucky buffer can't trigger a skip.
+ */
+const MIN_CONSECUTIVE_SILENT_READS = 4;
 /** Ignore a dip shorter than this; music has plenty of brief near-silent moments. */
 const TRAILING_SILENCE_SECONDS = 1.5;
-/** Give up looking for the intro to start after this, so a quiet fade-in is never skipped wholesale. */
-const MAX_LEAD_SKIP_SECONDS = 20;
+/**
+ * How far from the end counts as "the tail".
+ *
+ * Only silence inside this window can end a track early, so a silent break
+ * anywhere earlier — however long — is left alone. Trimming is meant to cut
+ * the padding at the two edges of a file, never anything between them.
+ */
+const TRAILING_WINDOW_SECONDS = 15;
+// Stop looking this far in. Real leading silence is a second or two of
+// encoder padding; anything still quiet after this is part of the track, so
+// skipping further would cut into the music itself.
+const MAX_LEAD_SKIP_SECONDS = 5;
 
 /**
  * Watches an element's actual output level to find where a track's audible
@@ -68,6 +89,7 @@ export class SilenceDetector {
 	private source: MediaElementAudioSourceNode | null = null;
 	private buffer: Float32Array<ArrayBuffer> | null = null;
 	private quietSince: number | null = null;
+	private silentLeadReads = 0;
 
 	/** Set once audible content has been found, so the intro is only skipped once per track. */
 	leadSkipDone = false;
@@ -109,6 +131,7 @@ export class SilenceDetector {
 	reset(): void {
 		this.leadSkipDone = false;
 		this.quietSince = null;
+		this.silentLeadReads = 0;
 	}
 
 	/**
@@ -124,8 +147,16 @@ export class SilenceDetector {
 		this.buffer = null;
 	}
 
-	private peak(): number {
-		if (!this.analyser || !this.buffer) return 1;
+	/**
+	 * Peak amplitude right now, or null when no reading can be trusted.
+	 *
+	 * A suspended context (browsers start them that way until a gesture, and
+	 * resuming is asynchronous) reports all-zero samples, which is
+	 * indistinguishable from real silence — treating that as silence is what
+	 * made intros get skipped. Callers must not infer silence from null.
+	 */
+	private peak(): number | null {
+		if (!this.analyser || !this.buffer || this.context?.state !== 'running') return null;
 		this.analyser.getFloatTimeDomainData(this.buffer);
 		let peak = 0;
 		for (const sample of this.buffer) {
@@ -137,8 +168,16 @@ export class SilenceDetector {
 
 	/** True once the track is audibly over, even though the file still has time left. */
 	isTrailingSilence(currentTime: number, duration: number): boolean {
-		if (duration <= 0 || currentTime < duration / 2) return false;
-		if (this.peak() >= SILENCE_PEAK) {
+		// Only the tail is eligible. Judging from the halfway point meant a
+		// long silent break in the middle of a track counted as its ending;
+		// trailing padding lives in the last few seconds, and nothing before
+		// that window can cut a song short.
+		if (duration <= 0 || currentTime < duration - TRAILING_WINDOW_SECONDS) return false;
+		const peak = this.peak();
+		// See peak(): an untrustworthy reading must not be taken for silence,
+		// or a track would be cut short while the graph is still starting.
+		if (peak === null) return false;
+		if (peak >= SILENCE_PEAK) {
 			this.quietSince = null;
 			return false;
 		}
@@ -155,10 +194,19 @@ export class SilenceDetector {
 			this.leadSkipDone = true;
 			return false;
 		}
-		if (this.peak() >= SILENCE_PEAK) {
+		const peak = this.peak();
+		// No trustworthy reading yet (context still starting up): stay put
+		// rather than assume silence, which would skip into a playing track.
+		if (peak === null) return false;
+		// Any audible sample at all means the track has begun — stop looking,
+		// permanently, so nothing later in the song can trigger a skip.
+		if (peak >= SILENCE_PEAK) {
 			this.leadSkipDone = true;
 			return false;
 		}
-		return true;
+		// Only *uninterrupted* silence counts, so the run restarts the moment
+		// anything is heard rather than accumulating across a real intro.
+		this.silentLeadReads += 1;
+		return this.silentLeadReads >= MIN_CONSECUTIVE_SILENT_READS;
 	}
 }
