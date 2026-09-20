@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { formatBytes } from '$lib/shared/format';
+	import { apiErrorMessage } from '$lib/client/api-error';
 	import SearchField from '$lib/components/search-field.svelte';
 	import { untrack, onMount } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
@@ -316,7 +317,7 @@
 		try {
 			const response = await fetch(`/api/songs/${videoId}`, { method: 'DELETE' });
 			if (!response.ok) {
-				toast.error('Failed to delete song');
+				toast.error(await apiErrorMessage(response, 'Failed to delete song'));
 				return;
 			}
 			entries = entries.filter((e) => e.videoId !== videoId);

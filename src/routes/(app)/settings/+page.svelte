@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { formatBytes } from '$lib/shared/format';
+	import { apiErrorMessage } from '$lib/client/api-error';
 	import { onMount } from 'svelte';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { toast } from 'svelte-sonner';
@@ -76,7 +77,7 @@
 		try {
 			const response = await fetch('/api/auth/logout', { method: 'POST' });
 			if (!response.ok) {
-				toast.error('Failed to log out');
+				toast.error(await apiErrorMessage(response, 'Failed to log out'));
 				return;
 			}
 			await invalidateAll();

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
+	import { apiErrorMessage } from '$lib/client/api-error';
 	import SearchField from '$lib/components/search-field.svelte';
 	import { toast } from 'svelte-sonner';
 	import { untrack, onMount } from 'svelte';
@@ -261,7 +262,7 @@
 				{ method: 'DELETE' }
 			);
 			if (!response.ok) {
-				toast.error('Failed to remove song');
+				toast.error(await apiErrorMessage(response, 'Failed to remove song'));
 				return;
 			}
 			toast.success('Removed from playlist');
@@ -284,7 +285,7 @@
 		try {
 			const response = await fetch(`/api/songs/${deleteTarget.videoId}`, { method: 'DELETE' });
 			if (!response.ok) {
-				toast.error('Failed to delete song');
+				toast.error(await apiErrorMessage(response, 'Failed to delete song'));
 				return;
 			}
 			toast.success('Song deleted');
@@ -476,7 +477,7 @@
 				body: JSON.stringify({ orderedVideoIds: loadedSongs().map((song) => song.videoId) })
 			});
 			if (!response.ok) {
-				toast.error('Failed to save the new order');
+				toast.error(await apiErrorMessage(response, 'Failed to save the new order'));
 				await invalidateAll();
 			}
 		} catch {

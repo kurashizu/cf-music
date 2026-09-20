@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { formatDuration } from '$lib/shared/format';
+	import { apiErrorMessage } from '$lib/client/api-error';
 	import SearchField from '$lib/components/search-field.svelte';
 	import { invalidateAll } from '$app/navigation';
 	import { toast } from 'svelte-sonner';
@@ -126,7 +127,7 @@
 				body: JSON.stringify({ name: createName.trim() })
 			});
 			if (!response.ok) {
-				toast.error('Failed to create playlist');
+				toast.error(await apiErrorMessage(response, 'Failed to create playlist'));
 				return;
 			}
 			toast.success('Playlist created');
@@ -156,7 +157,7 @@
 				body: JSON.stringify({ name: renameValue.trim() })
 			});
 			if (!response.ok) {
-				toast.error('Failed to rename playlist');
+				toast.error(await apiErrorMessage(response, 'Failed to rename playlist'));
 				return;
 			}
 			toast.success('Playlist renamed');
@@ -175,7 +176,7 @@
 		try {
 			const response = await fetch(`/api/playlists/${deleteTarget.id}`, { method: 'DELETE' });
 			if (!response.ok) {
-				toast.error('Failed to delete playlist');
+				toast.error(await apiErrorMessage(response, 'Failed to delete playlist'));
 				return;
 			}
 			toast.success('Playlist deleted');

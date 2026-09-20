@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
+	import { apiErrorMessage } from '$lib/client/api-error';
 	import { flip } from 'svelte/animate';
 	import { fade } from 'svelte/transition';
 	import { toast } from 'svelte-sonner';
@@ -57,7 +58,7 @@
 				})
 			});
 			if (!response.ok) {
-				toast.error('Failed to start import');
+				toast.error(await apiErrorMessage(response, 'Failed to start import'));
 				return;
 			}
 			const { jobId } = (await response.json()) as { jobId: string };
