@@ -70,6 +70,9 @@ const ANALYSIS_SAMPLE_RATE = 8000;
 /** Skip anything longer than this rather than decode it; the memory isn't worth one trim. */
 const MAX_ANALYSIS_SECONDS = 15 * 60;
 
+/** Kept on either side of the measured edges, so a trim never clips an onset or a decay. */
+const EDGE_MARGIN_SECONDS = 1;
+
 function readTrimPoints(): Record<string, TrimPoints> {
 	if (typeof localStorage === 'undefined') return {};
 	try {
@@ -134,9 +137,16 @@ export function findTrimPoints(samples: Float32Array, sampleRate: number): TrimP
 	// rather than trimming all of it away.
 	if (first >= windowCount) return { start: 0, end: (windowCount * windowSize) / sampleRate };
 
+	// Back off a moment from each edge. The measurement lands on the first
+	// window that clears the threshold, which is already slightly inside the
+	// attack, and a soft onset can sit just under it — starting a beat early
+	// keeps that audible rather than clipping into the first note.
+	const measuredStart = (first * windowSize) / sampleRate;
+	const measuredEnd = ((last + 1) * windowSize) / sampleRate;
+	const trackEnd = (windowCount * windowSize) / sampleRate;
 	return {
-		start: (first * windowSize) / sampleRate,
-		end: ((last + 1) * windowSize) / sampleRate
+		start: Math.max(0, measuredStart - EDGE_MARGIN_SECONDS),
+		end: Math.min(trackEnd, measuredEnd + EDGE_MARGIN_SECONDS)
 	};
 }
 

@@ -23,10 +23,19 @@ function track(...spans: [number, number][]): Float32Array {
 
 describe('findTrimPoints', () => {
 	it('finds the edges of a track padded with digital silence', () => {
+		// A second of margin is kept either side of the measured edges, so the
+		// trim lands just outside the audio rather than exactly on it.
 		const samples = track([2, 0], [10, 0.5], [3, 0]);
 		const { start, end } = findTrimPoints(samples, SAMPLE_RATE);
-		expect(start).toBeCloseTo(2, 1);
-		expect(end).toBeCloseTo(12, 1);
+		expect(start).toBeCloseTo(1, 1);
+		expect(end).toBeCloseTo(13, 1);
+	});
+
+	it('never backs the margin out past the track itself', () => {
+		const samples = track([0.2, 0], [3, 0.5], [0.2, 0]);
+		const { start, end } = findTrimPoints(samples, SAMPLE_RATE);
+		expect(start).toBe(0);
+		expect(end).toBeCloseTo(3.4, 1);
 	});
 
 	it('treats a noise floor well below the content as silence', () => {
@@ -34,8 +43,8 @@ describe('findTrimPoints', () => {
 		// is audible only as clothing rustle, far under the performance.
 		const samples = track([3, 0], [17, 0.0005], [60, 0.25], [18, 0]);
 		const { start, end } = findTrimPoints(samples, SAMPLE_RATE);
-		expect(start).toBeCloseTo(20, 0);
-		expect(end).toBeCloseTo(80, 0);
+		expect(start).toBeCloseTo(19, 0);
+		expect(end).toBeCloseTo(81, 0);
 	});
 
 	it('keeps a quiet intro that is still part of the performance', () => {

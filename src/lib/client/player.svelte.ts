@@ -486,6 +486,23 @@ class PlayerStore {
 	}
 
 	/**
+	 * Adopts freshly measured trim points for the track that is playing right
+	 * now, so the very first play benefits too rather than waiting for the
+	 * next one.
+	 *
+	 * The leading skip is only taken while still inside the silence — seeking
+	 * once the performance has started would jump backwards or cut into it,
+	 * which is worse than simply letting this play run untrimmed.
+	 */
+	private applyTrimPoints(videoId: string, points: { start: number; end: number }): void {
+		if (this.currentTrack?.videoId !== videoId || !this.audio) return;
+		this.trimEndSeconds = points.end;
+		if (points.start > 0 && this.audio.currentTime < points.start) {
+			this.audio.currentTime = points.start;
+		}
+	}
+
+	/**
 	 * Moves on at the measured end of the audio instead of sitting through the
 	 * silent tail. Only ever fires past a measured point, so a track without
 	 * trim points plays to its real end as before.
@@ -535,11 +552,14 @@ class PlayerStore {
 		this.autoCacheTriggered = true;
 		const videoId = this.currentTrack.videoId;
 		precacheAudio(videoId, this.audioUrl)
-			.then((cached) => {
-				// Measure only once the audio is in the cache, so the analysis
-				// reads it from disk instead of pulling it over the network
-				// again. The result applies from this track's next play on.
-				if (cached && silenceTrim.enabled) return analyzeTrackIfCached(videoId);
+			.then(async (cached) => {
+				// Measured from the cached copy so the analysis reads from disk
+				// rather than pulling the audio down a second time. This runs as
+				// soon as the track is fully buffered — long before it finishes —
+				// so the result can still be applied to the play in progress.
+				if (!cached || !silenceTrim.enabled) return;
+				const points = await analyzeTrackIfCached(videoId);
+				if (points) this.applyTrimPoints(videoId, points);
 			})
 			.catch(() => {
 				// Best-effort: same as maybeRecordPlay above, a missed cache write isn't worth surfacing.

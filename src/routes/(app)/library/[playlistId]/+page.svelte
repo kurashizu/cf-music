@@ -46,21 +46,45 @@
 		});
 	});
 
-	// Mirrors data.playlist.songs into local mutable state so drag-to-reorder
-	// can preview the new order instantly, before the PUT /reorder request
-	// resolves. Re-synced only when the *server* value changes reference
-	// (playlist navigation, or invalidateAll() after a remove) — comparing
-	// against the local `songs` state itself would snap a live drag back to
-	// the server order the instant it diverges, so the sync check reads
-	// data.playlist.songs (reactive) without also depending on `songs`.
-	let songs = $state(untrack(() => data.playlist.songs));
+	type Song = (typeof data.playlist.songs)[number];
+
+	/**
+	 * Every song in the playlist by its position, with holes where a page
+	 * hasn't been fetched yet — the server only sends the first screenful
+	 * (see +page.server.ts) and the rest arrives as the list is scrolled,
+	 * searched or queued.
+	 *
+	 * Sparse rather than "however many are loaded so far" deliberately: a
+	 * dense array conflates position with loaded-ness, so `songs[i]` was only
+	 * the i-th song while every earlier page happened to be present, and a
+	 * fetch landing out of order silently misaligned the list. Holes make
+	 * "not loaded yet" a property of the slot instead.
+	 *
+	 * Mirrored into local state so drag-to-reorder can preview a new order
+	 * before the PUT resolves; re-synced only when the *server* value changes
+	 * reference (navigation, or invalidateAll() after a remove), since
+	 * comparing against the local copy would snap a live drag back the
+	 * instant it diverges.
+	 */
+	function seedSongs(loaded: Song[]): (Song | undefined)[] {
+		// .fill() matters: a bare `new Array(n)` has genuine holes, which
+		// map/filter skip entirely rather than visiting as undefined — so the
+		// "which positions are still missing" scan would come back empty.
+		const all = new Array<Song | undefined>(data.totalSongCount).fill(undefined);
+		loaded.forEach((song, i) => (all[i] = song));
+		return all;
+	}
+	let songs = $state<(Song | undefined)[]>(untrack(() => seedSongs(data.playlist.songs)));
 	let lastServerSongs = untrack(() => data.playlist.songs);
 	$effect(() => {
 		if (data.playlist.songs !== lastServerSongs) {
 			lastServerSongs = data.playlist.songs;
-			songs = data.playlist.songs;
+			songs = seedSongs(data.playlist.songs);
 		}
 	});
+
+	/** Songs actually fetched so far, in playlist order — holes dropped. */
+	const loadedSongs = $derived(songs.filter((s): s is Song => s !== undefined));
 
 	// draggingIndex/overIndex describe the drag purely in terms of the
 	// *original* indices in `songs`. The list below renders using this
@@ -106,7 +130,7 @@
 	let maxDurationMinutes = $state('');
 
 	const artistOptions = $derived(
-		[...new Set(songs.map((s) => s.artist).filter((a): a is string => a !== null))].sort((a, b) =>
+		[...new Set(loadedSongs.map((s) => s.artist).filter((a): a is string => a !== null))].sort((a, b) =>
 			a.localeCompare(b)
 		)
 	);
@@ -155,15 +179,14 @@
 	// into view so far, so leaving the plain custom-order view loads
 	// everything still missing up front rather than searching/sorting a
 	// partial list.
-	const allSongsLoaded = $derived(songs.length >= data.totalSongCount);
+	const allSongsLoaded = $derived(loadedSongs.length >= data.totalSongCount);
 	let loadingAllSongs = $state(false);
 	async function ensureAllSongsLoaded() {
 		if (allSongsLoaded || loadingAllSongs) return;
 		loadingAllSongs = true;
 		try {
-			await fetchMissingSongData(
-				Array.from({ length: data.totalSongCount - songs.length }, (_, i) => songs.length + i)
-			);
+			const missing = songs.map((song, i) => (song ? -1 : i)).filter((i) => i >= 0);
+			await fetchMissingSongData(missing);
 		} finally {
 			loadingAllSongs = false;
 		}
@@ -192,6 +215,7 @@
 		const maxSeconds = maxDurationMinutes.trim() === '' ? null : Number(maxDurationMinutes) * 60;
 		let indices = songs
 			.map((s, i) => [s, i] as const)
+			.filter((entry): entry is readonly [Song, number] => entry[0] !== undefined)
 			.filter(([s]) => {
 				if (query.length > 0 && !s.title.toLowerCase().includes(query)) return false;
 				if (artistFilter !== 'all' && s.artist !== artistFilter) return false;
@@ -199,10 +223,12 @@
 				return true;
 			})
 			.map(([, i]) => i);
-		return sortIndices(songs, indices, sortField, sortDirection);
+		return sortIndices(songs as Song[], indices, sortField, sortDirection);
 	});
 
 	const PAGE_SIZE = 20;
+	/** Mirrors MAX_RANGE_LIMIT in the songs range endpoint, which clamps rather than errors. */
+	const MAX_RANGE_PER_REQUEST = 100;
 	let visibleCount = $state(PAGE_SIZE);
 	// What's actually rendered — a further slice of visibleIndices, clamped
 	// to indices `songs` actually has data for yet. In the custom-order
@@ -215,7 +241,9 @@
 	// anyway (see `draggable` below) since dragging a song past the last
 	// *rendered* row while more remain unloaded below it would be
 	// confusing.
-	const windowedIndices = $derived(visibleIndices.slice(0, visibleCount).filter((i) => i < songs.length));
+	const windowedIndices = $derived(
+		visibleIndices.slice(0, visibleCount).filter((i) => songs[i] !== undefined)
+	);
 
 	// The server only loads+presigns the first INITIAL_PAGE_SIZE songs on
 	// initial load (see +page.server.ts) — `songs` starts shorter than the
@@ -224,25 +252,42 @@
 	// (and its cover presigned) on every visit regardless of how much of
 	// the playlist is ever actually scrolled to.
 	const songFetchInFlight = new Set<number>();
+	/**
+	 * Fetches any of `indices` whose slot is still empty and writes each song
+	 * to its own position.
+	 *
+	 * Writing by position (rather than appending) is what lets pages arrive in
+	 * any order, overlap, or be requested out of sequence without the list
+	 * losing alignment — the server returns a range starting at a known
+	 * offset, so every row has an unambiguous home.
+	 */
 	async function fetchMissingSongData(indices: number[]) {
-		const missing = indices.filter((i) => i >= songs.length && !songFetchInFlight.has(i));
+		const missing = indices.filter((i) => songs[i] === undefined && !songFetchInFlight.has(i));
 		if (missing.length === 0) return;
 
-		// One range request per contiguous run of missing indices, rather
-		// than one per song — loadMore() always reveals one contiguous
-		// block at a time, so this is normally a single request, not N.
+		// One range request per contiguous run, rather than one per song, split
+		// again at MAX_RANGE_PER_REQUEST: the endpoint silently clamps a larger
+		// limit, so asking for more than it serves would leave the tail of the
+		// range permanently unfilled.
 		missing.sort((a, b) => a - b);
-		const ranges: [number, number][] = [];
+		const runs: [number, number][] = [];
 		let start = missing[0];
 		let prev = missing[0];
 		for (const i of missing.slice(1)) {
 			if (i !== prev + 1) {
-				ranges.push([start, prev]);
+				runs.push([start, prev]);
 				start = i;
 			}
 			prev = i;
 		}
-		ranges.push([start, prev]);
+		runs.push([start, prev]);
+
+		const ranges: [number, number][] = [];
+		for (const [from, to] of runs) {
+			for (let at = from; at <= to; at += MAX_RANGE_PER_REQUEST) {
+				ranges.push([at, Math.min(to, at + MAX_RANGE_PER_REQUEST - 1)]);
+			}
+		}
 
 		for (const i of missing) songFetchInFlight.add(i);
 		try {
@@ -250,21 +295,19 @@
 				ranges.map(([from, to]) =>
 					fetch(`/api/playlists/${data.playlist.id}/songs?offset=${from}&limit=${to - from + 1}`).then(
 						(r) => (r.ok ? r.json() : { songs: [], offset: from }) as Promise<{
-							songs: (typeof songs)[number][];
+							songs: Song[];
 							offset: number;
 						}>
 					)
 				)
 			);
-			// Fetched ranges only ever extend `songs` contiguously from its
-			// current end (see the `i >= songs.length` filter above) — sorting
-			// by offset before appending keeps that contiguous even when
-			// multiple ranges resolve out of request order.
-			const bySongsOrder = results
-				.filter((r) => r.songs.length > 0)
-				.sort((a, b) => a.offset - b.offset)
-				.flatMap((r) => r.songs);
-			songs = [...songs, ...bySongsOrder];
+			// One new array so Svelte sees the change; each song lands at the
+			// offset the server reported it from.
+			const next = [...songs];
+			for (const result of results) {
+				result.songs.forEach((song, i) => (next[result.offset + i] = song));
+			}
+			songs = next;
 		} finally {
 			for (const i of missing) songFetchInFlight.delete(i);
 		}
@@ -317,7 +360,7 @@
 	// already loaded everything by the time this runs (ensureAllSongsLoaded),
 	// so windowedIndices and visibleIndices agree there regardless.
 	const allVisibleSelected = $derived(
-		windowedIndices.length > 0 && windowedIndices.every((i) => selected.has(songs[i].videoId))
+		windowedIndices.length > 0 && windowedIndices.every((i) => selected.has(songs[i]!.videoId))
 	);
 
 	function toggleSelectAll() {
@@ -325,7 +368,7 @@
 			clearSelection();
 			return;
 		}
-		selected = new Set(windowedIndices.map((i) => songs[i].videoId));
+		selected = new Set(windowedIndices.map((i) => songs[i]!.videoId));
 		lastSelectedIndex = windowedIndices[windowedIndices.length - 1] ?? null;
 	}
 
@@ -348,12 +391,16 @@
 	// select while searching should span what's on screen, not the full
 	// underlying playlist.
 	function handleRowClick(event: MouseEvent, index: number) {
-		const videoId = songs[index].videoId;
+		const videoId = songs[index]?.videoId;
+		if (!videoId) return;
 		if (event.shiftKey && lastSelectedIndex !== null) {
 			const [from, to] = [lastSelectedIndex, index].sort((a, b) => a - b);
 			const range = visibleIndices.filter((i) => i >= from && i <= to);
 			const next = new Set(selected);
-			for (const i of range) next.add(songs[i].videoId);
+			for (const i of range) {
+				const atIndex = songs[i];
+				if (atIndex) next.add(atIndex.videoId);
+			}
 			selected = next;
 			return;
 		}
@@ -367,11 +414,11 @@
 	}
 
 	const isThisPlaylistPlaying = $derived(
-		player.isPlaying && songs.some((s) => s.videoId === player.currentTrack?.videoId)
+		player.isPlaying && loadedSongs.some((s) => s.videoId === player.currentTrack?.videoId)
 	);
 
 	function toQueueTracks() {
-		return songs.map((s) => ({
+		return loadedSongs.map((s) => ({
 			videoId: s.videoId,
 			title: s.title,
 			durationSeconds: s.durationSeconds
@@ -398,16 +445,20 @@
 	}
 
 	async function playFrom(index: number) {
-		if (player.currentTrack?.videoId === songs[index].videoId) {
+		if (player.currentTrack?.videoId === songs[index]?.videoId) {
 			await player.togglePlayPause();
 			return;
 		}
+		// Queueing the playlist needs every song, not just the rows rendered so
+		// far. Rows already on screen keep their identity while the gaps fill
+		// in (see `songs`), so this no longer disturbs the scroll position.
 		await ensureAllSongsLoaded();
 		await player.playQueue(toQueueTracks(), index);
 	}
 
 	async function addToQueue(index: number) {
 		const song = songs[index];
+		if (!song) return;
 		await player.addToQueue([
 			{ videoId: song.videoId, title: song.title, durationSeconds: song.durationSeconds }
 		]);
@@ -415,7 +466,7 @@
 	}
 
 	async function addSelectionToQueue() {
-		const tracks = songs
+		const tracks = loadedSongs
 			.filter((s) => selected.has(s.videoId))
 			.map((s) => ({ videoId: s.videoId, title: s.title, durationSeconds: s.durationSeconds }));
 		if (tracks.length === 0) return;
@@ -662,7 +713,7 @@
 			const response = await fetch(`/api/playlists/${data.playlist.id}/reorder`, {
 				method: 'PUT',
 				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ orderedVideoIds: songs.map((s) => s.videoId) })
+				body: JSON.stringify({ orderedVideoIds: loadedSongs.map((s) => s.videoId) })
 			});
 			if (!response.ok) {
 				toast.error('Failed to save the new order');
@@ -855,8 +906,8 @@
 		</p>
 	{:else if viewMode.mode === 'grid'}
 		<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8">
-			{#each windowedIndices as index (songs[index].videoId)}
-				{@const song = songs[index]}
+			{#each windowedIndices as index (songs[index]!.videoId)}
+				{@const song = songs[index]!}
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -1002,10 +1053,10 @@
 		{/if}
 	{:else}
 		<ul class="flex flex-col">
-			{#each windowedIndices as index (songs[index].videoId)}
-				{@const song = songs[index]}
+			{#each windowedIndices as index (songs[index]!.videoId)}
+				{@const song = songs[index]!}
 				{@const unfiltered = isCustomUnfilteredView}
-				{@const draggable = !isAutoGenerated && unfiltered && visibleCount >= visibleIndices.length}
+				{@const draggable = !isAutoGenerated && unfiltered && allSongsLoaded && visibleCount >= visibleIndices.length}
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 				<li
