@@ -1,6 +1,7 @@
 import { hasReachedPlayThreshold } from '$lib/shared/playback';
 import { shuffleOrder, nextQueueIndex, cycleRepeatMode, moveIndexToFront, type RepeatMode } from '$lib/shared/queue';
 import { precacheAudio } from '$lib/client/offline-cache';
+import { silenceTrim, SilenceDetector } from '$lib/client/silence-trim.svelte';
 
 export interface QueueTrack {
 	videoId: string;
@@ -110,6 +111,7 @@ class PlayerStore {
 	private pendingPlay: Promise<void> | null = null;
 	/** Guards against a single plug/unplug's repeated devicechange events each restarting playback. */
 	private rebindingOutput = false;
+	private readonly silenceDetector = new SilenceDetector();
 
 	constructor() {
 		this.restoreSession();
@@ -131,7 +133,31 @@ class PlayerStore {
 			navigator.mediaDevices?.addEventListener('devicechange', () => {
 				this.rebindOutputDevice();
 			});
+
+			// crossOrigin has to be set before `src` (see getAudio), so turning
+			// trimming on or off only takes effect on a freshly built element.
+			silenceTrim.onChange = () => this.rebuildAudioElement();
 		}
+	}
+
+	/**
+	 * Discards the audio element so the next getAudio() builds one with the
+	 * current settings applied, resuming whatever was playing at its position.
+	 */
+	private rebuildAudioElement(): void {
+		const old = this.audio;
+		if (!old) return;
+		const resumeAt = old.currentTime;
+		const wasPlaying = !old.paused;
+		old.pause();
+		this.audio = null;
+		this.silenceDetector.detach();
+		if (!this.audioUrl) return;
+
+		const audio = this.getAudio();
+		audio.src = this.audioUrl;
+		if (resumeAt > 0) this.pendingResumeSeconds = resumeAt;
+		if (wasPlaying) void this.startPlayback();
 	}
 
 	/**
@@ -191,8 +217,17 @@ class PlayerStore {
 			// real GET play() triggers is unaffected, since GetObject does
 			// work.
 			this.audio.preload = 'none';
+			// Needed before any MediaElementSource can be built from this
+			// element (see SilenceDetector): a presigned URL is cross-origin,
+			// and the Web Audio graph refuses such media without CORS. It has
+			// to be set before `src` is ever assigned, so it can't wait until
+			// the trim setting is read — but it's only applied when trimming is
+			// actually on, to keep the default playback path byte-for-byte the
+			// request it has always made.
+			if (silenceTrim.enabled) this.audio.crossOrigin = 'anonymous';
 			this.audio.addEventListener('timeupdate', () => {
 				this.currentTimeSeconds = this.audio!.currentTime;
+				this.maybeTrimSilence();
 				this.maybeRecordPlay();
 				this.maybeSaveSession();
 			});
@@ -441,12 +476,36 @@ class PlayerStore {
 
 		const audio = this.getAudio();
 		audio.src = data.audioUrl;
+		this.silenceDetector.reset();
 
 		if (autoplay) {
 			await this.startPlayback();
 		}
 		this.isLoading = false;
 		this.saveSessionNow();
+	}
+
+	/**
+	 * Skips a silent intro and ends a track once its tail goes quiet, when the
+	 * user has turned trimming on. Driven from timeupdate rather than its own
+	 * timer, which is already the cadence the progress bar updates at.
+	 */
+	private maybeTrimSilence(): void {
+		if (!silenceTrim.enabled || !this.audio || this.audio.paused) return;
+		if (!this.silenceDetector.attach(this.audio)) return;
+		this.silenceDetector.resume();
+
+		const { currentTime, duration } = this.audio;
+		if (this.silenceDetector.isLeadingSilence(currentTime)) {
+			// Nudge forward rather than jumping to a computed offset: the
+			// detector only knows the level right now, so it has to keep
+			// sampling until it hears something.
+			this.audio.currentTime = currentTime + 0.25;
+			return;
+		}
+		if (this.silenceDetector.isTrailingSilence(currentTime, duration)) {
+			void this.handleEnded();
+		}
 	}
 
 	private maybeRecordPlay(): void {
