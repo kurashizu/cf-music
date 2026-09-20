@@ -41,5 +41,8 @@
 {#if blobUrl}
 	<img src={blobUrl} {alt} class={className} transition:fade={motionParams({ duration: 150 })} />
 {:else}
-	<div class="{className} animate-pulse bg-muted"></div>
+	<!-- Deliberately a static fill, not animate-pulse: a long list renders one
+	     of these per un-resolved cover, and dozens of simultaneous CSS
+	     animations measurably cost frames while scrolling on mobile. -->
+	<div class="{className} bg-muted"></div>
 {/if}

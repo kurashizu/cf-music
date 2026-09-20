@@ -63,6 +63,25 @@ test.describe('playlist detail page', () => {
 		await expect(page.getByText('0:30')).toBeVisible();
 	});
 
+	// Each row's dropdown is only instantiated while that row's menu is open
+	// (a scroll-performance measure — see the menu's own comment), so opening
+	// one has to actually mount its items rather than reveal pre-built ones.
+	test('opens a row menu and closes it again', async ({ page }) => {
+		const { userId } = await registerViaApi(page);
+		const playlistId = `e2e-playlist-${uniqueSuffix()}`;
+		seedPlaylistWithSongs(userId, playlistId, 'Row Menu Playlist', 2);
+
+		await page.goto(`/library/${playlistId}`);
+
+		await expect(page.getByRole('menuitem', { name: 'Add to queue' })).toHaveCount(0);
+
+		await page.getByRole('button', { name: 'Song options' }).first().click();
+		await expect(page.getByRole('menuitem', { name: 'Add to queue' })).toBeVisible();
+
+		await page.keyboard.press('Escape');
+		await expect(page.getByRole('menuitem', { name: 'Add to queue' })).toHaveCount(0);
+	});
+
 	test('removes a song from the playlist', async ({ page }) => {
 		const { userId } = await registerViaApi(page);
 		const playlistId = `e2e-playlist-${uniqueSuffix()}`;
