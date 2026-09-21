@@ -10,10 +10,20 @@ import { getUserQuotaBytes, getUserStorageUsageBytes } from '../eviction/usage';
  * to a playlist from the UI counts against quota without any reservation —
  * so the cache can drift low, which would let a job over-reserve. Bounding
  * the staleness bounds that drift: at worst a user over-reserves by
- * whatever they added by hand in the last minute, and the next refresh
- * corrects it. A minute is short enough that the error stays small and
- * long enough that a fast import (several songs per second) still gets
- * essentially all of the savings.
+ * whatever they added by hand within this window, and the next refresh
+ * corrects it.
+ *
+ * Recomputing is by far the most expensive thing this module does — it
+ * reads the user's whole library — so with the per-song cost already down
+ * to a handful of indexed point lookups, these refreshes dominate an
+ * import's total reads. Five minutes rather than one cuts them fivefold:
+ * on a 1000-song import they fall from roughly 38,000 rows to 7,500, which
+ * is most of what the whole job now costs.
+ *
+ * The wider window only matters while an import is running *and* the user
+ * is hand-adding songs to playlists at the same time — and even then the
+ * consequence is a slightly early "quota exceeded", not lost data or a
+ * corrupted total.
  *
  * Quota is not a hard safety boundary here — it's an allowance with an
  * eviction path — so trading an exact-but-expensive figure for a
@@ -21,7 +31,7 @@ import { getUserQuotaBytes, getUserStorageUsageBytes } from '../eviction/usage';
  * thing that must stay exact is the *reservation* sum, and that still
  * comes straight from the table on every call.
  */
-const USAGE_CACHE_TTL_MS = 60_000;
+const USAGE_CACHE_TTL_MS = 300_000;
 
 /**
  * The user's storage usage, recomputed at most once per

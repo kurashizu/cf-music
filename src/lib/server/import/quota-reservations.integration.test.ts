@@ -227,6 +227,24 @@ describe('usage caching', () => {
 		expect(result.remainingBytes).toBe(5_999_800);
 	});
 
+	it('still trusts a figure taken well inside the refresh window', async () => {
+		// Pins the window itself, not just "old is stale": with only the
+		// year-2020 case below, shortening the TTL to seconds would still
+		// pass while quietly undoing most of the savings.
+		await seedUser('u1', 10_000_000);
+		const jobId = await seedJob('u1');
+
+		await db.update(importJobs).set({
+			cachedUsageBytes: 4_000_000,
+			cachedUsageAt: sql`datetime('now', '-4 minutes')`
+		});
+
+		const result = await reserveQuota(db, 'u1', jobId, 'a', 100);
+
+		// The 4-minute-old figure is still used, not recomputed.
+		expect(result.remainingBytes).toBe(5_999_900);
+	});
+
 	it('recomputes once the cached figure has gone stale', async () => {
 		await seedUser('u1', 10_000_000);
 		const jobId = await seedJob('u1');
