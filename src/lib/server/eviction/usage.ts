@@ -1,7 +1,7 @@
 import { eq, and, sql } from 'drizzle-orm';
 import type { Db } from '../db';
 import { songs, playlists, playlistSongs, users, userSongs } from '../db/schema';
-import type { EvictionCandidate } from './score';
+import type { EvictionCandidate } from '../../shared/eviction-score';
 import { recordAuditEvent } from '../audit/log';
 
 /**

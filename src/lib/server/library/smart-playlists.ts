@@ -2,7 +2,7 @@ import { and, eq } from 'drizzle-orm';
 import type { Db } from '../db';
 import { playlists, playlistSongs } from '../db/schema';
 import { createPlaylist, listUserLibrarySongs, type LibrarySongSummary } from './playlists';
-import { computeEvictionScore } from '../eviction/score';
+import { computeEvictionScore } from '../../shared/eviction-score';
 import { getVectorsByVideoIds } from '../embedding/similarity';
 import { cosineSimilarity } from '../embedding/vector-codec';
 import { chunk } from '../../shared/chunk';

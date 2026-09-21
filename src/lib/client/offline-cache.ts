@@ -168,7 +168,18 @@ export async function downloadSongForOffline(
 		const { audioUrl, coverUrl }: StreamUrlResponse = await response.json();
 		const cached = await precacheAudio(videoId, audioUrl);
 		if (cached) {
-			if (metadata) await storeTrackMetadata([{ videoId, ...metadata }]);
+			// pinned: this is the explicit "Download" path, so the cache
+			// limit must never evict it (see enforceCacheLimit). Written
+			// even when the caller passed no metadata, since the flag is
+			// what protects the song.
+			await storeTrackMetadata([
+				{
+					videoId,
+					title: metadata?.title ?? videoId,
+					durationSeconds: metadata?.durationSeconds ?? null,
+					pinned: true
+				}
+			]);
 			// The cover too: it is otherwise only cached as a side effect of
 			// some page happening to display it, so a song downloaded and never
 			// scrolled past had no art at all offline. Downloading a song

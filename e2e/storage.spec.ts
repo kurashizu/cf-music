@@ -174,3 +174,46 @@ test.describe('manage storage page', () => {
 		await expect(page.getByText('Browser offline cache (this device)')).toBeVisible();
 	});
 });
+
+test.describe('offline cache settings', () => {
+	test('auto cache is on by default and its choice survives a reload', async ({ page }) => {
+		await registerViaApi(page);
+		await page.goto('/settings');
+
+		const autoCache = page
+			.locator('label', { hasText: 'Auto cache played songs' })
+			.getByRole('switch');
+
+		// Defaults on: auto-caching predates this setting, so a user who
+		// never touches it keeps the behaviour they already had.
+		await expect(autoCache).toBeVisible();
+		await expect(autoCache).toBeChecked();
+
+		await autoCache.click();
+		await expect(autoCache).not.toBeChecked();
+
+		await page.reload();
+		await expect(
+			page.locator('label', { hasText: 'Auto cache played songs' }).getByRole('switch')
+		).not.toBeChecked();
+	});
+
+	test('the cache limit can be changed and is remembered', async ({ page }) => {
+		await registerViaApi(page);
+		await page.goto('/settings');
+
+		// The shadcn Select trigger renders as a button, not a combobox.
+		const trigger = page.getByRole('button', { name: /^(\d+ (GB|MB)|No limit)$/ });
+		await expect(trigger).toBeVisible();
+		// The documented default, so the number the user sees matches what
+		// the cache actually enforces before they change anything.
+		await expect(trigger).toHaveText('2 GB');
+
+		await trigger.click();
+		await page.getByRole('option', { name: '5 GB' }).click();
+		await expect(trigger).toHaveText('5 GB');
+
+		await page.reload();
+		await expect(page.getByRole('button', { name: /^(\d+ (GB|MB)|No limit)$/ })).toHaveText('5 GB');
+	});
+});

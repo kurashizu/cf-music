@@ -5,7 +5,7 @@ import {
 	planEviction,
 	DEFAULT_HALF_LIFE_DAYS,
 	type EvictionCandidate
-} from './score';
+} from './eviction-score';
 
 describe('computeEvictionScore', () => {
 	it('returns 0 for a never-played song (playCount = 0)', () => {

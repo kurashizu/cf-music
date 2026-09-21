@@ -429,16 +429,58 @@ sw.addEventListener('message', (event) => {
 		const { videoIds } = data as { videoIds: string[] };
 		event.waitUntil(
 			(async () => {
-				const [cache, meta] = await Promise.all([
+				const [cache, meta, covers] = await Promise.all([
 					caches.open(AUDIO_CACHE),
-					caches.open(METADATA_CACHE)
+					caches.open(METADATA_CACHE),
+					caches.open(COVER_CACHE)
 				]);
 				for (const videoId of videoIds) {
 					await cache.delete(audioCacheKey(videoId));
 					// Kept in step with the audio: metadata for a track that is
 					// no longer cached would list something unplayable offline.
 					await meta.delete(metadataCacheKey(videoId));
+					// The cover too. Without this, evicting a song left its art
+					// behind forever — small individually, but never reclaimed
+					// by anything, since covers are only ever written.
+					await covers.delete(coverCacheKey(videoId));
 				}
+			})()
+		);
+		return;
+	}
+
+	/**
+	 * Every cached song with the size of its stored audio and whether it
+	 * was pinned — what the cache limit needs to decide what to drop.
+	 *
+	 * Sizes are read here rather than estimated on the page, because only
+	 * the worker can open the cache, and a Response's own body length is
+	 * the real number of bytes stored. Reading each body is why this isn't
+	 * folded into LIST_CACHED_AUDIO, which runs on every storage page load
+	 * and needs to stay cheap.
+	 */
+	if (data?.type === 'MEASURE_CACHED_AUDIO') {
+		const port = event.ports[0];
+		event.waitUntil(
+			(async () => {
+				const [cache, meta] = await Promise.all([
+					caches.open(AUDIO_CACHE),
+					caches.open(METADATA_CACHE)
+				]);
+				const entries: { videoId: string; sizeBytes: number; pinned: boolean }[] = [];
+				for (const request of await cache.keys()) {
+					const videoId = new URL(request.url).pathname.split('/').pop() ?? '';
+					if (!videoId) continue;
+					const response = await cache.match(request);
+					if (!response) continue;
+					const sizeBytes = (await response.blob()).size;
+					const metaResponse = await meta.match(metadataCacheKey(videoId));
+					const record = metaResponse
+						? ((await metaResponse.json().catch(() => null)) as { pinned?: boolean } | null)
+						: null;
+					entries.push({ videoId, sizeBytes, pinned: record?.pinned === true });
+				}
+				port?.postMessage({ entries });
 			})()
 		);
 	}

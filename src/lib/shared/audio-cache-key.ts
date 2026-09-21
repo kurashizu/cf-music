@@ -96,6 +96,17 @@ export interface CachedTrackMetadata {
 	videoId: string;
 	title: string;
 	durationSeconds: number | null;
+	/**
+	 * The user asked for this song offline, rather than it being kept
+	 * because they happened to play it through.
+	 *
+	 * Both paths write to the same audio cache, so without this there is no
+	 * way to tell them apart — and the cache limit must not quietly delete
+	 * a song someone downloaded on purpose. Absent counts as false, so
+	 * anything cached before this existed is treated as auto-cached and is
+	 * eligible for eviction.
+	 */
+	pinned?: boolean;
 }
 
 /** MinIO object keys are covers/{videoId}.{ext} — see object-key.ts for the authoritative format. */

@@ -1,5 +1,8 @@
 <script lang="ts">
 	import { formatBytes } from '$lib/shared/format';
+	import * as Select from '$lib/components/ui/select/index.js';
+	import HardDriveDownloadIcon from '@lucide/svelte/icons/hard-drive-download';
+	import { cacheSettings, CACHE_LIMIT_OPTIONS } from '$lib/client/cache-settings.svelte';
 	import { apiErrorMessage } from '$lib/client/api-error';
 	import { onMount } from 'svelte';
 	import { goto, invalidateAll } from '$app/navigation';
@@ -92,6 +95,10 @@
 			? Math.min(100, (account.usageBytes / account.quotaBytes) * 100)
 			: 0
 	);
+	const cacheLimitLabel = $derived(
+		CACHE_LIMIT_OPTIONS.find((o) => o.bytes === cacheSettings.limitBytes)?.label ?? 'No limit'
+	);
+
 	const browserUsagePercent = $derived(
 		browserStorage && account && account.quotaBytes > 0
 			? Math.min(100, (browserStorage.usageBytes / account.quotaBytes) * 100)
@@ -229,6 +236,54 @@
 					onCheckedChange={(checked) => silenceTrim.set(checked)}
 				/>
 			</Label>
+		</Card.Content>
+	</Card.Root>
+
+	<Card.Root class="mb-4">
+		<Card.Content>
+			<div class="text-muted-foreground mb-2 flex items-center gap-1.5 text-sm">
+				<HardDriveDownloadIcon class="size-4" />
+				Offline cache
+			</div>
+			<Label class="flex cursor-pointer items-start justify-between gap-3 font-normal">
+				<span class="min-w-0">
+					<span class="block text-sm">Auto cache played songs</span>
+					<span class="text-muted-foreground block text-xs font-normal">
+						Keep a song on this device once you've played it through, so it works offline. Turning
+						this off stops keeping new songs; it doesn't remove what's already here.
+					</span>
+				</span>
+				<Switch
+					class="mt-0.5"
+					checked={cacheSettings.autoCache}
+					onCheckedChange={(checked) => cacheSettings.setAutoCache(checked)}
+				/>
+			</Label>
+
+			<div class="mt-4 flex items-start justify-between gap-3">
+				<span class="min-w-0">
+					<span class="block text-sm">Cache limit</span>
+					<span class="text-muted-foreground block text-xs font-normal">
+						When auto-cached songs exceed this, the ones you play least and least recently are
+						removed first. Songs you downloaded yourself are never removed automatically.
+					</span>
+				</span>
+				<Select.Root
+					type="single"
+					value={String(cacheSettings.limitBytes ?? 'none')}
+					onValueChange={(value) =>
+						cacheSettings.setLimitBytes(value === 'none' ? null : Number(value))}
+				>
+					<Select.Trigger class="mt-0.5 w-32 shrink-0">{cacheLimitLabel}</Select.Trigger>
+					<Select.Content>
+						{#each CACHE_LIMIT_OPTIONS as option (option.label)}
+							<Select.Item value={String(option.bytes ?? 'none')} label={option.label}>
+								{option.label}
+							</Select.Item>
+						{/each}
+					</Select.Content>
+				</Select.Root>
+			</div>
 		</Card.Content>
 	</Card.Root>
 

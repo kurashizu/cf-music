@@ -30,6 +30,9 @@ import {
 	setMediaSessionTrack
 } from '$lib/client/media-session';
 import { silenceTrim, getTrimPoints, analyzeTrackIfCached } from '$lib/client/silence-trim.svelte';
+import { cacheSettings } from '$lib/client/cache-settings.svelte';
+import { enforceCacheLimit } from '$lib/client/cache-limit';
+import { fetchPlayStats } from '$lib/client/play-stats';
 
 export interface QueueTrack {
 	videoId: string;
@@ -764,6 +767,11 @@ class PlayerStore {
 	 * the whole duration.
 	 */
 	private maybeAutoCache(): void {
+		// The setting gates only this path. An explicit Download still
+		// caches, and anything already cached is left alone — turning the
+		// setting off means "stop keeping new songs", not "throw away the
+		// offline library I already have".
+		if (!cacheSettings.autoCache) return;
 		if (this.autoCacheTriggered || !this.audio || !this.currentTrack || !this.audioUrl) return;
 		const duration = this.audio.duration;
 		if (!Number.isFinite(duration) || duration <= 0) return;
@@ -793,6 +801,10 @@ class PlayerStore {
 				// network — otherwise a track listened to right through still has
 				// no art offline.
 				if (coverUrl) void cacheCover(videoId, coverUrl);
+				// This write may be the one that put the cache over its
+				// limit, so reclaim the overflow now rather than letting it
+				// grow until some page happens to check.
+				void enforceCacheLimit(cacheSettings.limitBytes, fetchPlayStats);
 				if (!silenceTrim.enabled) return;
 				const points = await analyzeTrackIfCached(videoId);
 				if (points) this.applyTrimPoints(videoId, points);

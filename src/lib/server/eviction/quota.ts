@@ -1,4 +1,8 @@
-import { planEviction, type EvictionCandidate, type EvictionPlan } from './score';
+import {
+	planEviction,
+	type EvictionCandidate,
+	type EvictionPlan
+} from '../../shared/eviction-score';
 
 export type QuotaCheckResult =
 	| { outcome: 'fits'; bytesAvailable: number }

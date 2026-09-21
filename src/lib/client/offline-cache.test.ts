@@ -124,8 +124,31 @@ describe('downloadSongForOffline', () => {
 
 		expect(fetch).toHaveBeenCalledWith('/api/stream-url/a');
 		expect(sentMessages).toEqual([
-			{ type: 'PRECACHE_AUDIO', videoId: 'a', audioUrl: 'https://signed.example/a' }
+			{ type: 'PRECACHE_AUDIO', videoId: 'a', audioUrl: 'https://signed.example/a' },
+			// Metadata goes out even with none supplied: it carries the
+			// pinned flag, which is what stops the cache limit evicting a
+			// song the user downloaded deliberately.
+			{
+				type: 'STORE_TRACK_METADATA',
+				tracks: [{ videoId: 'a', title: 'a', durationSeconds: null, pinned: true }]
+			}
 		]);
+	});
+
+	it('marks an explicitly downloaded song as pinned', async () => {
+		const { sentMessages } = installFakeServiceWorker();
+		vi.mocked(fetch).mockResolvedValue({
+			ok: true,
+			json: async () => ({ audioUrl: 'https://signed.example/a' })
+		} as Response);
+
+		await downloadSongForOffline('a', { title: 'Real Title', durationSeconds: 210 });
+
+		const metadata = sentMessages.find(
+			(m) => (m as { type: string }).type === 'STORE_TRACK_METADATA'
+		) as { tracks: { pinned?: boolean; title: string }[] };
+		expect(metadata.tracks[0].pinned).toBe(true);
+		expect(metadata.tracks[0].title).toBe('Real Title');
 	});
 
 	it('returns false when the stream-url fetch responds non-ok', async () => {

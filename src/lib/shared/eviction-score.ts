@@ -1,6 +1,13 @@
 /**
  * Eviction score: LFU weighted by exponential recency decay.
  *
+ * Shared rather than server-only because the browser runs exactly the same
+ * ranking to decide which auto-cached songs to drop when the local cache
+ * hits its limit (see src/lib/client/cache-limit.ts). One algorithm, so
+ * "what gets dropped first" means the same thing in both places instead of
+ * two policies drifting apart. Pure arithmetic — no imports, no platform
+ * assumptions.
+ *
  * score = playCount * 0.5^(daysSinceLastPlayed / halfLifeDays)
  *
  * Never-played songs (playCount === 0) always score 0, so they sort

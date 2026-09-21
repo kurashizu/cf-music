@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { checkQuota } from './quota';
-import type { EvictionCandidate } from './score';
+import type { EvictionCandidate } from '../../shared/eviction-score';
 
 const now = new Date('2026-06-01T00:00:00.000Z');
 
