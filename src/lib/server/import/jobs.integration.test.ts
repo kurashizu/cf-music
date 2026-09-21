@@ -103,6 +103,62 @@ describe('createImportJob / getImportJob', () => {
 
 		await expect(getImportJob(db, id, 'u2')).rejects.toThrow(ImportJobError);
 	});
+
+	it('refuses a second import while one is already in flight', async () => {
+		await seedUser('u1');
+		await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x/first' });
+
+		await expect(
+			createImportJob(db, { userId: 'u1', sourceUrl: 'https://x/second' })
+		).rejects.toMatchObject({ code: 'already_running' });
+	});
+
+	it('refuses a second import once the first has started running, too', async () => {
+		await seedUser('u1');
+		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x/first' });
+		await startImportJob(db, id, 3);
+
+		await expect(
+			createImportJob(db, { userId: 'u1', sourceUrl: 'https://x/second' })
+		).rejects.toMatchObject({ code: 'already_running' });
+	});
+
+	it('allows a new import once the previous one finished', async () => {
+		await seedUser('u1');
+		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x/first' });
+		await completeImportJob(db, id, 'u1');
+
+		await expect(
+			createImportJob(db, { userId: 'u1', sourceUrl: 'https://x/second' })
+		).resolves.toMatchObject({ id: expect.any(String) });
+	});
+
+	it('allows a new import once a stuck one has been swept away', async () => {
+		// The guard must not be able to strand a user permanently when CI dies
+		// without ever reporting: failStaleImportJobs is what releases it.
+		await seedUser('u1');
+		const { id } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x/first' });
+		await db
+			.update(importJobs)
+			.set({ updatedAt: '2020-01-01 00:00:00' })
+			.where(eq(importJobs.id, id));
+
+		await failStaleImportJobs(db, 60_000);
+
+		await expect(
+			createImportJob(db, { userId: 'u1', sourceUrl: 'https://x/second' })
+		).resolves.toMatchObject({ id: expect.any(String) });
+	});
+
+	it("does not let one user's import block a different user's", async () => {
+		await seedUser('u1');
+		await seedUser('u2');
+		await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x/first' });
+
+		await expect(
+			createImportJob(db, { userId: 'u2', sourceUrl: 'https://x/second' })
+		).resolves.toMatchObject({ id: expect.any(String) });
+	});
 });
 
 describe('startImportJob', () => {
@@ -678,9 +734,12 @@ describe('listImportJobs', () => {
 		// D1's created_at default has second-level precision — advance it
 		// explicitly rather than relying on two inserts landing in different
 		// ticks, so this test can't flake on ordering.
+		// Also moved off `pending`: listImportJobs spans a user's history, but
+		// only one job may be in flight at a time (see createImportJob), so an
+		// older job coexisting with a newer one is necessarily a finished one.
 		await db
 			.update(importJobs)
-			.set({ createdAt: '2020-01-01T00:00:00.000Z' })
+			.set({ createdAt: '2020-01-01T00:00:00.000Z', status: 'failed' })
 			.where(eq(importJobs.id, firstId));
 		const { id: secondId } = await createImportJob(db, {
 			userId: 'u1',

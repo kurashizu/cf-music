@@ -43,7 +43,7 @@ export async function findKnownVideoIds(db: Db, videoIds: string[]): Promise<str
 export class ImportJobError extends Error {
 	constructor(
 		message: string,
-		public readonly code: 'not_found' | 'invalid_transition'
+		public readonly code: 'not_found' | 'invalid_transition' | 'already_running'
 	) {
 		super(message);
 		this.name = 'ImportJobError';
@@ -56,10 +56,52 @@ export interface CreateImportJobInput {
 	targetPlaylistId?: string;
 }
 
+/**
+ * The job a user already has in flight, or null. `pending` counts as much
+ * as `running` does: a dispatched workflow that hasn't reported progress
+ * yet is still going to download songs and still going to claim quota.
+ *
+ * A job only stays in these two states while it's genuinely live —
+ * failStaleImportJobs (above) moves an abandoned one to `failed`, so a
+ * crashed CI run can't leave a user permanently unable to import.
+ */
+export async function findActiveImportJob(db: Db, userId: string) {
+	return db.query.importJobs.findFirst({
+		where: and(eq(importJobs.userId, userId), inArray(importJobs.status, ['pending', 'running']))
+	});
+}
+
+/**
+ * Creates a job, refusing if this user already has one in flight.
+ *
+ * One import at a time per user is what makes the whole per-user import
+ * path tractable. Without it a user can dispatch unbounded GitHub Actions
+ * workflows, and — because each running job claims quota for every song it
+ * downloads — two jobs can interleave their reservations against each
+ * other's. Holding that to one job means the only writer to a user's
+ * quota_reservations rows is the single job that owns them, which is what
+ * lets reserveQuota read its usage baseline once per song instead of
+ * rescanning the whole library (see quota-reservations.ts).
+ *
+ * The check and the insert are not a transaction: two simultaneous POSTs
+ * could in principle both see no active job. That's deliberate — D1 has no
+ * interactive transactions, and the consequence of losing that race is one
+ * extra concurrent job, which the quota reservations themselves still
+ * account for correctly. The guard exists to stop unbounded dispatch, not
+ * to be a mutex.
+ */
 export async function createImportJob(
 	db: Db,
 	input: CreateImportJobInput
 ): Promise<{ id: string }> {
+	const active = await findActiveImportJob(db, input.userId);
+	if (active) {
+		throw new ImportJobError(
+			'You already have an import running. Wait for it to finish, or cancel it first.',
+			'already_running'
+		);
+	}
+
 	const id = crypto.randomUUID();
 	await db.insert(importJobs).values({
 		id,
@@ -184,13 +226,15 @@ export async function startImportJob(db: Db, jobId: string, totalCount: number):
 export async function submitImportPreview(
 	db: Db,
 	jobId: string,
-	entries: PreviewEntry[]
+	entries: PreviewEntry[],
+	truncated = false
 ): Promise<void> {
 	await db
 		.update(importJobs)
 		.set({
 			totalCount: entries.length,
 			previewEntries: JSON.stringify(entries),
+			truncated,
 			updatedAt: sql`(current_timestamp)`
 		})
 		.where(eq(importJobs.id, jobId));

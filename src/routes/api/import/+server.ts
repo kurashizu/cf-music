@@ -3,7 +3,12 @@ import type { RequestHandler } from './$types';
 import { getDb } from '$lib/server/db';
 import { requireSession } from '$lib/server/auth/guard';
 import { pickStrings } from '$lib/server/http/validate';
-import { createImportJob, listImportJobs, failImportJob } from '$lib/server/import/jobs';
+import {
+	createImportJob,
+	listImportJobs,
+	failImportJob,
+	ImportJobError
+} from '$lib/server/import/jobs';
 import { dispatchImportWorkflow } from '$lib/server/import/github-actions';
 import { ensureDefaultPlaylist } from '$lib/server/library/playlists';
 
@@ -56,11 +61,20 @@ export const POST: RequestHandler = async (event) => {
 	const targetPlaylistId =
 		explicitTargetPlaylistId ?? (await ensureDefaultPlaylist(db, session.userId)).id;
 
-	const { id: jobId } = await createImportJob(db, {
-		userId: session.userId,
-		sourceUrl: fields.sourceUrl,
-		targetPlaylistId
-	});
+	let jobId: string;
+	try {
+		({ id: jobId } = await createImportJob(db, {
+			userId: session.userId,
+			sourceUrl: fields.sourceUrl,
+			targetPlaylistId
+		}));
+	} catch (err) {
+		// 409, not 500: the request was well-formed and the caller can act on
+		// this — finish or cancel the running import, then retry. The message
+		// createImportJob raises says exactly that, so it's surfaced as-is.
+		if (err instanceof ImportJobError && err.code === 'already_running') error(409, err.message);
+		throw err;
+	}
 
 	try {
 		await dispatchImportWorkflow(

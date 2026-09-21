@@ -39,7 +39,12 @@ function makeSong(videoId: string, overrides: Partial<SongImportSuccess> = {}): 
 /** Seeds a real `songs` row via the same import path production uses, without an embedding job — recordSongImported auto-enqueues one, so this deletes it right back out to simulate a pre-feature song. */
 async function seedSongWithoutEmbeddingJob(videoId: string) {
 	await seedUser('u1');
-	const { id: jobId } = await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x' });
+	// Reuses the user's existing job if there is one: a user may only have
+	// one import in flight (see createImportJob), and seeding several songs
+	// for one user is exactly the "many songs, one import" case anyway.
+	const existing = await db.query.importJobs.findFirst({ where: eq(importJobs.userId, 'u1') });
+	const jobId =
+		existing?.id ?? (await createImportJob(db, { userId: 'u1', sourceUrl: 'https://x' })).id;
 	await recordSongImported(db, jobId, 'u1', makeSong(videoId));
 	await db.delete(embeddingJobs).where(eq(embeddingJobs.videoId, videoId));
 }
