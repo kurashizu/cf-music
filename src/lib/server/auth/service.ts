@@ -248,6 +248,7 @@ export interface AdminUserSummary {
 	isAdmin: boolean;
 	storageQuotaBytes: number;
 	autoEvictEnabled: boolean;
+	disabled: boolean;
 	createdAt: string;
 }
 
@@ -260,6 +261,7 @@ export async function listUsers(db: Db): Promise<AdminUserSummary[]> {
 			isAdmin: true,
 			storageQuotaBytes: true,
 			autoEvictEnabled: true,
+			disabled: true,
 			createdAt: true
 		},
 		orderBy: desc(users.createdAt)

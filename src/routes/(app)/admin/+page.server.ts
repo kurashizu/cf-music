@@ -19,5 +19,7 @@ export const load: PageServerLoad = async ({ platform, locals }) => {
 		db.query.inviteCodes.findMany({ orderBy: desc(inviteCodes.createdAt), limit: 50 })
 	]);
 
-	return { users, inviteCodes: codes };
+	// The signed-in admin's own id, so the UI can refuse to offer actions
+	// that would lock them out of their own instance.
+	return { users, inviteCodes: codes, currentUserId: locals.session.userId };
 };

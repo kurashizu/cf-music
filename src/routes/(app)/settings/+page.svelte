@@ -15,6 +15,9 @@
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import ShieldIcon from '@lucide/svelte/icons/shield';
 	import LogOutIcon from '@lucide/svelte/icons/log-out';
+	import KeyRoundIcon from '@lucide/svelte/icons/key-round';
+	import Trash2Icon from '@lucide/svelte/icons/trash-2';
+	import { Input } from '$lib/components/ui/input/index.js';
 	import DatabaseIcon from '@lucide/svelte/icons/database';
 	import AudioLinesIcon from '@lucide/svelte/icons/audio-lines';
 	import { Switch } from '$lib/components/ui/switch/index.js';
@@ -73,6 +76,88 @@
 			toast.error('Failed to clear local data');
 		} finally {
 			clearing = false;
+		}
+	}
+
+	let passwordDialogOpen = $state(false);
+	let currentPassword = $state('');
+	let newPassword = $state('');
+	let confirmPassword = $state('');
+	let passwordSubmitting = $state(false);
+
+	let signOutAllOpen = $state(false);
+	let signingOutAll = $state(false);
+
+	let deleteAccountOpen = $state(false);
+	let deletePassword = $state('');
+	let deletingAccount = $state(false);
+
+	function closePasswordDialog() {
+		passwordDialogOpen = false;
+		currentPassword = '';
+		newPassword = '';
+		confirmPassword = '';
+	}
+
+	async function handleChangePassword() {
+		if (newPassword !== confirmPassword) {
+			toast.error("New passwords don't match");
+			return;
+		}
+		passwordSubmitting = true;
+		try {
+			const response = await fetch('/api/account/password', {
+				method: 'PUT',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ currentPassword, newPassword })
+			});
+			if (!response.ok) {
+				toast.error(await apiErrorMessage(response, 'Failed to change password'));
+				return;
+			}
+			toast.success('Password changed. Other devices have been signed out.');
+			closePasswordDialog();
+		} catch {
+			toast.error('Failed to change password');
+		} finally {
+			passwordSubmitting = false;
+		}
+	}
+
+	async function handleSignOutEverywhere() {
+		signingOutAll = true;
+		try {
+			const response = await fetch('/api/account/sessions', { method: 'DELETE' });
+			if (!response.ok) {
+				toast.error(await apiErrorMessage(response, 'Failed to sign out'));
+				return;
+			}
+			// This session is signed out too, so there is nowhere to stay.
+			await goto('/');
+		} catch {
+			toast.error('Failed to sign out');
+		} finally {
+			signingOutAll = false;
+		}
+	}
+
+	async function handleDeleteAccount() {
+		deletingAccount = true;
+		try {
+			const response = await fetch('/api/account', {
+				method: 'DELETE',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ password: deletePassword })
+			});
+			if (!response.ok) {
+				toast.error(await apiErrorMessage(response, 'Failed to delete account'));
+				return;
+			}
+			await goto('/');
+		} catch {
+			toast.error('Failed to delete account');
+		} finally {
+			deletingAccount = false;
 		}
 	}
 
@@ -315,13 +400,51 @@
 
 	<Card.Root>
 		<Card.Content>
+			<div class="text-muted-foreground mb-2 flex items-center gap-1.5 text-sm">
+				<KeyRoundIcon class="size-4" />
+				Account
+			</div>
 			{#if account}
 				<p class="text-muted-foreground mb-3 truncate text-xs">{account.session.username}</p>
 			{/if}
-			<Button variant="outline" size="sm" class="w-full justify-start gap-2" onclick={handleLogout}>
-				<LogOutIcon class="size-4" />
-				Log out
-			</Button>
+			<div class="flex flex-col gap-2">
+				<Button
+					variant="outline"
+					size="sm"
+					class="w-full justify-start gap-2"
+					onclick={() => (passwordDialogOpen = true)}
+				>
+					<KeyRoundIcon class="size-4" />
+					Change password
+				</Button>
+				<Button
+					variant="outline"
+					size="sm"
+					class="w-full justify-start gap-2"
+					onclick={() => (signOutAllOpen = true)}
+				>
+					<LogOutIcon class="size-4" />
+					Sign out on all devices
+				</Button>
+				<Button
+					variant="outline"
+					size="sm"
+					class="w-full justify-start gap-2"
+					onclick={handleLogout}
+				>
+					<LogOutIcon class="size-4" />
+					Log out
+				</Button>
+				<Button
+					variant="outline"
+					size="sm"
+					class="text-destructive hover:text-destructive w-full justify-start gap-2"
+					onclick={() => (deleteAccountOpen = true)}
+				>
+					<Trash2Icon class="size-4" />
+					Delete account
+				</Button>
+			</div>
 		</Card.Content>
 	</Card.Root>
 </div>
@@ -340,6 +463,100 @@
 			<Button variant="outline" onclick={() => (clearConfirmOpen = false)}>Cancel</Button>
 			<Button variant="destructive" disabled={clearing} onclick={handleClearLocalData}>
 				{clearing ? 'Clearing…' : 'Clear local data'}
+			</Button>
+		</Dialog.Footer>
+	</Dialog.Content>
+</Dialog.Root>
+
+<Dialog.Root open={passwordDialogOpen} onOpenChange={(open) => !open && closePasswordDialog()}>
+	<Dialog.Content class="sm:max-w-sm">
+		<Dialog.Header>
+			<Dialog.Title>Change password</Dialog.Title>
+			<Dialog.Description>
+				Your other devices will be signed out. This one stays signed in.
+			</Dialog.Description>
+		</Dialog.Header>
+		<div class="flex flex-col gap-2">
+			<Input
+				type="password"
+				autocomplete="current-password"
+				placeholder="Current password"
+				bind:value={currentPassword}
+			/>
+			<Input
+				type="password"
+				autocomplete="new-password"
+				placeholder="New password"
+				bind:value={newPassword}
+			/>
+			<Input
+				type="password"
+				autocomplete="new-password"
+				placeholder="Confirm new password"
+				bind:value={confirmPassword}
+			/>
+		</div>
+		<Dialog.Footer>
+			<Button variant="outline" onclick={closePasswordDialog}>Cancel</Button>
+			<Button
+				disabled={passwordSubmitting || currentPassword.length === 0 || newPassword.length === 0}
+				onclick={handleChangePassword}
+			>
+				{passwordSubmitting ? 'Changing…' : 'Change password'}
+			</Button>
+		</Dialog.Footer>
+	</Dialog.Content>
+</Dialog.Root>
+
+<Dialog.Root bind:open={signOutAllOpen}>
+	<Dialog.Content class="sm:max-w-sm">
+		<Dialog.Header>
+			<Dialog.Title>Sign out on all devices?</Dialog.Title>
+			<Dialog.Description>
+				Ends every session, including this one, so you'll be asked to log in again. Your password
+				doesn't change — use "Change password" instead if you think someone else knows it.
+			</Dialog.Description>
+		</Dialog.Header>
+		<Dialog.Footer>
+			<Button variant="outline" onclick={() => (signOutAllOpen = false)}>Cancel</Button>
+			<Button disabled={signingOutAll} onclick={handleSignOutEverywhere}>
+				{signingOutAll ? 'Signing out…' : 'Sign out everywhere'}
+			</Button>
+		</Dialog.Footer>
+	</Dialog.Content>
+</Dialog.Root>
+
+<Dialog.Root
+	open={deleteAccountOpen}
+	onOpenChange={(open) => {
+		if (!open) {
+			deleteAccountOpen = false;
+			deletePassword = '';
+		}
+	}}
+>
+	<Dialog.Content class="sm:max-w-sm">
+		<Dialog.Header>
+			<Dialog.Title>Delete your account?</Dialog.Title>
+			<Dialog.Description>
+				Removes your account, playlists and listening history. Your songs go too, except any another
+				user also has in a playlist. This cannot be undone — enter your password to confirm.
+			</Dialog.Description>
+		</Dialog.Header>
+		<Input
+			type="password"
+			autocomplete="current-password"
+			placeholder="Your password"
+			bind:value={deletePassword}
+		/>
+		<Dialog.Footer>
+			<Button variant="outline" onclick={() => (deleteAccountOpen = false)}>Cancel</Button>
+			<Button
+				variant="destructive"
+				disabled={deletingAccount || deletePassword.length === 0}
+				onclick={handleDeleteAccount}
+			>
+				{deletingAccount ? 'Deleting…' : 'Delete my account'}
 			</Button>
 		</Dialog.Footer>
 	</Dialog.Content>

@@ -12,6 +12,9 @@
 	import CopyIcon from '@lucide/svelte/icons/copy';
 	import HardDriveIcon from '@lucide/svelte/icons/hard-drive';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
+	import { apiErrorMessage } from '$lib/client/api-error';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
+	import MoreVerticalIcon from '@lucide/svelte/icons/more-vertical';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -272,6 +275,119 @@
 		}
 	}
 
+	type ManagedUser = (typeof data.users)[number];
+
+	let passwordTarget = $state<ManagedUser | null>(null);
+	let newPassword = $state('');
+	let passwordSubmitting = $state(false);
+	let deleteTarget = $state<ManagedUser | null>(null);
+	let deleteSubmitting = $state(false);
+	let rowBusyId = $state<string | null>(null);
+
+	/**
+	 * Actions that would leave the instance unadministrable are hidden
+	 * rather than left to fail server-side: the service refuses them too
+	 * (see remainingAdminCount), but an admin shouldn't have to click a
+	 * button to discover it was never going to work.
+	 */
+	const activeAdminCount = $derived(users.filter((u) => u.isAdmin && !u.disabled).length);
+	function isLastActiveAdmin(user: ManagedUser): boolean {
+		return user.isAdmin && !user.disabled && activeAdminCount <= 1;
+	}
+
+	async function userAction(
+		user: ManagedUser,
+		path: string,
+		init: RequestInit,
+		onSuccess: (payload: unknown) => void,
+		successMessage: string
+	) {
+		rowBusyId = user.id;
+		try {
+			const response = await fetch(`/api/admin/users/${user.id}${path}`, {
+				headers: { 'content-type': 'application/json' },
+				...init
+			});
+			if (!response.ok) {
+				toast.error(await apiErrorMessage(response, 'Action failed'));
+				return;
+			}
+			onSuccess(await response.json().catch(() => ({})));
+			toast.success(successMessage);
+		} catch {
+			toast.error('Action failed');
+		} finally {
+			rowBusyId = null;
+		}
+	}
+
+	function patchUser(id: string, changes: Partial<ManagedUser>) {
+		users = users.map((u) => (u.id === id ? { ...u, ...changes } : u));
+	}
+
+	const toggleDisabled = (user: ManagedUser) =>
+		userAction(
+			user,
+			'/status',
+			{ method: 'PUT', body: JSON.stringify({ disabled: !user.disabled }) },
+			() => patchUser(user.id, { disabled: !user.disabled }),
+			user.disabled ? 'Account enabled' : 'Account disabled'
+		);
+
+	const toggleAdmin = (user: ManagedUser) =>
+		userAction(
+			user,
+			'/role',
+			{ method: 'PUT', body: JSON.stringify({ isAdmin: !user.isAdmin }) },
+			() => patchUser(user.id, { isAdmin: !user.isAdmin }),
+			user.isAdmin ? 'Admin removed' : 'Admin granted'
+		);
+
+	const signOutEverywhere = (user: ManagedUser) =>
+		userAction(user, '/sessions', { method: 'DELETE' }, () => {}, 'Signed out everywhere');
+
+	async function submitPassword() {
+		if (!passwordTarget) return;
+		passwordSubmitting = true;
+		try {
+			const response = await fetch(`/api/admin/users/${passwordTarget.id}/password`, {
+				method: 'PUT',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ newPassword })
+			});
+			if (!response.ok) {
+				toast.error(await apiErrorMessage(response, 'Failed to set password'));
+				return;
+			}
+			toast.success(`Password set for ${passwordTarget.username}`);
+			passwordTarget = null;
+			newPassword = '';
+		} catch {
+			toast.error('Failed to set password');
+		} finally {
+			passwordSubmitting = false;
+		}
+	}
+
+	async function submitDelete() {
+		if (!deleteTarget) return;
+		deleteSubmitting = true;
+		try {
+			const response = await fetch(`/api/admin/users/${deleteTarget.id}`, { method: 'DELETE' });
+			if (!response.ok) {
+				toast.error(await apiErrorMessage(response, 'Failed to delete user'));
+				return;
+			}
+			users = users.filter((u) => u.id !== deleteTarget!.id);
+			toast.success(`Deleted ${deleteTarget.username}`);
+			deleteTarget = null;
+		} catch {
+			toast.error('Failed to delete user');
+		} finally {
+			deleteSubmitting = false;
+		}
+	}
+
 	function openQuotaDialog(user: { id: string; username: string; storageQuotaBytes: number }) {
 		quotaTarget = user;
 		quotaGb = (user.storageQuotaBytes / (1024 * 1024 * 1024)).toFixed(2);
@@ -380,18 +496,62 @@
 					<li class="hover:bg-muted flex items-center gap-3 rounded-lg px-2 py-2 transition-colors">
 						<div class="min-w-0 flex-1">
 							<p class="truncate text-sm">
-								{user.username}
+								<span class={user.disabled ? 'text-muted-foreground line-through' : ''}>
+									{user.username}
+								</span>
 								{#if user.isAdmin}
 									<span class="text-muted-foreground ml-1 text-xs">admin</span>
+								{/if}
+								{#if user.id === data.currentUserId}
+									<span class="text-muted-foreground ml-1 text-xs">you</span>
 								{/if}
 							</p>
 							<p class="text-muted-foreground text-xs">
 								{formatBytes(user.storageQuotaBytes)} quota
+								{#if user.disabled}· disabled{/if}
 							</p>
 						</div>
 						<Button variant="outline" size="sm" onclick={() => openQuotaDialog(user)}>
 							Edit quota
 						</Button>
+						<DropdownMenu.Root>
+							<DropdownMenu.Trigger>
+								{#snippet child({ props })}
+									<Button
+										{...props}
+										variant="ghost"
+										size="icon"
+										class="size-8 shrink-0"
+										disabled={rowBusyId === user.id}
+										aria-label={`Manage ${user.username}`}
+									>
+										<MoreVerticalIcon class="size-4" />
+									</Button>
+								{/snippet}
+							</DropdownMenu.Trigger>
+							<DropdownMenu.Content align="end">
+								<DropdownMenu.Item onclick={() => (passwordTarget = user)}>
+									Reset password…
+								</DropdownMenu.Item>
+								<DropdownMenu.Item onclick={() => signOutEverywhere(user)}>
+									Sign out everywhere
+								</DropdownMenu.Item>
+								{#if !isLastActiveAdmin(user)}
+									<DropdownMenu.Item onclick={() => toggleAdmin(user)}>
+										{user.isAdmin ? 'Remove admin' : 'Make admin'}
+									</DropdownMenu.Item>
+								{/if}
+								{#if user.id !== data.currentUserId && !isLastActiveAdmin(user)}
+									<DropdownMenu.Item onclick={() => toggleDisabled(user)}>
+										{user.disabled ? 'Enable account' : 'Disable account'}
+									</DropdownMenu.Item>
+									<DropdownMenu.Separator />
+									<DropdownMenu.Item variant="destructive" onclick={() => (deleteTarget = user)}>
+										Delete user…
+									</DropdownMenu.Item>
+								{/if}
+							</DropdownMenu.Content>
+						</DropdownMenu.Root>
 					</li>
 				{/each}
 			</ul>
@@ -632,6 +792,56 @@
 				unreferencedResolving === deleteUnreferencedTarget.videoId
 					? 'Deleting…'
 					: 'Delete'}
+			</Button>
+		</Dialog.Footer>
+	</Dialog.Content>
+</Dialog.Root>
+
+<Dialog.Root
+	open={passwordTarget !== null}
+	onOpenChange={(open) => {
+		if (!open) {
+			passwordTarget = null;
+			newPassword = '';
+		}
+	}}
+>
+	<Dialog.Content class="sm:max-w-sm">
+		<Dialog.Header>
+			<Dialog.Title>Reset password for {passwordTarget?.username}</Dialog.Title>
+			<Dialog.Description>
+				Sets a new password without needing the old one, and signs this user out of every device
+				they're currently logged in on. Tell them the new password yourself — it isn't shown again.
+			</Dialog.Description>
+		</Dialog.Header>
+		<Input
+			type="password"
+			autocomplete="new-password"
+			placeholder="New password"
+			bind:value={newPassword}
+		/>
+		<Dialog.Footer>
+			<Button variant="outline" onclick={() => (passwordTarget = null)}>Cancel</Button>
+			<Button disabled={passwordSubmitting || newPassword.length === 0} onclick={submitPassword}>
+				{passwordSubmitting ? 'Setting…' : 'Set password'}
+			</Button>
+		</Dialog.Footer>
+	</Dialog.Content>
+</Dialog.Root>
+
+<Dialog.Root open={deleteTarget !== null} onOpenChange={(open) => !open && (deleteTarget = null)}>
+	<Dialog.Content class="sm:max-w-sm">
+		<Dialog.Header>
+			<Dialog.Title>Delete {deleteTarget?.username}?</Dialog.Title>
+			<Dialog.Description>
+				Removes the account, its playlists and its listening history. Songs go too, except any that
+				another user also has in a playlist — those stay where they are. This cannot be undone.
+			</Dialog.Description>
+		</Dialog.Header>
+		<Dialog.Footer>
+			<Button variant="outline" onclick={() => (deleteTarget = null)}>Cancel</Button>
+			<Button variant="destructive" disabled={deleteSubmitting} onclick={submitDelete}>
+				{deleteSubmitting ? 'Deleting…' : 'Delete user'}
 			</Button>
 		</Dialog.Footer>
 	</Dialog.Content>
