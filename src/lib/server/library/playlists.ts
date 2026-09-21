@@ -427,6 +427,47 @@ export async function listPlaylistMemberships(
 	}));
 }
 
+/** The three fields playback needs, and nothing else — see getPlaylistQueue. */
+export interface PlaylistQueueTrack {
+	videoId: string;
+	title: string;
+	durationSeconds: number | null;
+}
+
+/**
+ * A playlist's full running order, carrying only what the player queue
+ * reads.
+ *
+ * Playback previously reused getPlaylistSongsInRange for this, which
+ * selects every `songs` column and — via the route that wraps it —
+ * presigns a cover URL per row. Starting a 956-song playlist therefore
+ * cost ten paged requests and 956 HMAC signings to populate a queue that
+ * only ever looks at videoId, title and duration. None of the covers are
+ * read; the rendered rows fetch their own.
+ *
+ * Unpaged on purpose: without the per-row presigning the response is
+ * small and the work is one indexed scan, so the round trips cost more
+ * than the rows do.
+ */
+export async function getPlaylistQueue(
+	db: Db,
+	playlistId: string,
+	userId: string
+): Promise<PlaylistQueueTrack[]> {
+	await getOwnedPlaylist(db, playlistId, userId);
+
+	return db
+		.select({
+			videoId: songs.videoId,
+			title: songs.title,
+			durationSeconds: songs.durationSeconds
+		})
+		.from(playlistSongs)
+		.innerJoin(songs, eq(playlistSongs.videoId, songs.videoId))
+		.where(eq(playlistSongs.playlistId, playlistId))
+		.orderBy(playlistSongs.position);
+}
+
 export async function getPlaylistSongsInRange(
 	db: Db,
 	playlistId: string,

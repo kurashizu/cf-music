@@ -8,6 +8,7 @@ import {
 	listPlaylistsWithCovers,
 	getPlaylistMeta,
 	getPlaylistSongsInRange,
+	getPlaylistQueue,
 	renamePlaylist,
 	deletePlaylist,
 	addSongToPlaylist,
@@ -204,6 +205,49 @@ describe('getPlaylistMeta', () => {
 
 		const meta = await getPlaylistMeta(db, id, 'u1');
 		expect(meta.songCount).toBe(2);
+	});
+});
+
+describe('getPlaylistQueue', () => {
+	it('throws not_found when the playlist belongs to a different user', async () => {
+		await seedUser('u1');
+		await seedUser('u2');
+		const { id } = await createPlaylist(db, { userId: 'u1', name: 'Private' });
+
+		await expect(getPlaylistQueue(db, id, 'u2')).rejects.toThrow(LibraryError);
+	});
+
+	it('returns every song in position order, unpaged', async () => {
+		await seedUser('u1');
+		await seedSong('a');
+		await seedSong('b');
+		await seedSong('c');
+		const { id } = await createPlaylist(db, { userId: 'u1', name: 'Ordered' });
+		await addSongToPlaylist(db, id, 'u1', 'a');
+		await addSongToPlaylist(db, id, 'u1', 'b');
+		await addSongToPlaylist(db, id, 'u1', 'c');
+
+		expect((await getPlaylistQueue(db, id, 'u1')).map((t) => t.videoId)).toEqual(['a', 'b', 'c']);
+	});
+
+	// The whole point of this query: the caller is building a player queue,
+	// which reads three fields. Selecting the rest drags along coverKey,
+	// whose presigning per row is what made starting a large playlist slow.
+	it('carries only the fields a player queue reads', async () => {
+		await seedUser('u1');
+		await seedSong('a');
+		const { id } = await createPlaylist(db, { userId: 'u1', name: 'Lean' });
+		await addSongToPlaylist(db, id, 'u1', 'a');
+
+		const [track] = await getPlaylistQueue(db, id, 'u1');
+		expect(Object.keys(track).sort()).toEqual(['durationSeconds', 'title', 'videoId']);
+	});
+
+	it('is empty for a playlist with no songs', async () => {
+		await seedUser('u1');
+		const { id } = await createPlaylist(db, { userId: 'u1', name: 'Empty' });
+
+		expect(await getPlaylistQueue(db, id, 'u1')).toEqual([]);
 	});
 });
 
