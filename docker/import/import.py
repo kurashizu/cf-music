@@ -76,6 +76,29 @@ PROBE_CONCURRENCY = 12
 # playlist is cut down before anything is probed or downloaded rather than
 # discovered to be too big halfway through.
 MAX_IMPORT_ENTRIES = 1000
+# Bitrate assumed when sizing a song from its duration alone, for the
+# cheap up-front quota estimate (see estimate_sizes_from_duration).
+#
+# Measured over the 370 songs already in the library: mean 139.3 kbps,
+# p50 137.3, p90 147.8, and only 7 of 370 above 160. Downloads are
+# bestaudio, which on YouTube is almost always ~128-160 kbps Opus, so the
+# spread is narrow by construction.
+#
+# 160 rather than the mean because this estimate has to err high: it is
+# used to decide the batch *fits*, so under-estimating would wave through
+# an import that then runs out of quota partway. At 160 the estimate runs
+# ~15% above reality for a typical library while still covering 98% of
+# real songs outright.
+ESTIMATE_BITRATE_KBPS = 160
+# How close to the quota limit the duration-based estimate may come before
+# each song gets probed for its real size instead.
+#
+# Below this, the estimate's error (~15% high, and biased toward
+# over-estimating) is nowhere near enough to turn a fitting import into an
+# overflowing one, so the probing phase — by far the longest part of a
+# large import, at ~2.6s per song — is skipped entirely. Above it, the
+# margin no longer covers the error and real sizes are worth the wait.
+PROBE_THRESHOLD_FRACTION = 0.8
 
 # Netscape-format cookies.txt for a real (secondary/throwaway) YouTube
 # account, manually uploaded to MinIO out-of-band — this script never
@@ -287,6 +310,25 @@ def extract_playlist_entries(source_url: str) -> tuple[list[dict], bool]:
     if truncated:
         entries = entries[:MAX_IMPORT_ENTRIES]
     return entries, truncated
+
+
+def estimate_sizes_from_duration(entries: list[dict]) -> list[int]:
+    """Sizes every entry from the duration extract_flat already returned,
+    at ESTIMATE_BITRATE_KBPS — no network calls at all.
+
+    This exists because the accurate alternative is extraordinarily
+    expensive: resolving a song's real size means opening its video page to
+    read the format list, ~2.6s each, and no batch form of that call
+    exists. Asking yt-dlp to resolve a whole playlist in one go (dropping
+    extract_flat) is the same per-video work done serially inside yt-dlp —
+    measured slightly *slower* per song, not faster.
+
+    An entry with no duration (a live stream, or a video whose metadata
+    didn't come back) sizes as 0 and so contributes nothing to the
+    estimate. It is still downloaded and still reserves quota for its real
+    size when its turn comes.
+    """
+    return [int((e.get("duration") or 0) * ESTIMATE_BITRATE_KBPS * 1000 / 8) for e in entries]
 
 
 def estimate_song_size_bytes(entry: dict) -> int:
@@ -679,51 +721,66 @@ async def run() -> None:
                 extract_and_filter, SOURCE_URL
             )
 
-            # Probes each pending song's real download size concurrently
-            # (PROBE_CONCURRENCY at once — wider than the download loop
-            # below, since a probe holds no bandwidth), sending a
-            # probing_progress event after each one
-            # completes — deliberately real WebSocket traffic, not just
-            # ping/pong, on every song rather than one big to_thread call
-            # for the whole batch. That single-call version is what
-            # actually caused a real incident on a 183-song playlist: with
-            # ping_interval/ping_timeout already set correctly, the
-            # connection still died because Cloudflare's edge silently
-            # drops a connection that's carried nothing but protocol-level
-            # ping/pong frames for several minutes — pings alone don't
-            # count as "the connection is in use" there. A per-song event
-            # is frequent enough that no gap should ever get remotely
-            # close to that.
-            probe_semaphore = asyncio.Semaphore(PROBE_CONCURRENCY)
-            sizes = [0] * len(pending_entries)
-            probed_count = 0
-            probe_lock = asyncio.Lock()
-
-            async def probe_one(index: int, entry: dict) -> None:
-                nonlocal probed_count
-                if cancelled:
-                    return
-                async with probe_semaphore:
-                    if cancelled:
-                        return
-                    sizes[index] = await asyncio.to_thread(estimate_song_size_bytes, entry)
-                    async with probe_lock:
-                        probed_count += 1
-                        await send_event(
-                            {
-                                "type": "probing_progress",
-                                "checked": probed_count,
-                                "total": len(pending_entries),
-                            }
-                        )
-
-            await asyncio.gather(*(probe_one(i, e) for i, e in enumerate(pending_entries)))
-            if cancelled:
-                watcher.cancel()
-                return
+            # Two-stage sizing. The cheap stage first: size every song
+            # from the duration extract_flat already returned, costing
+            # nothing. Most imports are nowhere near the quota line, and
+            # for those this is the only sizing that ever happens — which
+            # removes what was the longest phase of a large import
+            # (~2.6s/song, so ~43 minutes for 1000 songs even 12-wide).
+            remaining_bytes = await asyncio.to_thread(fetch_remaining_quota_bytes)
+            sizes = estimate_sizes_from_duration(pending_entries)
             estimated_total_bytes = sum(sizes)
 
-            remaining_bytes = await asyncio.to_thread(fetch_remaining_quota_bytes)
+            # Only when the estimate lands close enough to the limit that
+            # its error could change the answer is the real thing worth
+            # ~2.6s a song. Below the threshold the margin covers the
+            # error comfortably; above it, guessing is no longer good
+            # enough to decide on.
+            if estimated_total_bytes > remaining_bytes * PROBE_THRESHOLD_FRACTION:
+                # Probes each pending song's real download size
+                # concurrently (PROBE_CONCURRENCY at once — wider than the
+                # download loop below, since a probe holds no bandwidth),
+                # sending a probing_progress event after each one
+                # completes — deliberately real WebSocket traffic, not
+                # just ping/pong, on every song rather than one big
+                # to_thread call for the whole batch. That single-call
+                # version is what actually caused a real incident on a
+                # 183-song playlist: with ping_interval/ping_timeout
+                # already set correctly, the connection still died because
+                # Cloudflare's edge silently drops a connection that's
+                # carried nothing but protocol-level ping/pong frames for
+                # several minutes — pings alone don't count as "the
+                # connection is in use" there. A per-song event is
+                # frequent enough that no gap should ever get remotely
+                # close to that.
+                probe_semaphore = asyncio.Semaphore(PROBE_CONCURRENCY)
+                probed_count = 0
+                probe_lock = asyncio.Lock()
+
+                async def probe_one(index: int, entry: dict) -> None:
+                    nonlocal probed_count
+                    if cancelled:
+                        return
+                    async with probe_semaphore:
+                        if cancelled:
+                            return
+                        sizes[index] = await asyncio.to_thread(estimate_song_size_bytes, entry)
+                        async with probe_lock:
+                            probed_count += 1
+                            await send_event(
+                                {
+                                    "type": "probing_progress",
+                                    "checked": probed_count,
+                                    "total": len(pending_entries),
+                                }
+                            )
+
+                await asyncio.gather(*(probe_one(i, e) for i, e in enumerate(pending_entries)))
+                if cancelled:
+                    watcher.cancel()
+                    return
+                estimated_total_bytes = sum(sizes)
+
             if estimated_total_bytes > remaining_bytes:
                 raise QuotaExceededError(
                     f"This import needs ~{estimated_total_bytes / 1_000_000:.1f} MB but only "
@@ -814,6 +871,16 @@ async def run() -> None:
                     # reported the same way any other per-song failure is,
                     # not a fatal_error: the rest of the batch (songs that
                     # do fit) should still proceed.
+                    #
+                    # sizes[index] is the duration-based estimate unless
+                    # this import was close enough to quota to probe for
+                    # real sizes (see above). That only ever affects the
+                    # reservation, which is transient: once the song
+                    # lands, recordSongImported releases it and the song's
+                    # actual file_size_bytes becomes the usage that counts.
+                    # An estimate can make a reservation slightly too big
+                    # or small for the minutes it is held, never the
+                    # recorded total.
                     reserved = await asyncio.to_thread(reserve_quota, JOB_ID, entry["id"], sizes[index])
                     if not reserved:
                         await send_event(
