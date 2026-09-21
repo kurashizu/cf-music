@@ -48,7 +48,8 @@ export interface SongRowFlags {
 	/** Reordering is available right now (not filtered, fully loaded, ...). */
 	canReorder: boolean;
 	canRemove: boolean;
-	hasOtherPlaylists: boolean;
+	/** Whether copying/moving is available here at all — false offline. */
+	canCopy: boolean;
 	isFirst: boolean;
 	isLast: boolean;
 	/** Offers "Clear from cache" in the menu; pairs with actions.onClearCache. */

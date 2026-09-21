@@ -166,7 +166,7 @@
 			canMoveOut={flags.canRemove}
 			isFirst={flags.isFirst}
 			isLast={flags.isLast}
-			hasOtherPlaylists={flags.hasOtherPlaylists}
+			canCopy={flags.canCopy}
 			canClearCache={flags.canClearCache}
 			onClearCache={actions.onClearCache}
 			class="opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:data-[state=open]:opacity-100"

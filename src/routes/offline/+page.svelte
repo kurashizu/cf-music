@@ -159,7 +159,7 @@
 			reorderable: false,
 			canReorder: false,
 			canRemove: false,
-			hasOtherPlaylists: false,
+			canCopy: false,
 			isFirst: false,
 			isLast: false,
 			canClearCache: false

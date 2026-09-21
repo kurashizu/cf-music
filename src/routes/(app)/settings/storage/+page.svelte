@@ -202,7 +202,7 @@
 			reorderable: false,
 			canReorder: false,
 			canRemove: false,
-			hasOtherPlaylists: data.playlists.length > 0,
+			canCopy: true,
 			isFirst: false,
 			isLast: false,
 			canClearCache: cachedVideoIds.has(entry.videoId)

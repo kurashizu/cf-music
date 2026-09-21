@@ -96,7 +96,7 @@
 				canMoveOut={flags.canRemove}
 				isFirst={flags.isFirst}
 				isLast={flags.isLast}
-				hasOtherPlaylists={flags.hasOtherPlaylists}
+				canCopy={flags.canCopy}
 				variant="secondary"
 				class="opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:data-[state=open]:opacity-100"
 				onOpenChange={actions.onMenuOpenChange}

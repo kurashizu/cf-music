@@ -17,7 +17,8 @@
 		canMoveOut: boolean;
 		isFirst: boolean;
 		isLast: boolean;
-		hasOtherPlaylists: boolean;
+		/** Whether copying/moving is available here at all — false offline. */
+		canCopy: boolean;
 		/** Offers "Clear from cache" — only meaningful where the row is cached. */
 		canClearCache?: boolean;
 		variant?: 'ghost' | 'secondary';
@@ -40,7 +41,7 @@
 		canMoveOut,
 		isFirst,
 		isLast,
-		hasOtherPlaylists,
+		canCopy,
 		canClearCache = false,
 		variant = 'ghost',
 		class: className = '',
@@ -84,7 +85,11 @@
 				<ListPlusIcon class="size-4" />
 				Add to queue
 			</DropdownMenu.Item>
-			{#if hasOtherPlaylists}
+			<!-- Gated on copying being possible at all (it isn't offline), not
+			     on a destination already existing: the dialog can create one,
+			     so requiring one left someone whose only playlist is the one
+			     they're standing in with no route to a second. -->
+			{#if canCopy}
 				<DropdownMenu.Item onclick={onCopy}>
 					<ListMusicIcon class="size-4" />
 					Copy to playlist…
