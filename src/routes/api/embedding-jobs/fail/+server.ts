@@ -31,7 +31,7 @@ export const POST: RequestHandler = async (event) => {
 	// don't have a videoId handy, and it's not needed for correctness.
 	const videoId = (body as { videoId?: unknown }).videoId;
 
-	const db = getDb(event.platform!.env.DB);
+	const db = getDb(event.platform!.env);
 	await failEmbeddingJob(db, { jobId: fields.jobId, error: fields.error, retryable });
 
 	await recordAuditEvent(db, {

@@ -13,7 +13,7 @@ import { enqueueMissingEmbeddingJobs } from '$lib/server/embedding/jobs';
  */
 export const POST: RequestHandler = async (event) => {
 	requireAdmin(event);
-	const db = getDb(event.platform!.env.DB);
+	const db = getDb(event.platform!.env);
 	const queuedCount = await enqueueMissingEmbeddingJobs(db);
 	return json({ queuedCount });
 };

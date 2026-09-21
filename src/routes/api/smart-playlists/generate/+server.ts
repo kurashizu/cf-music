@@ -21,7 +21,7 @@ export const POST: RequestHandler = async (event) => {
 		error(401, 'Invalid webhook signature');
 	}
 
-	const db = getDb(event.platform!.env.DB);
+	const db = getDb(event.platform!.env);
 	const result = await generateSmartPlaylistsForAllUsers(db);
 
 	return json(result);

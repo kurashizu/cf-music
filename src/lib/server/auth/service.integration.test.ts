@@ -13,7 +13,7 @@ import {
 	AuthError
 } from './service';
 
-const db = getDb(env.DB);
+const db = getDb(env);
 const kv = env.SESSION_KV;
 
 async function seedInviteCode(code: string, createdBy = 'seed-admin') {

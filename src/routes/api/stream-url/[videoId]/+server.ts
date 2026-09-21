@@ -15,7 +15,7 @@ import { PRESIGNED_URL_EXPIRY_SECONDS } from '$lib/server/storage/s3';
  */
 export const GET: RequestHandler = async (event) => {
 	const session = requireSession(event);
-	const db = getDb(event.platform!.env.DB);
+	const db = getDb(event.platform!.env);
 	const videoId = event.params.videoId;
 
 	const owns = await isSongInUserLibrary(db, session.userId, videoId);

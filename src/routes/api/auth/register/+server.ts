@@ -28,7 +28,7 @@ export const POST: RequestHandler = async ({ request, platform, cookies, getClie
 		error(400, `password must be at least ${MIN_PASSWORD_LENGTH} characters`);
 	}
 
-	const db = getDb(platform!.env.DB);
+	const db = getDb(platform!.env);
 
 	try {
 		await register(db, { username, password, inviteCode, ipAddress: getClientAddress() });

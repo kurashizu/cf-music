@@ -11,7 +11,7 @@ import {
 	getUserEvictionCandidates
 } from './usage';
 
-const db = getDb(env.DB);
+const db = getDb(env);
 
 async function seedUser(id: string, quotaBytes = 1_000_000) {
 	await db

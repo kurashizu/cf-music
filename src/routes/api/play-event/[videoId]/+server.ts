@@ -16,7 +16,7 @@ import { recordSongPlay } from '$lib/server/library/plays';
  */
 export const POST: RequestHandler = async (event) => {
 	const session = requireSession(event);
-	const db = getDb(event.platform!.env.DB);
+	const db = getDb(event.platform!.env);
 	const videoId = event.params.videoId;
 
 	const owns = await isSongInUserLibrary(db, session.userId, videoId);

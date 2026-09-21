@@ -13,7 +13,7 @@ function pickNumber(value: string | null): number | undefined {
 
 export const GET: RequestHandler = async (event) => {
 	requireAdmin(event);
-	const db = getDb(event.platform!.env.DB);
+	const db = getDb(event.platform!.env);
 
 	const params = event.url.searchParams;
 	const eventTypesParam = params.get('eventTypes');

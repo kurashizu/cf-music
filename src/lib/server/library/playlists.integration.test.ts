@@ -22,7 +22,7 @@ import {
 } from './playlists';
 import { recordSongPlay } from './plays';
 
-const db = getDb(env.DB);
+const db = getDb(env);
 
 // Test-only convenience: most of this file's tests just want "every song
 // currently in this playlist, in order" to assert on after some mutation —

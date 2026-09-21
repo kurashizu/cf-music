@@ -13,7 +13,7 @@ export const POST: RequestHandler = async ({ request, platform, cookies, getClie
 	}
 
 	const { username, password } = fields;
-	const db = getDb(platform!.env.DB);
+	const db = getDb(platform!.env);
 
 	try {
 		const { sessionId, userId, expiresAt } = await login(db, platform!.env.SESSION_KV, {

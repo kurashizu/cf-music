@@ -20,7 +20,7 @@ export const POST: RequestHandler = async (event) => {
 		error(400, 'fileSizeBytes must be a positive number');
 	}
 
-	const db = getDb(event.platform!.env.DB);
+	const db = getDb(event.platform!.env);
 	const result = await previewEvictionForImport(db, session.userId, fileSizeBytes);
 
 	return json(result);

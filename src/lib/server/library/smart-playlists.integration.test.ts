@@ -24,7 +24,7 @@ import {
 import { createPlaylist, addSongToPlaylist, ensureDefaultPlaylist } from './playlists';
 import { encodeVector } from '../embedding/vector-codec';
 
-const db = getDb(env.DB);
+const db = getDb(env);
 
 async function seedUser(id: string) {
 	await db

@@ -41,7 +41,7 @@ export const POST: RequestHandler = async (event) => {
 		error(400, 'userId, jobId, videoId, and a non-negative numeric estimatedBytes are required');
 	}
 
-	const db = getDb(event.platform!.env.DB);
+	const db = getDb(event.platform!.env);
 	const result = await reserveQuota(
 		db,
 		fields.userId,

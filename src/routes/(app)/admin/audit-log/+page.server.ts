@@ -14,7 +14,7 @@ export const load: PageServerLoad = async ({ platform, locals, url }) => {
 		redirect(303, '/library');
 	}
 
-	const db = getDb(platform!.env.DB);
+	const db = getDb(platform!.env);
 
 	const eventTypesParam = url.searchParams.get('eventTypes');
 	const eventTypes = eventTypesParam

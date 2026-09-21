@@ -30,7 +30,7 @@ import {
 	type PlaylistSongRow
 } from '../library/playlists';
 
-const db = getDb(env.DB);
+const db = getDb(env);
 
 // Test-only convenience — see the same helper's comment in
 // playlists.integration.test.ts for why this composes the two real,

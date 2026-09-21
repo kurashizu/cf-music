@@ -37,7 +37,7 @@ export const POST: RequestHandler = async (event) => {
 	const body: unknown = JSON.parse(rawBody);
 	const limit = Math.min(pickPositiveNumber(body, 'limit') ?? MAX_CLAIM_LIMIT, MAX_CLAIM_LIMIT);
 
-	const db = getDb(event.platform!.env.DB);
+	const db = getDb(event.platform!.env);
 	const claimed = await claimEmbeddingJobs(db, limit);
 	if (claimed.length === 0) {
 		return json({ jobs: [] });

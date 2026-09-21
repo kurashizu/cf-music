@@ -7,7 +7,7 @@ import { getImportJob, ImportJobError } from '$lib/server/import/jobs';
 /** Polling fallback for import progress, in case the WebSocket connection dropped. */
 export const GET: RequestHandler = async (event) => {
 	const session = requireSession(event);
-	const db = getDb(event.platform!.env.DB);
+	const db = getDb(event.platform!.env);
 
 	try {
 		return json(await getImportJob(db, event.params.jobId, session.userId));

@@ -5,7 +5,7 @@ import { getDb } from '../db';
 import { users, songs, userSongs } from '../db/schema';
 import { recordSongPlay } from './plays';
 
-const db = getDb(env.DB);
+const db = getDb(env);
 
 async function seedUser(id: string) {
 	await db

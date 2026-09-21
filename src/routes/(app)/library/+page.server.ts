@@ -20,7 +20,7 @@ export const load: PageServerLoad = async ({ platform, locals }) => {
 		redirect(303, '/');
 	}
 
-	const db = getDb(platform!.env.DB);
+	const db = getDb(platform!.env);
 	const [allPlaylists, { id: defaultPlaylistId }, librarySongs] = await Promise.all([
 		listPlaylistsWithCovers(db, locals.session.userId, 'all'),
 		ensureDefaultPlaylist(db, locals.session.userId),

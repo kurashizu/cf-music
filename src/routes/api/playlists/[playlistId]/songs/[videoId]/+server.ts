@@ -22,7 +22,7 @@ function handleLibraryError(err: unknown): never {
 
 export const DELETE: RequestHandler = async (event) => {
 	const session = requireSession(event);
-	const db = getDb(event.platform!.env.DB);
+	const db = getDb(event.platform!.env);
 
 	try {
 		await removeSongFromPlaylist(db, event.params.playlistId, session.userId, event.params.videoId);
@@ -53,7 +53,7 @@ export const PUT: RequestHandler = async (event) => {
 		typeof body === 'object' && body !== null ? (body as Record<string, unknown>).mode : undefined;
 	const mode = typeof modeRaw === 'string' && VALID_MODES.has(modeRaw) ? modeRaw : 'copy';
 
-	const db = getDb(event.platform!.env.DB);
+	const db = getDb(event.platform!.env);
 	try {
 		if (mode === 'move') {
 			await moveSongToPlaylist(

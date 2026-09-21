@@ -5,7 +5,7 @@ import { getDb } from '../db';
 import { users, auditLog } from '../db/schema';
 import { recordAuditEvent, listAuditLog } from './log';
 
-const db = getDb(env.DB);
+const db = getDb(env);
 
 async function seedUser(id: string) {
 	await db

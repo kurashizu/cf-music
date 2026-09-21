@@ -14,7 +14,7 @@ import type { RequestHandler } from './$types';
  */
 export const GET: RequestHandler = async (event) => {
 	const session = requireSession(event);
-	const db = getDb(event.platform!.env.DB);
+	const db = getDb(event.platform!.env);
 	const [quotaBytes, usageBytes] = await Promise.all([
 		getUserQuotaBytes(db, session.userId),
 		getUserStorageUsageBytes(db, session.userId)

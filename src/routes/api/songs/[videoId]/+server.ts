@@ -9,7 +9,7 @@ import { evictSongForUser } from '$lib/server/eviction/execute';
 /** Manual delete: user-initiated removal of a song from their own library. */
 export const DELETE: RequestHandler = async (event) => {
 	const session = requireSession(event);
-	const db = getDb(event.platform!.env.DB);
+	const db = getDb(event.platform!.env);
 	const videoId = event.params.videoId;
 
 	const owns = await isSongInUserLibrary(db, session.userId, videoId);

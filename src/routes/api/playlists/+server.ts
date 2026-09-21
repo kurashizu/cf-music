@@ -7,7 +7,7 @@ import { pickStrings } from '$lib/server/http/validate';
 
 export const GET: RequestHandler = async (event) => {
 	const session = requireSession(event);
-	const db = getDb(event.platform!.env.DB);
+	const db = getDb(event.platform!.env);
 
 	return json(await listPlaylists(db, session.userId));
 };
@@ -20,7 +20,7 @@ export const POST: RequestHandler = async (event) => {
 		error(400, 'name is required');
 	}
 
-	const db = getDb(event.platform!.env.DB);
+	const db = getDb(event.platform!.env);
 	const result = await createPlaylist(db, { userId: session.userId, name: fields.name });
 
 	return json(result, { status: 201 });

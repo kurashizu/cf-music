@@ -14,7 +14,7 @@ export const PUT: RequestHandler = async (event) => {
 		error(400, 'orderedVideoIds must be an array of strings');
 	}
 
-	const db = getDb(event.platform!.env.DB);
+	const db = getDb(event.platform!.env);
 	try {
 		await reorderPlaylist(db, event.params.playlistId, session.userId, orderedVideoIds);
 	} catch (err) {

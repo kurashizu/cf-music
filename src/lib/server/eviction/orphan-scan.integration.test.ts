@@ -13,7 +13,7 @@ import {
 } from './orphan-scan';
 import { createPlaylist, addSongToPlaylist } from '../library/playlists';
 
-const db = getDb(env.DB);
+const db = getDb(env);
 
 class FakeObjectStorage implements ObjectStorage {
 	constructor(private readonly keys: string[]) {}

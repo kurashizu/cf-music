@@ -15,7 +15,7 @@ import { ensureDefaultPlaylist } from '$lib/server/library/playlists';
 /** Lists the caller's own recent import jobs, most recent first — see listImportJobs for why. */
 export const GET: RequestHandler = async (event) => {
 	const session = requireSession(event);
-	const db = getDb(event.platform!.env.DB);
+	const db = getDb(event.platform!.env);
 
 	return json(await listImportJobs(db, session.userId));
 };
@@ -50,7 +50,7 @@ export const POST: RequestHandler = async (event) => {
 			: undefined;
 
 	const env = event.platform!.env;
-	const db = getDb(env.DB);
+	const db = getDb(env);
 
 	// Every imported song always lands in the user's default playlist
 	// regardless (see linkImportedSongToLibrary in import/jobs.ts) — this

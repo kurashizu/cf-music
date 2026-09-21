@@ -13,7 +13,7 @@ import {
 } from './jobs';
 import { createImportJob, recordSongImported, type SongImportSuccess } from '../import/jobs';
 
-const db = getDb(env.DB);
+const db = getDb(env);
 
 async function seedUser(id: string) {
 	await db

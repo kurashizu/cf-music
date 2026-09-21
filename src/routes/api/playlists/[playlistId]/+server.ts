@@ -16,7 +16,7 @@ import { pickStrings } from '$lib/server/http/validate';
 // would just be a second, unused, full-playlist read.
 export const GET: RequestHandler = async (event) => {
 	const session = requireSession(event);
-	const db = getDb(event.platform!.env.DB);
+	const db = getDb(event.platform!.env);
 
 	try {
 		return json(await getPlaylistMeta(db, event.params.playlistId, session.userId));
@@ -34,7 +34,7 @@ export const PATCH: RequestHandler = async (event) => {
 		error(400, 'name is required');
 	}
 
-	const db = getDb(event.platform!.env.DB);
+	const db = getDb(event.platform!.env);
 	try {
 		await renamePlaylist(db, event.params.playlistId, session.userId, fields.name);
 	} catch (err) {
@@ -50,7 +50,7 @@ export const PATCH: RequestHandler = async (event) => {
 
 export const DELETE: RequestHandler = async (event) => {
 	const session = requireSession(event);
-	const db = getDb(event.platform!.env.DB);
+	const db = getDb(event.platform!.env);
 
 	try {
 		await deletePlaylist(db, event.params.playlistId, session.userId);

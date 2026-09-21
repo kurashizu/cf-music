@@ -16,6 +16,6 @@ import { failStaleImportJobs } from '../import/jobs';
 const STALE_AFTER_MS = 4 * 60 * 60 * 1000;
 
 export async function runImportSweep(env: Env): Promise<void> {
-	const db = getDb(env.DB);
+	const db = getDb(env);
 	await failStaleImportJobs(db, STALE_AFTER_MS);
 }

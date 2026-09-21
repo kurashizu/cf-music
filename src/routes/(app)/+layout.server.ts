@@ -12,7 +12,7 @@ export const load: LayoutServerLoad = async ({ platform, locals }) => {
 	// Only id/name for the sidebar's playlist submenu — no cover
 	// presigning here (unlike the library grid's own load), since this
 	// runs on every (app) page and the sidebar list doesn't show art.
-	const db = getDb(platform!.env.DB);
+	const db = getDb(platform!.env);
 	const allPlaylists = await listPlaylists(db, locals.session.userId, 'all');
 	const smartPlaylistNames = new Set<string>(SMART_PLAYLIST_NAMES);
 

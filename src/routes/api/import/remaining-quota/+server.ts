@@ -29,7 +29,7 @@ export const POST: RequestHandler = async (event) => {
 		error(400, 'userId is required');
 	}
 
-	const db = getDb(event.platform!.env.DB);
+	const db = getDb(event.platform!.env);
 	const [quotaBytes, usageBytes] = await Promise.all([
 		getUserQuotaBytes(db, fields.userId),
 		getUserStorageUsageBytes(db, fields.userId)

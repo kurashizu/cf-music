@@ -14,7 +14,7 @@ export const PUT: RequestHandler = async (event) => {
 		error(400, 'quotaBytes must be a positive number');
 	}
 
-	const db = getDb(event.platform!.env.DB);
+	const db = getDb(event.platform!.env);
 	try {
 		await setUserQuotaBytes(db, event.params.userId, quotaBytes, admin.userId);
 	} catch {

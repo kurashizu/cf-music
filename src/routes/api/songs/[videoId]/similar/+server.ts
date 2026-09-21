@@ -22,7 +22,7 @@ export const GET: RequestHandler = async (event) => {
 			? Math.min(limitParam, MAX_LIMIT)
 			: DEFAULT_LIMIT;
 
-	const db = getDb(event.platform!.env.DB);
+	const db = getDb(event.platform!.env);
 	const results = await getSimilarSongsInLibrary(db, session.userId, event.params.videoId, limit);
 
 	const storage = getObjectStorage(event.platform!.env);

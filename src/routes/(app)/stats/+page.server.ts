@@ -9,7 +9,7 @@ export const load: PageServerLoad = async ({ platform, locals }) => {
 		redirect(303, '/');
 	}
 
-	const db = getDb(platform!.env.DB);
+	const db = getDb(platform!.env);
 	const [songs, allPlaylists, quotaBytes] = await Promise.all([
 		listUserLibrarySongs(db, locals.session.userId),
 		listPlaylists(db, locals.session.userId, 'all'),

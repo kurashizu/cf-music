@@ -10,7 +10,7 @@ export const load: PageServerLoad = async ({ platform, locals }) => {
 		redirect(303, '/');
 	}
 
-	const db = getDb(platform!.env.DB);
+	const db = getDb(platform!.env);
 	const [playlists, importJobs] = await Promise.all([
 		listPlaylists(db, locals.session.userId),
 		listImportJobs(db, locals.session.userId)

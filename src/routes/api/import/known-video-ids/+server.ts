@@ -26,7 +26,7 @@ export const POST: RequestHandler = async (event) => {
 		error(400, 'videoIds must be an array of strings');
 	}
 
-	const db = getDb(event.platform!.env.DB);
+	const db = getDb(event.platform!.env);
 	const knownVideoIds = await findKnownVideoIds(db, videoIds);
 
 	return json({ knownVideoIds });

@@ -6,7 +6,7 @@ import type { ObjectStorage } from '../storage/s3';
 import { previewEvictionForImport, evictSongForUser } from './execute';
 import { eq } from 'drizzle-orm';
 
-const db = getDb(env.DB);
+const db = getDb(env);
 
 class FakeObjectStorage implements ObjectStorage {
 	deletedKeys: string[] = [];

@@ -24,7 +24,7 @@ export const GET: RequestHandler = async (event) => {
 	}
 
 	const role = event.url.searchParams.get('role');
-	const db = getDb(event.platform!.env.DB);
+	const db = getDb(event.platform!.env);
 
 	let userId: string;
 	let doRequestUrl: string;

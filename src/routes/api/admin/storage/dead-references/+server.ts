@@ -11,7 +11,7 @@ import { findDeadSongReferences, resolveDeadSongReference } from '$lib/server/ev
  */
 export const GET: RequestHandler = async (event) => {
 	requireAdmin(event);
-	const db = getDb(event.platform!.env.DB);
+	const db = getDb(event.platform!.env);
 	const storage = getObjectStorage(event.platform!.env);
 
 	return json(await findDeadSongReferences(db, storage));
@@ -36,7 +36,7 @@ export const DELETE: RequestHandler = async (event) => {
 		error(400, 'videoId and field ("audioKey" or "coverKey") are required');
 	}
 
-	const db = getDb(event.platform!.env.DB);
+	const db = getDb(event.platform!.env);
 	const storage = getObjectStorage(event.platform!.env);
 
 	const { deadReferences } = await findDeadSongReferences(db, storage);

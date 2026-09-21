@@ -13,7 +13,7 @@ export const load: PageServerLoad = async ({ platform, locals }) => {
 		redirect(303, '/library');
 	}
 
-	const db = getDb(platform!.env.DB);
+	const db = getDb(platform!.env);
 	const [users, codes] = await Promise.all([
 		listUsers(db),
 		db.query.inviteCodes.findMany({ orderBy: desc(inviteCodes.createdAt), limit: 50 })

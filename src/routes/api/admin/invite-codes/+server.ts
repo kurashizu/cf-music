@@ -8,7 +8,7 @@ import { desc } from 'drizzle-orm';
 
 export const GET: RequestHandler = async (event) => {
 	requireAdmin(event);
-	const db = getDb(event.platform!.env.DB);
+	const db = getDb(event.platform!.env);
 
 	const codes = await db.query.inviteCodes.findMany({
 		orderBy: desc(inviteCodes.createdAt)
@@ -19,7 +19,7 @@ export const GET: RequestHandler = async (event) => {
 
 export const POST: RequestHandler = async (event) => {
 	const admin = requireAdmin(event);
-	const db = getDb(event.platform!.env.DB);
+	const db = getDb(event.platform!.env);
 
 	const code = await createInviteCode(db, admin.userId);
 

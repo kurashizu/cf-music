@@ -11,7 +11,7 @@ import { findUnreferencedSongs, resolveUnreferencedSong } from '$lib/server/evic
  */
 export const GET: RequestHandler = async (event) => {
 	requireAdmin(event);
-	const db = getDb(event.platform!.env.DB);
+	const db = getDb(event.platform!.env);
 
 	return json(await findUnreferencedSongs(db));
 };
@@ -33,7 +33,7 @@ export const DELETE: RequestHandler = async (event) => {
 		error(400, 'videoId is required');
 	}
 
-	const db = getDb(event.platform!.env.DB);
+	const db = getDb(event.platform!.env);
 	const storage = getObjectStorage(event.platform!.env);
 
 	const { unreferencedSongs } = await findUnreferencedSongs(db);

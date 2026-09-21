@@ -8,7 +8,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 
 	const sessionId = event.cookies.get(SESSION_COOKIE_NAME);
 	if (sessionId) {
-		const db = getDb(event.platform!.env.DB);
+		const db = getDb(event.platform!.env);
 		try {
 			event.locals.session = await resolveSession(db, event.platform!.env.SESSION_KV, sessionId);
 		} catch (err) {

@@ -26,7 +26,7 @@ export const load: PageServerLoad = async ({ platform, locals, params }) => {
 		redirect(303, '/');
 	}
 
-	const db = getDb(platform!.env.DB);
+	const db = getDb(platform!.env);
 
 	try {
 		const [playlistMeta, firstPage, allPlaylists, { id: defaultPlaylistId }] = await Promise.all([

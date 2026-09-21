@@ -6,7 +6,7 @@ import { listUsers } from '$lib/server/auth/service';
 
 export const GET: RequestHandler = async (event) => {
 	requireAdmin(event);
-	const db = getDb(event.platform!.env.DB);
+	const db = getDb(event.platform!.env);
 
 	return json(await listUsers(db));
 };

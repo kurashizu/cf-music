@@ -36,7 +36,7 @@ export const POST: RequestHandler = async (event) => {
 	const totalAudioSeconds = pickPositiveNumber(body, 'totalAudioSeconds');
 	const embedMillis = pickPositiveNumber(body, 'embedMillis');
 
-	const db = getDb(event.platform!.env.DB);
+	const db = getDb(event.platform!.env);
 	await upsertSongEmbedding(db, fields.videoId, embedding);
 	await markEmbeddingJobDone(db, fields.jobId);
 

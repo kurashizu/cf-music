@@ -120,7 +120,7 @@ export class ImportProgressDurableObject implements DurableObject {
 			return;
 		}
 
-		const db = getDb(this.env.DB);
+		const db = getDb(this.env);
 
 		// 'start' can arrive before this job's userId has ever been looked up
 		// (it's the very first message a CI connection sends), and startImportJob
@@ -193,7 +193,7 @@ export class ImportProgressDurableObject implements DurableObject {
 			return;
 		}
 
-		const db = getDb(this.env.DB);
+		const db = getDb(this.env);
 		const ciSockets = this.ctx.getWebSockets(ciTag(control.jobId));
 
 		try {
@@ -265,7 +265,7 @@ export class ImportProgressDurableObject implements DurableObject {
 		if (!ciTagValue) return;
 
 		const jobId = ciTagValue.slice('ci:'.length);
-		const db = getDb(this.env.DB);
+		const db = getDb(this.env);
 
 		let job;
 		try {

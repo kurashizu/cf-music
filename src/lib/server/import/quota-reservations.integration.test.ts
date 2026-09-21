@@ -9,7 +9,7 @@ import {
 	releaseAllQuotaReservationsForJob
 } from './quota-reservations';
 
-const db = getDb(env.DB);
+const db = getDb(env);
 
 // Upserts rather than insert-or-ignore: users survive between tests here,
 // and doing nothing on conflict would silently keep an earlier test's quota

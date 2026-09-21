@@ -5,7 +5,7 @@ import { users, songs, playlists, playlistSongs, songEmbeddings } from '../db/sc
 import { getSimilarSongsInLibrary } from './similarity';
 import { encodeVector } from './vector-codec';
 
-const db = getDb(env.DB);
+const db = getDb(env);
 
 async function seedUser(id: string) {
 	await db

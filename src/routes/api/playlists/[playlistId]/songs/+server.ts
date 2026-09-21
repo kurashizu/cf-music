@@ -35,7 +35,7 @@ export const GET: RequestHandler = async (event) => {
 	}
 	const limit = Math.min(limitParam, MAX_RANGE_LIMIT);
 
-	const db = getDb(event.platform!.env.DB);
+	const db = getDb(event.platform!.env);
 	let rows;
 	try {
 		rows = await getPlaylistSongsInRange(
@@ -69,7 +69,7 @@ export const POST: RequestHandler = async (event) => {
 		error(400, 'videoId is required');
 	}
 
-	const db = getDb(event.platform!.env.DB);
+	const db = getDb(event.platform!.env);
 	try {
 		await addSongToPlaylist(db, event.params.playlistId, session.userId, fields.videoId);
 	} catch (err) {
