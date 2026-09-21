@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { shouldLoadMore } from '$lib/client/scroll-load';
+
 	interface Props {
 		/** Loads the next page. Awaited, so a promise here is honoured. */
 		onIntersect: () => void | Promise<void>;
@@ -8,8 +10,6 @@
 
 	let element: HTMLDivElement | undefined = $state();
 
-	/** How close to the end of the scroll container counts as "reached the end". */
-	const LOAD_THRESHOLD_PX = 400;
 	/**
 	 * How often to look while the end is still in reach.
 	 *
@@ -46,14 +46,22 @@
 		let disposed = false;
 		let loading = false;
 
-		function remainingPx(): number {
+		function geometry() {
 			return scrollParent
-				? scrollParent.scrollHeight - scrollParent.scrollTop - scrollParent.clientHeight
-				: document.documentElement.scrollHeight - window.scrollY - window.innerHeight;
+				? {
+						scrollTop: scrollParent.scrollTop,
+						scrollHeight: scrollParent.scrollHeight,
+						clientHeight: scrollParent.clientHeight
+					}
+				: {
+						scrollTop: window.scrollY,
+						scrollHeight: document.documentElement.scrollHeight,
+						clientHeight: window.innerHeight
+					};
 		}
 
 		async function maybeLoad(): Promise<void> {
-			if (disposed || loading || remainingPx() > LOAD_THRESHOLD_PX) return;
+			if (disposed || loading || !shouldLoadMore(geometry())) return;
 			loading = true;
 			try {
 				await onIntersect();

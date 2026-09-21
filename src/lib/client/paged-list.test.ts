@@ -41,6 +41,32 @@ describe('window', () => {
 		expect(list.windowIndices[39]).toBe(39);
 	});
 
+	/**
+	 * The scroll sentinel polls, and windowCount grows before extend()'s
+	 * await resolves — so hasMore reports another page while the rows for
+	 * this one have not rendered. Without a guard the poll kept firing
+	 * against a viewport that still looked unfilled: opening a 959-song
+	 * playlist made 47 requests and rendered every row, with the container's
+	 * scrollHeight never moving off 1143px.
+	 */
+	it('does not stack pages when called again before the first finishes', async () => {
+		const { list, back } = build(959);
+
+		await Promise.all([list.extend(), list.extend(), list.extend(), list.extend()]);
+
+		expect(list.windowIndices.length).toBe(40);
+		expect(back.calls.length).toBe(1);
+	});
+
+	it('can still extend again once the previous one settled', async () => {
+		const { list } = build(959);
+
+		await list.extend();
+		await list.extend();
+
+		expect(list.windowIndices.length).toBe(60);
+	});
+
 	it('keeps rows that scrolled past, so the content above never collapses', () => {
 		// Releasing them would take their height with them and drag the scroll
 		// position upward, which reads as the page flickering and jumping.

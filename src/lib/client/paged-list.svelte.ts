@@ -31,6 +31,8 @@ export class PagedList<T> {
 	windowStart = $state(0);
 	/** Number of items the window currently spans. */
 	windowCount = $state(0);
+	/** Set for the duration of extend(), so overlapping callers can't stack pages. */
+	private extending = false;
 
 	private readonly total: number;
 	private readonly pageSize: number;
@@ -102,10 +104,23 @@ export class PagedList<T> {
 	 * placeholder of the exact height each one left behind.
 	 */
 	async extend(): Promise<void> {
-		if (!this.hasMore) return;
-		const end = Math.min(this.total, this.windowStart + this.windowCount + this.pageSize);
-		this.windowCount = end - this.windowStart;
-		await this.ensure(this.windowStart, end);
+		if (!this.hasMore || this.extending) return;
+		// Guarded because windowCount grows before the await resolves, so
+		// hasMore reports another page immediately while the rows for this
+		// one have not rendered yet. A caller that polls — the scroll
+		// sentinel does — then sees a viewport that still looks unfilled and
+		// extends again, and again, walking a thousand-song playlist to its
+		// end in one burst with nobody scrolling. Measured: 47 requests and
+		// every row rendered on opening the default playlist, with
+		// scrollHeight unchanged at 1143px throughout.
+		this.extending = true;
+		try {
+			const end = Math.min(this.total, this.windowStart + this.windowCount + this.pageSize);
+			this.windowCount = end - this.windowStart;
+			await this.ensure(this.windowStart, end);
+		} finally {
+			this.extending = false;
+		}
 	}
 
 	/** Loads every remaining item — for operations that need the whole list. */
