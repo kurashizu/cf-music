@@ -12,13 +12,17 @@ export default defineConfig({
 		baseURL: BASE_URL,
 		trace: 'retain-on-failure'
 	},
+	// Both projects run against the system-installed Google Chrome
+	// (`channel: 'chrome'`), never Playwright's bundled Chromium — named
+	// accordingly, since a project called "chromium" reads as the opposite
+	// of what it does.
 	projects: [
 		{
-			name: 'chromium',
+			name: 'chrome',
 			use: { ...devices['Desktop Chrome'], channel: 'chrome' }
 		},
 		{
-			name: 'mobile-chromium',
+			name: 'mobile-chrome',
 			use: { ...devices['Pixel 7'], channel: 'chrome' }
 		}
 	],
