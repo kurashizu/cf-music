@@ -15,15 +15,12 @@
 		"MINIO_BUCKET": "cf-music",
 		"GITHUB_REPO_OWNER": "kurashizu",
 		"GITHUB_REPO_NAME": "cf-music",
-		"GITHUB_IMPORT_WORKFLOW_FILE": "import.yml"
+		"GITHUB_IMPORT_WORKFLOW_FILE": "import.yml",
+		// Self-hosted libSQL server (sqld) rather than D1 -- see
+		// docs/self-hosted-database.md. Unset this and add a `DB` binding
+		// back to run on D1 instead; nothing else changes.
+		"LIBSQL_URL": "https://db-au.022025.xyz"
 	},
-	"d1_databases": [
-		{
-			"binding": "DB",
-			"database_name": "cf-music",
-			"database_id": "3d2a7a20-7325-4d34-9594-92d506b26535"
-		}
-	],
 	"kv_namespaces": [
 		{
 			"binding": "SESSION_KV",
