@@ -20,6 +20,10 @@ export class AuthError extends Error {
 			| 'invalid_credentials'
 			| 'session_not_found'
 			| 'session_expired'
+			| 'account_disabled'
+			| 'user_not_found'
+			| 'last_admin'
+			| 'cannot_target_self'
 	) {
 		super(message);
 		this.name = 'AuthError';
@@ -119,6 +123,21 @@ export async function login(db: Db, kv: KVNamespace, input: LoginInput): Promise
 		throw new AuthError('Invalid username or password', 'invalid_credentials');
 	}
 
+	// Checked only after the password verified: reporting "disabled" to
+	// someone who didn't prove they own the account would turn login into
+	// a way to enumerate which usernames exist and which are suspended.
+	if (user.disabled) {
+		await recordAuditEvent(db, {
+			userId: user.id,
+			eventType: 'login_failed',
+			targetType: 'user',
+			targetId: user.id,
+			detail: { reason: 'account_disabled' },
+			ipAddress: input.ipAddress
+		});
+		throw new AuthError('This account has been disabled', 'account_disabled');
+	}
+
 	const sessionId = generateSessionId();
 	const { createdAt, expiresAt } = computeSessionExpiry();
 
@@ -177,6 +196,13 @@ export async function resolveSession(
 		where: eq(users.id, session.userId)
 	});
 	if (!user) {
+		throw new AuthError('Session not found', 'session_not_found');
+	}
+	// Disabling has to end the sessions a user already holds, not merely
+	// stop them getting a new one — otherwise a suspended account keeps
+	// working until its session happens to expire, which can be days.
+	// Reported as a missing session so the app treats it as logged out.
+	if (user.disabled) {
 		throw new AuthError('Session not found', 'session_not_found');
 	}
 

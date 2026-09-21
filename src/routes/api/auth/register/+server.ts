@@ -4,10 +4,7 @@ import { getDb } from '$lib/server/db';
 import { register, login, AuthError } from '$lib/server/auth/service';
 import { SESSION_COOKIE_NAME, sessionCookieOptions } from '$lib/server/auth/cookie';
 import { pickStrings } from '$lib/server/http/validate';
-
-const MIN_USERNAME_LENGTH = 3;
-const MAX_USERNAME_LENGTH = 32;
-const MIN_PASSWORD_LENGTH = 8;
+import { usernameProblem, passwordProblem } from '$lib/shared/credential-rules';
 
 export const POST: RequestHandler = async ({ request, platform, cookies, getClientAddress }) => {
 	const body = await request.json().catch(() => null);
@@ -18,15 +15,10 @@ export const POST: RequestHandler = async ({ request, platform, cookies, getClie
 
 	const { username, password, inviteCode } = fields;
 
-	if (username.length < MIN_USERNAME_LENGTH || username.length > MAX_USERNAME_LENGTH) {
-		error(
-			400,
-			`username must be between ${MIN_USERNAME_LENGTH} and ${MAX_USERNAME_LENGTH} characters`
-		);
-	}
-	if (password.length < MIN_PASSWORD_LENGTH) {
-		error(400, `password must be at least ${MIN_PASSWORD_LENGTH} characters`);
-	}
+	const usernameIssue = usernameProblem(username);
+	if (usernameIssue) error(400, usernameIssue);
+	const passwordIssue = passwordProblem(password);
+	if (passwordIssue) error(400, passwordIssue);
 
 	const db = getDb(platform!.env);
 

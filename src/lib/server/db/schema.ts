@@ -18,6 +18,12 @@ export const users = sqliteTable('users', {
 	isAdmin: integer('is_admin', { mode: 'boolean' }).notNull().default(false),
 	storageQuotaBytes: integer('storage_quota_bytes').notNull().default(1_073_741_824), // 1GB
 	autoEvictEnabled: integer('auto_evict_enabled', { mode: 'boolean' }).notNull().default(true),
+	// Suspends login without destroying anything: the row, the library and
+	// the playlists all stay exactly as they were, so re-enabling is a
+	// single flag flip rather than a restore. Checked in login() and in
+	// resolveSession(), because disabling has to end the sessions a user
+	// already holds, not just stop them getting a new one.
+	disabled: integer('disabled', { mode: 'boolean' }).notNull().default(false),
 	// Lazily created (see ensureDefaultPlaylist) the first time an import
 	// doesn't specify a target playlist — null until then, not eagerly
 	// created at registration, so a user who never imports anything never
