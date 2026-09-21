@@ -41,6 +41,7 @@ import random
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -130,9 +131,102 @@ YT_DLP_RETRY_BASE_DELAY_SECONDS = 5  # doubles each retry, plus jitter — see w
 # retry count a lie. This schedule (45, 75, 105, ... +30s per attempt) sums to
 # 1800s (30min) worst case across all 10 attempts, leaving the other 30
 # minutes of the job timeout for the retries' own download work.
+# "Video unavailable" is ambiguous (see _is_maybe_throttled_error), so it
+# gets a deliberately short ladder: 5s, 10s. Long enough to survive a
+# brief throttle, short enough that a batch full of genuinely-removed
+# videos costs ~15s each rather than the rate-limit ladder's ~75s.
+YT_DLP_MAYBE_THROTTLED_MAX_RETRIES = 2
+
+# How long one import may run before it gives up and says so. Generous
+# because a throttled job legitimately spends long stretches asleep (see
+# ThrottleGate.MAX_DELAY_SECONDS), and stopping a job that is merely
+# waiting out a block would throw away the work already done. The
+# workflow's own timeout-minutes sits a little above this so that this
+# limit — the one that reports back to the user — is the one that fires.
+JOB_TIMEOUT_SECONDS = 3 * 60 * 60
+
 YT_DLP_BOT_CHECK_MAX_RETRIES = 10
 YT_DLP_BOT_CHECK_BASE_DELAY_SECONDS = 45
 YT_DLP_BOT_CHECK_DELAY_STEP_SECONDS = 30
+
+
+class ThrottleGate:
+    """Shared brake every yt-dlp worker checks before making a request.
+
+    Retrying alone does not fix throttling: the retry goes to the same
+    session that just said no, and DOWNLOAD_CONCURRENCY/PROBE_CONCURRENCY
+    workers retrying together recreate exactly the burst that caused it.
+    yt-dlp's own advice for this error is to put a delay between video
+    requests, which is what this does — but only once YouTube has actually
+    pushed back, so an import that is not being throttled runs at full
+    speed.
+
+    Each throttle response widens the gap between requests (0s, 2s, 4s,
+    8s, capped), and a run of clean responses narrows it again. The state
+    is process-wide rather than per-worker because the thing being
+    rate-limited is the session, not any one worker.
+
+    Deliberately not a semaphore resize: the workers are already in
+    flight, and slowing each request down is both simpler and
+    better-matched to what YouTube measures.
+    """
+
+    # Ceiling on the gap between requests. Thirty minutes is deliberately
+    # far past the "up to an hour" YouTube quotes for a throttled session:
+    # a job that has been told to back off that hard is better off waiting
+    # than burning its budget confirming it is still blocked. The job's own
+    # three-hour timeout (see JOB_TIMEOUT_SECONDS) is what stops this
+    # waiting forever.
+    MAX_DELAY_SECONDS = 1800.0
+    # Where the ladder starts, then doubling: 2, 4, 8, ... up to the cap.
+    INITIAL_DELAY_SECONDS = 2.0
+    # Clean responses needed before easing off. Higher than 1 so a single
+    # lucky request doesn't undo a backoff that is still needed.
+    RECOVERY_THRESHOLD = 10
+
+    def __init__(self) -> None:
+        self._delay = 0.0
+        self._clean_streak = 0
+        self._lock = threading.Lock()
+
+    def before_request(self) -> None:
+        """Waits out the current delay, if any. Called on the worker thread."""
+        with self._lock:
+            delay = self._delay
+        if delay > 0:
+            # Jittered so concurrent workers spread out instead of
+            # resuming in lockstep and re-bursting. Capped in absolute
+            # terms rather than scaled with the delay: at the 30-minute
+            # ceiling a proportional jitter would add a further quarter
+            # hour for no extra spreading benefit.
+            time.sleep(delay + random.uniform(0, min(delay / 2, 5.0)))
+
+    def record_throttled(self) -> None:
+        with self._lock:
+            self._clean_streak = 0
+            previous = self._delay
+            self._delay = min(
+                self.MAX_DELAY_SECONDS,
+                self.INITIAL_DELAY_SECONDS if self._delay == 0 else self._delay * 2
+            )
+            if self._delay != previous:
+                print(
+                    f"throttled by YouTube; spacing requests {self._delay:.1f}s apart",
+                    file=sys.stderr,
+                )
+
+    def record_success(self) -> None:
+        with self._lock:
+            if self._delay == 0:
+                return
+            self._clean_streak += 1
+            if self._clean_streak >= self.RECOVERY_THRESHOLD:
+                self._clean_streak = 0
+                self._delay = 0.0 if self._delay <= self.INITIAL_DELAY_SECONDS else self._delay / 2
+                print(f"recovered; request spacing now {self._delay:.1f}s", file=sys.stderr)
+
+
+THROTTLE_GATE = ThrottleGate()
 
 
 class QuotaExceededError(Exception):
@@ -145,9 +239,38 @@ def _is_rate_limit_error(exc: Exception) -> bool:
     that surface it as a plain error message instead — the WARP proxy's
     IP is shared across every concurrent download in this job (and any
     other job running at the same time), so a 429 here is almost always
-    transient rate-limiting, not "this video is broken"."""
+    transient rate-limiting, not "this video is broken".
+
+    Also matches YouTube's softer phrasing of the same thing. A throttled
+    session is told "This content isn't available, try again later", and
+    — confirmed on a 976-song import where 535 songs failed — plain
+    "Video unavailable" for most of the rest. Neither says 429 and
+    neither was retried, so a throttled run recorded hundreds of
+    permanent failures for videos that were fine: every sampled id
+    resolved anonymously, first try, once the session had cooled down.
+    """
     message = str(exc)
-    return "429" in message or "Too Many Requests" in message
+    return "429" in message or "Too Many Requests" in message or "try again later" in message
+
+
+def _is_maybe_throttled_error(exc: Exception) -> bool:
+    """True for "Video unavailable", which is genuinely ambiguous.
+
+    A throttled session is handed it for videos that are perfectly fine —
+    on the 976-song import that failed 535 of them, every sampled id
+    resolved anonymously on the first try once the session cooled down.
+    But it is also what YouTube says about a video that really was
+    deleted or made private, and no amount of retrying fixes that.
+
+    So it retries, but on its own short ladder rather than the rate-limit
+    one: enough to ride out a throttle, cheap enough that a playlist full
+    of genuinely dead videos doesn't spend the job's whole time budget
+    waiting. At MAYBE_THROTTLED_MAX_RETRIES=2 the worst case is ~15s per
+    dead video, against ~75s on the full rate-limit ladder — which, at
+    fifty dead videos in a batch, is the difference between one extra
+    minute and over an hour.
+    """
+    return "Video unavailable" in str(exc)
 
 
 def _is_bot_check_error(exc: Exception) -> bool:
@@ -163,22 +286,46 @@ def _is_bot_check_error(exc: Exception) -> bool:
 
 
 def with_retry(fn, *args, description: str, **kwargs):
-    """Runs a blocking yt-dlp call, retrying on rate-limit and bot-check
-    errors with exponential backoff + jitter (the jitter matters here
+    """Runs a blocking yt-dlp call, retrying anything that looks like
+    throttling with exponential backoff + jitter (the jitter matters here
     specifically: DOWNLOAD_CONCURRENCY songs hitting the same error around
     the same moment and retrying on the exact same fixed schedule would
-    just recreate the same burst against the same shared proxy IP). Other
-    failures (age-gated video, region-blocked, genuinely removed) are
-    raised immediately — retrying those would only waste the job's time
-    budget on something no amount of waiting fixes."""
+    just recreate the same burst against the same shared proxy IP).
+
+    Three ladders, because the three failures cost different amounts to
+    be wrong about: the bot-check wall is a long block worth waiting out,
+    a 429 is short, and "Video unavailable" might not be throttling at
+    all (see _is_maybe_throttled_error) so it gets the shortest.
+
+    Every attempt also passes through THROTTLE_GATE, which spaces out
+    requests process-wide once YouTube pushes back — retrying on its own
+    just sends the retry into the same throttled session.
+
+    Other failures (age-gated, region-blocked) are raised immediately;
+    retrying those would only waste the job's time budget."""
     last_exc: Exception | None = None
     rate_limit_attempts = 0
     bot_check_attempts = 0
+    maybe_throttled_attempts = 0
     while True:
         try:
-            return fn(*args, **kwargs)
+            # Waits out any spacing a previous throttle imposed, so the
+            # brake applies to first attempts too — not just retries.
+            THROTTLE_GATE.before_request()
+            result = fn(*args, **kwargs)
+            THROTTLE_GATE.record_success()
+            return result
         except Exception as exc:  # noqa: BLE001 - re-raised below if not retried
             last_exc = exc
+            if (
+                _is_rate_limit_error(exc)
+                or _is_bot_check_error(exc)
+                or _is_maybe_throttled_error(exc)
+            ):
+                # Widen the gap for every worker, not just this one: the
+                # session is what got throttled, so retrying this call
+                # alone at full speed would keep the pressure on.
+                THROTTLE_GATE.record_throttled()
             if _is_bot_check_error(exc):
                 if bot_check_attempts >= YT_DLP_BOT_CHECK_MAX_RETRIES:
                     raise
@@ -201,6 +348,17 @@ def with_retry(fn, *args, description: str, **kwargs):
                 print(
                     f"{description}: rate limited (attempt {rate_limit_attempts}/"
                     f"{YT_DLP_MAX_RETRIES}), retrying in {delay:.1f}s",
+                    file=sys.stderr,
+                )
+            elif _is_maybe_throttled_error(exc):
+                if maybe_throttled_attempts >= YT_DLP_MAYBE_THROTTLED_MAX_RETRIES:
+                    raise
+                delay = YT_DLP_RETRY_BASE_DELAY_SECONDS * (2**maybe_throttled_attempts) + random.uniform(0, 3)
+                maybe_throttled_attempts += 1
+                print(
+                    f"{description}: reported unavailable, which a throttled session also "
+                    f"says about working videos (attempt {maybe_throttled_attempts}/"
+                    f"{YT_DLP_MAYBE_THROTTLED_MAX_RETRIES}), retrying in {delay:.1f}s",
                     file=sys.stderr,
                 )
             else:
@@ -233,6 +391,31 @@ def fetch_cookies_file() -> str | None:
     except Exception as exc:  # noqa: BLE001 - missing/unreadable cookies file falls back to cookie-less
         print(f"No cookies file at {YT_COOKIES_OBJECT_KEY} ({exc}); proceeding without cookies", file=sys.stderr)
         return None
+
+    # Downloading it is not the same as it being usable. A file in the
+    # wrong format was previously handed to yt-dlp anyway, which then
+    # raised "does not look like a Netscape format cookies file" once per
+    # song — surfacing as a pile of per-song failures with nothing
+    # pointing at the real cause. Checking here fails the same way every
+    # time, loudly, and falls back to the anonymous path that works.
+    try:
+        first_line = dest_path.read_text(errors="replace").lstrip().split("\n", 1)[0]
+    except Exception as exc:  # noqa: BLE001 - unreadable file is the same situation as a missing one
+        print(f"Cookies file unreadable ({exc}); proceeding without cookies", file=sys.stderr)
+        return None
+
+    # What yt-dlp itself looks for. Both spellings appear in the wild:
+    # browsers write the comment header, some exporters write the
+    # "#HttpOnly_" prefixed form with no header at all.
+    if not (first_line.startswith("# Netscape HTTP Cookie File") or first_line.startswith("# HTTP Cookie File")):
+        print(
+            f"Cookies file at {YT_COOKIES_OBJECT_KEY} is not in Netscape format "
+            f"(first line: {first_line[:80]!r}); proceeding without cookies. "
+            "Re-export it from the browser with a cookies.txt extension.",
+            file=sys.stderr,
+        )
+        return None
+
     return str(dest_path)
 
 
@@ -705,6 +888,40 @@ async def run() -> None:
 
         watcher = asyncio.create_task(watch_for_cancel())
 
+        async def enforce_job_timeout() -> None:
+            """Stops the job at JOB_TIMEOUT_SECONDS and says so.
+
+            The workflow's own timeout-minutes would also stop it, but by
+            killing the runner — the WebSocket just dies and the job sits
+            at `running` until the stale sweep notices, with nothing
+            telling the user what happened. Enforcing it here, inside the
+            connection, means the timeout is reported like any other fatal
+            error and shows up in the UI immediately.
+
+            os._exit for the same reason watch_for_cancel uses it: worker
+            threads blocked in yt-dlp (including one asleep on a 30-minute
+            throttle backoff) do not unwind, and raising here would leave
+            the process alive until they finished on their own.
+            """
+            await asyncio.sleep(JOB_TIMEOUT_SECONDS)
+            hours = JOB_TIMEOUT_SECONDS / 3600
+            print(f"Import job exceeded its {hours:.0f}h limit; stopping", file=sys.stderr)
+            try:
+                await send_event(
+                    {
+                        "type": "fatal_error",
+                        "reason": (
+                            f"Import stopped after {hours:.0f} hours. Songs already imported are "
+                            "kept — import the rest separately, ideally in a smaller batch."
+                        ),
+                    }
+                )
+            except Exception:  # noqa: BLE001 - the exit below matters more than the report
+                pass
+            os._exit(1)
+
+        timeout_task = asyncio.create_task(enforce_job_timeout())
+
         # Anything raised here happens before the per-song loop even starts
         # (source extraction, the known-video-ids lookup), so there's no
         # song to attribute a song_failed event to and no way to tell the
@@ -778,6 +995,7 @@ async def run() -> None:
                 await asyncio.gather(*(probe_one(i, e) for i, e in enumerate(pending_entries)))
                 if cancelled:
                     watcher.cancel()
+                    timeout_task.cancel()
                     return
                 estimated_total_bytes = sum(sizes)
 
@@ -909,6 +1127,7 @@ async def run() -> None:
         was_cancelled = cancelled
         cancelled = True  # stop the watcher even if no cancel decision ever arrived
         watcher.cancel()
+        timeout_task.cancel()
 
         if was_cancelled:
             return
