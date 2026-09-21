@@ -12,6 +12,8 @@ function makeJob(overrides: Partial<ImportJobState> = {}): ImportJobState {
 		failedCount: 0,
 		failures: [],
 		previewEntries: null,
+		truncated: false,
+		truncatedLimit: null,
 		fatalError: null,
 		probing: null,
 		...overrides

@@ -47,7 +47,14 @@ export type ImportProgressEvent =
 	// just broadcasts it through to the browser like any other event (see
 	// import-progress.ts).
 	| { type: 'probing_progress'; checked: number; total: number }
-	| { type: 'preview'; entries: PreviewEntry[] }
+	| {
+			type: 'preview';
+			entries: PreviewEntry[];
+			/** The source held more songs than one import may take; the rest were dropped. */
+			truncated?: boolean;
+			/** The cap that was applied, so the UI can name the number it enforced. */
+			limit?: number;
+	  }
 	| { type: 'song_success'; song: SongImportSuccess }
 	// A song from the source that was already in the library (found via
 	// findKnownVideoIds), so CI never downloaded it — only needs linking

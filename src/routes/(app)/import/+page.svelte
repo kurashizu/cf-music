@@ -15,6 +15,7 @@
 	import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle';
 	import CircleXIcon from '@lucide/svelte/icons/circle-x';
 	import SkipForwardIcon from '@lucide/svelte/icons/skip-forward';
+	import ScissorsIcon from '@lucide/svelte/icons/scissors';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -72,6 +73,7 @@
 				failedCount: 0,
 				failures: null,
 				previewEntries: null,
+				truncated: false,
 				fatalError: null
 			});
 			sourceUrl = '';
@@ -244,6 +246,21 @@
 												<SkipForwardIcon class="size-4" />
 												{job.knownCount} already in library — skipped, no download needed
 											</div>
+											{#if job.truncated}
+												<!-- Not styled as an error: the import is proceeding
+												     normally, just over a shorter list than the source
+												     held. Says the number so the user can tell how much
+												     was left behind. -->
+												<div class="text-muted-foreground flex items-center gap-1.5 text-xs">
+													<ScissorsIcon class="size-4 shrink-0" />
+													<span>
+														Only the first {job.truncatedLimit ??
+															job.previewEntries?.length ??
+															job.totalCount} songs were taken — this playlist is longer than one import
+														can handle. Import the rest separately.
+													</span>
+												</div>
+											{/if}
 										{/if}
 									</div>
 								{/key}

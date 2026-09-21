@@ -18,6 +18,7 @@ interface RawImportJob {
 	failures: string | null;
 	previewEntries: string | null;
 	fatalError: string | null;
+	truncated?: boolean;
 }
 
 function parseJobRow(row: RawImportJob): ImportJobState {
@@ -31,6 +32,11 @@ function parseJobRow(row: RawImportJob): ImportJobState {
 		failedCount: row.failedCount,
 		failures: row.failures ? JSON.parse(row.failures) : [],
 		previewEntries: row.previewEntries ? JSON.parse(row.previewEntries) : null,
+		truncated: row.truncated ?? false,
+		// The limit itself isn't persisted — only that it was hit. The UI
+		// falls back to naming the count it did import, which is the same
+		// number by definition.
+		truncatedLimit: null,
 		fatalError: row.fatalError,
 		// A server-fetched row is always past the probing phase (it's either
 		// not started, or already has totalCount/previewEntries) — probing

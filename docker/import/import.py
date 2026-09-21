@@ -65,6 +65,17 @@ MINIO_SECRET_KEY = os.environ["MINIO_SECRET_KEY"]
 SOCKS5_PROXY = "socks5://127.0.0.1:40000"
 COVER_CRF = "40"
 DOWNLOAD_CONCURRENCY = 3  # sequential downloads were the bottleneck on large playlists
+# Size probing is a metadata lookup, not a transfer: it resolves one format
+# and reads its reported size, holding no bandwidth while it waits. It can
+# therefore run far wider than downloads do, and on a large playlist the
+# probing phase is otherwise the longest part of the whole import — 2000
+# songs at 3 at a time is 667 sequential round-trips.
+PROBE_CONCURRENCY = 12
+# Upper bound on how many songs one import may take on. Enforced during
+# playlist extraction (see extract_playlist_entries), so an oversized
+# playlist is cut down before anything is probed or downloaded rather than
+# discovered to be too big halfway through.
+MAX_IMPORT_ENTRIES = 1000
 
 # Netscape-format cookies.txt for a real (secondary/throwaway) YouTube
 # account, manually uploaded to MinIO out-of-band — this script never
@@ -251,8 +262,19 @@ def yt_dlp_options(**overrides) -> dict:
     return options
 
 
-def extract_playlist_entries(source_url: str) -> list[dict]:
-    options = yt_dlp_options(extract_flat="in_playlist")
+def extract_playlist_entries(source_url: str) -> tuple[list[dict], bool]:
+    """Returns the playlist's entries and whether it was truncated.
+
+    playlistend caps this at the yt-dlp layer rather than slicing after the
+    fact: yt-dlp stops walking the playlist once it has enough, so a
+    10,000-item playlist costs roughly what a 1,000-item one does instead
+    of being fully enumerated and then thrown away.
+
+    Asking for one past the limit is what makes truncation detectable —
+    with no cheap "how long is this playlist really" call available under
+    extract_flat, receiving MAX+1 entries is the signal that there was
+    more, and the extra entry is dropped below."""
+    options = yt_dlp_options(extract_flat="in_playlist", playlistend=MAX_IMPORT_ENTRIES + 1)
 
     def _extract():
         with yt_dlp.YoutubeDL(options) as ydl:
@@ -260,7 +282,11 @@ def extract_playlist_entries(source_url: str) -> list[dict]:
 
     info = with_retry(_extract, description="playlist extraction")
     entries = info.get("entries") or [info]
-    return [e for e in entries if e is not None]
+    entries = [e for e in entries if e is not None]
+    truncated = len(entries) > MAX_IMPORT_ENTRIES
+    if truncated:
+        entries = entries[:MAX_IMPORT_ENTRIES]
+    return entries, truncated
 
 
 def estimate_song_size_bytes(entry: dict) -> int:
@@ -291,7 +317,7 @@ def estimate_song_size_bytes(entry: dict) -> int:
         return 0
 
 
-def extract_and_filter(source_url: str) -> tuple[list[dict], list[dict], set[str]]:
+def extract_and_filter(source_url: str) -> tuple[list[dict], list[dict], set[str], bool]:
     """Extracts the playlist and splits out songs already owned by someone —
     everything this touches (yt-dlp, urllib) is synchronous/blocking, so
     this is meant to be run via asyncio.to_thread from run(), not awaited
@@ -312,11 +338,11 @@ def extract_and_filter(source_url: str) -> tuple[list[dict], list[dict], set[str
     library was skipped here (correctly: no need to re-download it) but
     then never linked into this job's target playlist either, silently
     dropped from an import that named it."""
-    entries = extract_playlist_entries(source_url)
+    entries, truncated = extract_playlist_entries(source_url)
     video_ids = [e["id"] for e in entries]
     known_video_ids = fetch_known_video_ids(video_ids)
     pending_entries = [e for e in entries if e["id"] not in known_video_ids]
-    return entries, pending_entries, known_video_ids
+    return entries, pending_entries, known_video_ids, truncated
 
 
 def fetch_remaining_quota_bytes() -> int:
@@ -649,11 +675,14 @@ async def run() -> None:
             # so this doesn't block the event loop while it runs (a fast
             # call anyway: extraction + the known-video-ids lookup, not the
             # per-song size probing below).
-            entries, pending_entries, known_video_ids = await asyncio.to_thread(extract_and_filter, SOURCE_URL)
+            entries, pending_entries, known_video_ids, truncated = await asyncio.to_thread(
+                extract_and_filter, SOURCE_URL
+            )
 
             # Probes each pending song's real download size concurrently
-            # (DOWNLOAD_CONCURRENCY at once, same as the download loop
-            # below), sending a probing_progress event after each one
+            # (PROBE_CONCURRENCY at once — wider than the download loop
+            # below, since a probe holds no bandwidth), sending a
+            # probing_progress event after each one
             # completes — deliberately real WebSocket traffic, not just
             # ping/pong, on every song rather than one big to_thread call
             # for the whole batch. That single-call version is what
@@ -665,7 +694,7 @@ async def run() -> None:
             # count as "the connection is in use" there. A per-song event
             # is frequent enough that no gap should ever get remotely
             # close to that.
-            probe_semaphore = asyncio.Semaphore(DOWNLOAD_CONCURRENCY)
+            probe_semaphore = asyncio.Semaphore(PROBE_CONCURRENCY)
             sizes = [0] * len(pending_entries)
             probed_count = 0
             probe_lock = asyncio.Lock()
@@ -715,6 +744,11 @@ async def run() -> None:
                     }
                     for e in pending_entries
                 ],
+                # The source had more than MAX_IMPORT_ENTRIES; the tail was
+                # dropped. Sent so the UI can say so rather than leaving the
+                # user to notice the count doesn't match their playlist.
+                "truncated": truncated,
+                "limit": MAX_IMPORT_ENTRIES,
             }
         )
 

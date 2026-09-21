@@ -19,6 +19,12 @@ export interface ImportJobState {
 	failedCount: number;
 	failures: SongImportFailureInput[];
 	previewEntries: PreviewEntry[] | null;
+	// The source held more songs than one import may take, so the tail was
+	// dropped — the UI says so, since the count the user ends up with
+	// otherwise silently disagrees with the playlist they pointed at.
+	truncated: boolean;
+	/** The cap that was applied, when one was. */
+	truncatedLimit: number | null;
 	// Distinct from `failures` (per-song failures in an otherwise-proceeding
 	// batch): set when the whole job failed before/outside the per-song
 	// loop — source extraction, WARP setup, etc. — so there's no video to
@@ -38,8 +44,13 @@ function applyProbingProgress(job: ImportJobState, checked: number, total: numbe
 	return { ...job, probing: { checked, total } };
 }
 
-function applyPreview(job: ImportJobState, entries: PreviewEntry[]): ImportJobState {
-	return { ...job, previewEntries: entries, probing: null };
+function applyPreview(
+	job: ImportJobState,
+	entries: PreviewEntry[],
+	truncated: boolean,
+	limit: number | null
+): ImportJobState {
+	return { ...job, previewEntries: entries, truncated, truncatedLimit: limit, probing: null };
 }
 
 function applySongSuccess(job: ImportJobState): ImportJobState {
@@ -84,7 +95,7 @@ export function applyImportEvent(job: ImportJobState, event: ImportProgressEvent
 		case 'probing_progress':
 			return applyProbingProgress(job, event.checked, event.total);
 		case 'preview':
-			return applyPreview(job, event.entries);
+			return applyPreview(job, event.entries, event.truncated ?? false, event.limit ?? null);
 		case 'song_success':
 			return applySongSuccess(job);
 		case 'song_known':

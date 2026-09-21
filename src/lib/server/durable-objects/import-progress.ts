@@ -147,7 +147,12 @@ export class ImportProgressDurableObject implements DurableObject {
 
 		switch (message.event.type) {
 			case 'preview':
-				await submitImportPreview(db, message.jobId, message.event.entries);
+				await submitImportPreview(
+					db,
+					message.jobId,
+					message.event.entries,
+					message.event.truncated ?? false
+				);
 				break;
 			case 'song_success':
 				await recordSongImported(db, message.jobId, userId, message.event.song);

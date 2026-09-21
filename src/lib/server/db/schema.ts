@@ -217,6 +217,11 @@ export const importJobs = sqliteTable(
 		// safe here and when it gets refreshed.
 		cachedUsageBytes: integer('cached_usage_bytes'),
 		cachedUsageAt: text('cached_usage_at'),
+		// The source playlist held more songs than one import may take, so
+		// the tail was dropped (see MAX_IMPORT_ENTRIES in
+		// docker/import/import.py). Kept on the job rather than only sent as
+		// a live event so the import page still says so after a refresh.
+		truncated: integer('truncated', { mode: 'boolean' }).notNull().default(false),
 		previewEntries: text('preview_entries'), // JSON array of {videoId, title, durationSeconds} found during extraction, informational only
 		fatalError: text('fatal_error'), // set when the whole job failed before/outside the per-song loop (source extraction, WARP setup, etc.) — distinct from per-song entries in `failures`
 		createdAt: text('created_at')
