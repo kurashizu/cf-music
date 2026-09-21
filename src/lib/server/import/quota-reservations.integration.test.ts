@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { env } from 'cloudflare:test';
+import { sql, eq } from 'drizzle-orm';
 import { getDb } from '../db';
-import { users, quotaReservations } from '../db/schema';
-import { createImportJob } from './jobs';
+import { users, quotaReservations, importJobs } from '../db/schema';
 import {
 	reserveQuota,
 	releaseQuotaReservation,
@@ -11,20 +11,39 @@ import {
 
 const db = getDb(env.DB);
 
+// Upserts rather than insert-or-ignore: users survive between tests here,
+// and doing nothing on conflict would silently keep an earlier test's quota
+// instead of the one this test asked for.
 async function seedUser(id: string, quotaBytes = 1_000_000) {
 	await db
 		.insert(users)
 		.values({ id, username: `user-${id}`, passwordHash: 'x', storageQuotaBytes: quotaBytes })
-		.onConflictDoNothing();
+		.onConflictDoUpdate({ target: users.id, set: { storageQuotaBytes: quotaBytes } });
 }
 
+/**
+ * Inserts a job row directly rather than going through createImportJob,
+ * which refuses a second concurrent job per user. These tests are about
+ * reservation bookkeeping, and one of them deliberately needs two jobs for
+ * the same user to prove reservations stay scoped to the job holding them.
+ */
 async function seedJob(userId: string): Promise<string> {
-	const { id } = await createImportJob(db, { userId, sourceUrl: 'https://example.com/playlist' });
+	const id = crypto.randomUUID();
+	await db.insert(importJobs).values({
+		id,
+		userId,
+		sourceUrl: 'https://example.com/playlist',
+		updatedAt: sql`(current_timestamp)`
+	});
 	return id;
 }
 
 beforeEach(async () => {
 	await db.delete(quotaReservations);
+	// Jobs too: one import at a time per user is enforced now (see
+	// createImportJob), so a job left behind by the previous test would
+	// block this one from seeding its own.
+	await db.delete(importJobs);
 });
 
 describe('reserveQuota', () => {
@@ -181,5 +200,57 @@ describe('releaseAllQuotaReservationsForJob', () => {
 		// jobB's 400,000 reservation should still be counted.
 		const result = await reserveQuota(db, 'u1', jobA, 'c', 700_000);
 		expect(result.reserved).toBe(false);
+	});
+});
+
+describe('usage caching', () => {
+	it('reuses the cached usage figure instead of recomputing it per song', async () => {
+		await seedUser('u1', 10_000_000);
+		const jobId = await seedJob('u1');
+
+		await reserveQuota(db, 'u1', jobId, 'a', 100);
+		const first = await db.query.importJobs.findFirst({ where: eq(importJobs.id, jobId) });
+		expect(first?.cachedUsageBytes).toBe(0);
+		expect(first?.cachedUsageAt).not.toBeNull();
+
+		// Poison the cache with a value the real query would never return, so
+		// a second reserve proves it read the cache rather than recomputing.
+		await db
+			.update(importJobs)
+			.set({ cachedUsageBytes: 4_000_000 })
+			.where(eq(importJobs.id, jobId));
+
+		const result = await reserveQuota(db, 'u1', jobId, 'b', 100);
+
+		expect(result.reserved).toBe(true);
+		// 10_000_000 quota - 4_000_000 poisoned usage - 200 reserved
+		expect(result.remainingBytes).toBe(5_999_800);
+	});
+
+	it('recomputes once the cached figure has gone stale', async () => {
+		await seedUser('u1', 10_000_000);
+		const jobId = await seedJob('u1');
+
+		await db.update(importJobs).set({
+			cachedUsageBytes: 4_000_000,
+			cachedUsageAt: '2020-01-01 00:00:00'
+		});
+
+		const result = await reserveQuota(db, 'u1', jobId, 'a', 100);
+
+		// The stale 4_000_000 is discarded in favour of real usage (0).
+		expect(result.remainingBytes).toBe(9_999_900);
+		const row = await db.query.importJobs.findFirst({ where: eq(importJobs.id, jobId) });
+		expect(row?.cachedUsageBytes).toBe(0);
+	});
+
+	it('still counts reservations exactly, never from the cache', async () => {
+		// The cache only ever stands in for committed usage — the reserved
+		// sum has to stay exact or two songs could both fit the same bytes.
+		await seedUser('u1', 1_000_000);
+		const jobId = await seedJob('u1');
+
+		expect((await reserveQuota(db, 'u1', jobId, 'a', 600_000)).reserved).toBe(true);
+		expect((await reserveQuota(db, 'u1', jobId, 'b', 600_000)).reserved).toBe(false);
 	});
 });

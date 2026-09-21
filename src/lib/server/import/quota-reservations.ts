@@ -1,7 +1,64 @@
 import { and, eq, sql } from 'drizzle-orm';
 import type { Db } from '../db';
-import { quotaReservations } from '../db/schema';
+import { importJobs, quotaReservations } from '../db/schema';
 import { getUserQuotaBytes, getUserStorageUsageBytes } from '../eviction/usage';
+
+/**
+ * How long a job may reuse its cached usage figure before recomputing.
+ *
+ * Usage can grow without this job's involvement — adding an existing song
+ * to a playlist from the UI counts against quota without any reservation —
+ * so the cache can drift low, which would let a job over-reserve. Bounding
+ * the staleness bounds that drift: at worst a user over-reserves by
+ * whatever they added by hand in the last minute, and the next refresh
+ * corrects it. A minute is short enough that the error stays small and
+ * long enough that a fast import (several songs per second) still gets
+ * essentially all of the savings.
+ *
+ * Quota is not a hard safety boundary here — it's an allowance with an
+ * eviction path — so trading an exact-but-expensive figure for a
+ * slightly-stale-but-cheap one is the right shape of tradeoff. The one
+ * thing that must stay exact is the *reservation* sum, and that still
+ * comes straight from the table on every call.
+ */
+const USAGE_CACHE_TTL_MS = 60_000;
+
+/**
+ * The user's storage usage, recomputed at most once per
+ * USAGE_CACHE_TTL_MS per job.
+ *
+ * Without this, reserveQuota recomputed usage for every single song, and
+ * each recomputation reads the user's entire library — the dominant source
+ * of D1 row reads in the whole application, and quadratic overall, since
+ * cost per song grows with the library the import is adding to.
+ *
+ * Safe to cache only because one user has at most one import in flight
+ * (see createImportJob): the job reading this value is the only importer
+ * whose reservations are in play, so the sole way the underlying figure
+ * moves is a manual library change, which the TTL bounds.
+ */
+async function getCachedUsageBytes(db: Db, userId: string, jobId: string): Promise<number> {
+	const job = await db.query.importJobs.findFirst({
+		where: eq(importJobs.id, jobId),
+		columns: { cachedUsageBytes: true, cachedUsageAt: true }
+	});
+
+	if (job?.cachedUsageBytes != null && job.cachedUsageAt) {
+		// cached_usage_at is written by SQLite's own current_timestamp, so it
+		// has no zone marker; it is UTC, and Date.parse needs telling.
+		const takenAt = Date.parse(job.cachedUsageAt.replace(' ', 'T') + 'Z');
+		if (Number.isFinite(takenAt) && Date.now() - takenAt < USAGE_CACHE_TTL_MS) {
+			return job.cachedUsageBytes;
+		}
+	}
+
+	const usageBytes = await getUserStorageUsageBytes(db, userId);
+	await db
+		.update(importJobs)
+		.set({ cachedUsageBytes: usageBytes, cachedUsageAt: sql`(current_timestamp)` })
+		.where(eq(importJobs.id, jobId));
+	return usageBytes;
+}
 
 export interface ReserveQuotaResult {
 	reserved: boolean;
@@ -43,7 +100,7 @@ export async function reserveQuota(
 ): Promise<ReserveQuotaResult> {
 	const [quotaBytes, usageBytes] = await Promise.all([
 		getUserQuotaBytes(db, userId),
-		getUserStorageUsageBytes(db, userId)
+		getCachedUsageBytes(db, userId, jobId)
 	]);
 
 	// Not expressible with Drizzle's query builder (there's no real table to
@@ -62,6 +119,8 @@ export async function reserveQuota(
 	`);
 
 	const reserved = inserted.length > 0;
+	// Straight from the table, never cached: this is the figure the INSERT
+	// above tested against, and the one the caller decides on.
 	const currentlyReserved = await getUserReservedBytes(db, userId);
 	const remainingBytes = Math.max(0, quotaBytes - usageBytes - currentlyReserved);
 

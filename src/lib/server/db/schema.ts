@@ -206,6 +206,17 @@ export const importJobs = sqliteTable(
 		knownCount: integer('known_count').notNull().default(0),
 		failedCount: integer('failed_count').notNull().default(0),
 		failures: text('failures'), // JSON array of failed video_id + reason entries
+		// The user's total storage usage as of this job's last recomputation,
+		// plus when that was taken. Caches an expensive query: computing usage
+		// means summing file sizes across every song reachable from any of the
+		// user's playlists, which reads the user's whole library — and
+		// reserveQuota needs it once per song. Caching it per job turned a
+		// per-song full-library scan into one scan per refresh window. Null
+		// until this job first reserves anything. See getCachedUsageBytes in
+		// src/lib/server/import/quota-reservations.ts for why a stale value is
+		// safe here and when it gets refreshed.
+		cachedUsageBytes: integer('cached_usage_bytes'),
+		cachedUsageAt: text('cached_usage_at'),
 		previewEntries: text('preview_entries'), // JSON array of {videoId, title, durationSeconds} found during extraction, informational only
 		fatalError: text('fatal_error'), // set when the whole job failed before/outside the per-song loop (source extraction, WARP setup, etc.) — distinct from per-song entries in `failures`
 		createdAt: text('created_at')
