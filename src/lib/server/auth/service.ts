@@ -1,7 +1,7 @@
 import { eq, and, isNull, desc } from 'drizzle-orm';
 import type { Db } from '../db';
 import { users, inviteCodes } from '../db/schema';
-import { hashPassword, verifyPassword } from './password';
+import { hashPassword, verifyPassword, PBKDF2_ITERATIONS } from './password';
 import {
 	generateSessionId,
 	generateInviteCode,
@@ -143,8 +143,12 @@ export async function login(db: Db, kv: KVNamespace, input: LoginInput): Promise
 }
 
 // A syntactically valid but unusable PBKDF2 hash, used only to keep
-// verifyPassword's cost constant when no real user record exists.
-const DUMMY_HASH_FOR_TIMING_PARITY = `pbkdf2$210000$${'0'.repeat(32)}$${'0'.repeat(64)}`;
+// verifyPassword's cost constant when no real user record exists. The
+// iteration count has to be the real one: hardcoding a different value
+// made verifyPassword throw instead of returning false, so logging in
+// with an unknown username 500'd rather than being rejected -- and cost
+// nothing to compute, which is the opposite of timing parity.
+export const DUMMY_HASH_FOR_TIMING_PARITY = `pbkdf2$${PBKDF2_ITERATIONS}$${'0'.repeat(32)}$${'0'.repeat(64)}`;
 
 export interface AuthenticatedSession {
 	userId: string;

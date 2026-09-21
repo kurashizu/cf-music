@@ -2,7 +2,14 @@
 // Workers' crypto.subtle rejects PBKDF2 iteration counts above 100,000
 // (NotSupportedError), which is below OWASP's current SHA-256 recommendation
 // (600,000) — this is the platform ceiling, not a deliberately chosen value.
-const PBKDF2_ITERATIONS = 100_000;
+/**
+ * Workers' crypto.subtle rejects PBKDF2 above 100,000 iterations with a
+ * NotSupportedError, so this is a hard ceiling rather than a tuning knob.
+ * Exported so callers constructing a hash string by hand (see the
+ * timing-parity dummy in service.ts) cannot drift away from the only
+ * value that actually works.
+ */
+export const PBKDF2_ITERATIONS = 100_000;
 const SALT_BYTES = 16;
 const HASH_BYTES = 32;
 

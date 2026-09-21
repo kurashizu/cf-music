@@ -1,5 +1,32 @@
 import { describe, it, expect } from 'vitest';
-import { hashPassword, verifyPassword, timingSafeEqual, parseStoredHash } from './password';
+import {
+	hashPassword,
+	verifyPassword,
+	timingSafeEqual,
+	parseStoredHash,
+	PBKDF2_ITERATIONS
+} from './password';
+import { DUMMY_HASH_FOR_TIMING_PARITY } from './service';
+
+describe('PBKDF2 iteration ceiling', () => {
+	// Workers' crypto.subtle throws NotSupportedError above 100,000
+	// iterations. The test runtime (workerd under Miniflare) does NOT
+	// enforce that ceiling -- verified by deriving 210,000 iterations there
+	// successfully -- so no integration test can catch a violation, and it
+	// only ever surfaces as a 500 in production. Assert the constant here
+	// instead, where the check does not depend on the runtime.
+	it('stays within the limit Workers actually enforces', () => {
+		expect(PBKDF2_ITERATIONS).toBeLessThanOrEqual(100_000);
+	});
+
+	// The dummy is built by hand rather than by hashPassword, so it can
+	// drift from the real cost -- which is both a broken timing defence and,
+	// when the value is one Workers rejects, an outright crash on the
+	// unknown-username path.
+	it('is the iteration count the timing-parity dummy also uses', () => {
+		expect(parseStoredHash(DUMMY_HASH_FOR_TIMING_PARITY)?.iterations).toBe(PBKDF2_ITERATIONS);
+	});
+});
 
 describe('hashPassword / verifyPassword', () => {
 	it('produces a hash in the expected pbkdf2$iterations$salt$hash format', async () => {

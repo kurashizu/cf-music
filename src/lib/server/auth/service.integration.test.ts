@@ -116,9 +116,14 @@ describe('login', () => {
 	});
 
 	it('rejects a nonexistent username', async () => {
-		await expect(login(db, kv, { username: 'nobody', password: 'anything' })).rejects.toThrow(
-			AuthError
-		);
+		// Asserts the specific error, not merely that something was thrown:
+		// the no-such-user path runs verifyPassword against a hand-built
+		// dummy hash, and when that hash was malformed the crypto layer threw
+		// its own error instead -- which still satisfies a bare toThrow(), so
+		// this surfaced as a 500 in production while the test stayed green.
+		await expect(
+			login(db, kv, { username: 'nobody', password: 'anything' })
+		).rejects.toBeInstanceOf(AuthError);
 	});
 
 	it('records the provided user agent and IP address on the session', async () => {
