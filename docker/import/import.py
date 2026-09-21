@@ -38,6 +38,7 @@ import hmac
 import json
 import os
 import random
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -115,6 +116,9 @@ YT_COOKIES_OBJECT_KEY = "ci-state/www.youtube.com_cookies.txt"
 # yt_dlp_options() call reads this module global rather than having it
 # threaded through as a parameter.
 YT_DLP_COOKIES_PATH: str | None = None
+# Per-thread copies of that file, keyed by nothing but the thread itself —
+# see _worker_cookies_copy for why the original can't be shared.
+_COOKIE_COPIES = threading.local()
 
 YT_DLP_MAX_RETRIES = 4
 YT_DLP_RETRY_BASE_DELAY_SECONDS = 5  # doubles each retry, plus jitter — see with_retry
@@ -136,6 +140,13 @@ YT_DLP_RETRY_BASE_DELAY_SECONDS = 5  # doubles each retry, plus jitter — see w
 # brief throttle, short enough that a batch full of genuinely-removed
 # videos costs ~15s each rather than the rate-limit ladder's ~75s.
 YT_DLP_MAYBE_THROTTLED_MAX_RETRIES = 2
+
+# A dropped connection usually comes back within seconds, so this ladder is
+# short-delay but generous in attempts: 3s, 6s, 12s, 24s, 48s. On the
+# 820-song import one video failed 4 times in a row to "Host unreachable",
+# which the ~75s rate-limit ladder wasn't enough to ride out.
+YT_DLP_NETWORK_MAX_RETRIES = 5
+YT_DLP_NETWORK_BASE_DELAY_SECONDS = 3
 
 # How long one import may run before it gives up and says so. Generous
 # because a throttled job legitimately spends long stretches asleep (see
@@ -273,6 +284,39 @@ def _is_maybe_throttled_error(exc: Exception) -> bool:
     return "Video unavailable" in str(exc)
 
 
+def _is_transient_network_error(exc: Exception) -> bool:
+    """True for a connection that never reached YouTube at all.
+
+    The proxy hop drops out mid-job: "<urlopen error [Errno 4] Host
+    unreachable>", connection resets, timeouts, DNS failures. On an
+    820-song import these were 11 of the 13 failures, across 7 videos --
+    one of them recorded 4 times, so the song was being retried and the
+    network simply hadn't come back within the ~75s the rate-limit ladder
+    allows.
+
+    Worth separating from throttling because the right response is the
+    opposite one: throttling means back off hard and stay off, whereas a
+    dropped route is usually back in seconds and nothing is gained by
+    spacing requests out process-wide. This also must not feed
+    THROTTLE_GATE -- a flaky link would otherwise slow every other worker
+    down for a problem that isn't YouTube's doing.
+    """
+    message = str(exc)
+    return any(
+        marker in message
+        for marker in (
+            "Host unreachable",
+            "Network is unreachable",
+            "Connection reset",
+            "Connection refused",
+            "Temporary failure in name resolution",
+            "timed out",
+            "Remote end closed connection",
+            "urlopen error",
+        )
+    )
+
+
 def _is_bot_check_error(exc: Exception) -> bool:
     """True for YouTube's "Sign in to confirm you're not a bot" wall, which
     yt-dlp raises as a plain ExtractorError/DownloadError with no distinct
@@ -292,10 +336,12 @@ def with_retry(fn, *args, description: str, **kwargs):
     the same moment and retrying on the exact same fixed schedule would
     just recreate the same burst against the same shared proxy IP).
 
-    Three ladders, because the three failures cost different amounts to
-    be wrong about: the bot-check wall is a long block worth waiting out,
-    a 429 is short, and "Video unavailable" might not be throttling at
-    all (see _is_maybe_throttled_error) so it gets the shortest.
+    Four ladders, because the failures cost different amounts to be wrong
+    about: the bot-check wall is a long block worth waiting out, a 429 is
+    short, "Video unavailable" might not be throttling at all (see
+    _is_maybe_throttled_error) so it gets the shortest, and a dropped
+    connection (see _is_transient_network_error) gets many short attempts
+    since it usually returns within seconds.
 
     Every attempt also passes through THROTTLE_GATE, which spaces out
     requests process-wide once YouTube pushes back — retrying on its own
@@ -307,6 +353,7 @@ def with_retry(fn, *args, description: str, **kwargs):
     rate_limit_attempts = 0
     bot_check_attempts = 0
     maybe_throttled_attempts = 0
+    network_attempts = 0
     while True:
         try:
             # Waits out any spacing a previous throttle imposed, so the
@@ -317,7 +364,7 @@ def with_retry(fn, *args, description: str, **kwargs):
             return result
         except Exception as exc:  # noqa: BLE001 - re-raised below if not retried
             last_exc = exc
-            if (
+            if not _is_transient_network_error(exc) and (
                 _is_rate_limit_error(exc)
                 or _is_bot_check_error(exc)
                 or _is_maybe_throttled_error(exc)
@@ -326,7 +373,22 @@ def with_retry(fn, *args, description: str, **kwargs):
                 # session is what got throttled, so retrying this call
                 # alone at full speed would keep the pressure on.
                 THROTTLE_GATE.record_throttled()
-            if _is_bot_check_error(exc):
+            if _is_transient_network_error(exc):
+                # Checked before the throttle classes: yt-dlp wraps these
+                # as plain DownloadErrors whose text can also contain
+                # words the throttle matchers look for, and treating a
+                # dead route as throttling would back every worker off
+                # for something YouTube never said.
+                if network_attempts >= YT_DLP_NETWORK_MAX_RETRIES:
+                    raise
+                delay = YT_DLP_NETWORK_BASE_DELAY_SECONDS * (2**network_attempts) + random.uniform(0, 2)
+                network_attempts += 1
+                print(
+                    f"{description}: network unreachable (attempt {network_attempts}/"
+                    f"{YT_DLP_NETWORK_MAX_RETRIES}), retrying in {delay:.1f}s",
+                    file=sys.stderr,
+                )
+            elif _is_bot_check_error(exc):
                 if bot_check_attempts >= YT_DLP_BOT_CHECK_MAX_RETRIES:
                     raise
                 delay = (
@@ -454,6 +516,36 @@ def websocket_url() -> str:
     return f"{base}/api/import/ws?{query}"
 
 
+def _worker_cookies_copy() -> str | None:
+    """A per-thread copy of the cookies file, or None if there isn't one.
+
+    yt-dlp writes the cookie jar back to `cookiefile` every time a
+    YoutubeDL context closes (YoutubeDL.close -> save_cookies), and that
+    write is not atomic: it truncates the file, writes the header, then
+    the cookies. With DOWNLOAD_CONCURRENCY/PROBE_CONCURRENCY workers all
+    pointed at one path, another worker can open it in that window and see
+    a file whose first line isn't the Netscape header yet -- which yt-dlp
+    rejects with "does not look like a Netscape format cookies file",
+    failing a song for a reason that has nothing to do with that song.
+
+    Giving each thread its own copy removes the sharing rather than
+    locking around it: the writes are what races, and nothing needs the
+    updated session cookies to be shared back."""
+    if not YT_DLP_COOKIES_PATH:
+        return None
+    existing = getattr(_COOKIE_COPIES, "path", None)
+    if existing and Path(existing).exists():
+        return existing
+    copy_path = Path(tempfile.gettempdir()) / f"yt-cookies-{threading.get_ident()}.txt"
+    try:
+        shutil.copyfile(YT_DLP_COOKIES_PATH, copy_path)
+    except OSError as exc:
+        print(f"Could not copy cookies for this worker ({exc}); proceeding without", file=sys.stderr)
+        return None
+    _COOKIE_COPIES.path = str(copy_path)
+    return str(copy_path)
+
+
 def yt_dlp_options(**overrides) -> dict:
     """Base options every yt_dlp.YoutubeDL(...) call site shares (proxy,
     quiet, and cookies when YT_DLP_COOKIES_PATH was set — see its own
@@ -462,8 +554,9 @@ def yt_dlp_options(**overrides) -> dict:
     "don't pass this option" anyway, but omitting it is the less surprising
     of the two to read here."""
     options = {"quiet": True, "proxy": SOCKS5_PROXY}
-    if YT_DLP_COOKIES_PATH:
-        options["cookiefile"] = YT_DLP_COOKIES_PATH
+    cookies = _worker_cookies_copy()
+    if cookies:
+        options["cookiefile"] = cookies
     options.update(overrides)
     return options
 

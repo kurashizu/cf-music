@@ -11,6 +11,7 @@ heavyweight imports stubbed, so nothing here touches the network.
 import importlib.util
 import os
 import pathlib
+import threading
 import sys
 import types
 
@@ -156,6 +157,98 @@ def test_retry_behaviour() -> None:
         m.YT_DLP_RETRY_BASE_DELAY_SECONDS = original_base
 
 
+def test_network_error_handling() -> None:
+    real = "ERROR: \r[download] Got error: <urlopen error [Errno 4] Host unreachable>"
+    check("a dropped route is recognised as a network failure", m._is_transient_network_error(FakeError(real)))
+    check(
+        "and is NOT treated as throttling, which would back every worker off",
+        not m._is_rate_limit_error(FakeError(real)),
+    )
+    check(
+        "a genuinely dead video is not mistaken for a network failure",
+        not m._is_transient_network_error(FakeError("ERROR: [youtube] x: Video unavailable")),
+    )
+
+    original_base = m.YT_DLP_NETWORK_BASE_DELAY_SECONDS
+    m.YT_DLP_NETWORK_BASE_DELAY_SECONDS = 0
+    m.THROTTLE_GATE = m.ThrottleGate()
+    try:
+        attempts = {"n": 0}
+
+        def flaky_link():
+            attempts["n"] += 1
+            if attempts["n"] < 4:
+                raise FakeError(real)
+            return "ok"
+
+        # Four attempts is past where the rate-limit ladder gives up, which
+        # is exactly the case seen in production: one video recorded four
+        # consecutive "Host unreachable" failures.
+        check("a link that returns after several seconds still succeeds", m.with_retry(flaky_link, description="t") == "ok")
+        check("it really did retry", attempts["n"] == 4)
+
+        # The gate must stay open: spacing every worker out because one
+        # route flapped would slow the whole job for a non-YouTube problem.
+        check(
+            "a network failure does not engage the throttle gate",
+            m.THROTTLE_GATE._delay == 0.0,
+        )
+
+        down = {"n": 0}
+
+        def always_down():
+            down["n"] += 1
+            raise FakeError(real)
+
+        try:
+            m.with_retry(always_down, description="t")
+        except FakeError:
+            pass
+        check(
+            "a link that never comes back is bounded by its own ladder",
+            down["n"] == m.YT_DLP_NETWORK_MAX_RETRIES + 1,
+        )
+    finally:
+        m.YT_DLP_NETWORK_BASE_DELAY_SECONDS = original_base
+
+
+def test_per_worker_cookie_copies(tmp_dir: pathlib.Path) -> None:
+    source = tmp_dir / "cookies.txt"
+    source.write_text("# Netscape HTTP Cookie File\n")
+    original_path = m.YT_DLP_COOKIES_PATH
+    original_copies = m._COOKIE_COPIES
+    m.YT_DLP_COOKIES_PATH = str(source)
+    m._COOKIE_COPIES = threading.local()
+    try:
+        # yt-dlp rewrites cookiefile non-atomically when a YoutubeDL
+        # context closes, so two workers sharing one path can read it
+        # mid-truncate. Each worker must therefore get its own file.
+        paths = {}
+
+        def record(key):
+            paths[key] = m.yt_dlp_options().get("cookiefile")
+
+        threads = [threading.Thread(target=record, args=(i,)) for i in range(3)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        check("every worker got a cookies file", all(paths.values()) and len(paths) == 3)
+        check("and no two workers share one", len(set(paths.values())) == 3)
+        check(
+            "none of them is the shared original yt-dlp would overwrite",
+            str(source) not in set(paths.values()),
+        )
+        check(
+            "the copy carries the real contents",
+            pathlib.Path(next(iter(paths.values()))).read_text().startswith("# Netscape"),
+        )
+    finally:
+        m.YT_DLP_COOKIES_PATH = original_path
+        m._COOKIE_COPIES = original_copies
+
+
 def test_job_timeout_constant() -> None:
     check("the job gives itself three hours", m.JOB_TIMEOUT_SECONDS == 3 * 60 * 60)
     # The job must report its own timeout before the runner is killed, or
@@ -194,9 +287,11 @@ if __name__ == "__main__":
     test_error_classification()
     test_throttle_gate()
     test_retry_behaviour()
+    test_network_error_handling()
     test_job_timeout_constant()
     with tempfile.TemporaryDirectory() as tmp:
         test_cookie_validation(pathlib.Path(tmp))
+        test_per_worker_cookie_copies(pathlib.Path(tmp))
 
     print()
     if failures:
