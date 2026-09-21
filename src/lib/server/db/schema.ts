@@ -52,7 +52,14 @@ export const inviteCodes = sqliteTable('invite_codes', {
 		.notNull()
 		.default(sql`(current_timestamp)`),
 	usedBy: text('used_by').references(() => users.id),
-	usedAt: text('used_at')
+	usedAt: text('used_at'),
+	// Revocation is a timestamp rather than a delete so the row survives to
+	// explain itself: who issued it, and that it was withdrawn rather than
+	// never existing. A used code can be revoked too — that doesn't unmake
+	// the account, it just stops the code being reusable if the single-use
+	// check is ever relaxed, and records the decision.
+	revokedAt: text('revoked_at'),
+	revokedBy: text('revoked_by').references(() => users.id)
 });
 
 // Song library deduplicated by video_id, shared across platforms (source_platform stores yt-dlp's extractor value)

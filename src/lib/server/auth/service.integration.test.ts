@@ -10,6 +10,7 @@ import {
 	logout,
 	logoutAllSessions,
 	listUsers,
+	revokeInviteCode,
 	AuthError
 } from './service';
 
@@ -35,6 +36,59 @@ beforeEach(async () => {
 	await db.delete(inviteCodes);
 	await db.delete(users);
 	await clearAllKeys();
+});
+
+describe('revokeInviteCode', () => {
+	it('stops an unused code from registering anyone', async () => {
+		await seedInviteCode('TO-REVOKE');
+		await revokeInviteCode(db, 'TO-REVOKE', 'seed-admin');
+
+		await expect(
+			register(db, { username: 'nope', password: 'password123', inviteCode: 'TO-REVOKE' })
+		).rejects.toThrow(AuthError);
+	});
+
+	// Revoking a spent code can't unmake the account it created, but it is
+	// still allowed: it records the decision and leaves the code dead
+	// whatever the single-use check does later.
+	it('can revoke a code that was already used', async () => {
+		await seedInviteCode('SPENT');
+		await register(db, { username: 'someone', password: 'password123', inviteCode: 'SPENT' });
+
+		await revokeInviteCode(db, 'SPENT', 'seed-admin');
+
+		const invite = await db.query.inviteCodes.findFirst({
+			where: eq(inviteCodes.code, 'SPENT')
+		});
+		expect(invite?.revokedAt).not.toBeNull();
+		expect(invite?.usedBy).not.toBeNull();
+	});
+
+	it('keeps the row rather than deleting it, so it can still explain itself', async () => {
+		await seedInviteCode('KEEP-ME');
+		await revokeInviteCode(db, 'KEEP-ME', 'seed-admin');
+
+		const invite = await db.query.inviteCodes.findFirst({
+			where: eq(inviteCodes.code, 'KEEP-ME')
+		});
+		expect(invite).toBeDefined();
+		expect(invite?.revokedBy).toBe('seed-admin');
+	});
+
+	it('is a no-op the second time', async () => {
+		await seedInviteCode('TWICE');
+		await revokeInviteCode(db, 'TWICE', 'seed-admin');
+		const first = await db.query.inviteCodes.findFirst({ where: eq(inviteCodes.code, 'TWICE') });
+
+		await revokeInviteCode(db, 'TWICE', 'seed-admin');
+		const second = await db.query.inviteCodes.findFirst({ where: eq(inviteCodes.code, 'TWICE') });
+
+		expect(second?.revokedAt).toBe(first?.revokedAt);
+	});
+
+	it('throws for a code that does not exist', async () => {
+		await expect(revokeInviteCode(db, 'NOPE', 'seed-admin')).rejects.toThrow(AuthError);
+	});
 });
 
 describe('register', () => {

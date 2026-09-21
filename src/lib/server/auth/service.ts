@@ -50,7 +50,13 @@ export interface RegisteredUser {
  */
 export async function register(db: Db, input: RegisterInput): Promise<RegisteredUser> {
 	const invite = await db.query.inviteCodes.findFirst({
-		where: and(eq(inviteCodes.code, input.inviteCode), isNull(inviteCodes.usedBy))
+		// Unused *and* not withdrawn: revoking is what makes an outstanding
+		// code stop working, so it has to be checked here, not only in the UI.
+		where: and(
+			eq(inviteCodes.code, input.inviteCode),
+			isNull(inviteCodes.usedBy),
+			isNull(inviteCodes.revokedAt)
+		)
 	});
 	if (!invite) {
 		throw new AuthError('Invite code is invalid or already used', 'invalid_invite_code');
@@ -250,6 +256,45 @@ export interface AdminUserSummary {
 	autoEvictEnabled: boolean;
 	disabled: boolean;
 	createdAt: string;
+}
+
+/**
+ * Withdraws an invite code so it can't be used.
+ *
+ * Works on a code that has already been used as well as an unused one. In
+ * the used case it doesn't unmake the account — registration consumed the
+ * code and created a user, and that is done — but it records the decision
+ * and leaves the code unusable regardless of what the single-use check
+ * does later.
+ *
+ * Marked rather than deleted so the row survives to explain itself: who
+ * issued it, when, and that it was withdrawn rather than never existing.
+ */
+export async function revokeInviteCode(
+	db: Db,
+	code: string,
+	revokedBy: string
+): Promise<void> {
+	const invite = await db.query.inviteCodes.findFirst({
+		where: eq(inviteCodes.code, code)
+	});
+	if (!invite) {
+		throw new AuthError('Invite code not found', 'invalid_invite_code');
+	}
+	if (invite.revokedAt) return; // already revoked; nothing to do
+
+	await db
+		.update(inviteCodes)
+		.set({ revokedAt: new Date().toISOString(), revokedBy })
+		.where(eq(inviteCodes.code, code));
+
+	await recordAuditEvent(db, {
+		actorId: revokedBy,
+		eventType: 'invite_created',
+		targetType: 'user',
+		targetId: invite.usedBy ?? null,
+		detail: { code, revoked: true, wasUsed: invite.usedBy !== null }
+	});
 }
 
 /** Admin-only: every registered user, most recently created first. */

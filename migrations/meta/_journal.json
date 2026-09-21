@@ -169,6 +169,13 @@
       "when": 1789998899527,
       "tag": "0023_far_swarm",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1790001094896,
+      "tag": "0024_woozy_microchip",
+      "breakpoints": true
     }
   ]
 }

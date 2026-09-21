@@ -255,7 +255,15 @@
 			}
 			const { code } = (await response.json()) as { code: string };
 			inviteCodes = [
-				{ code, createdBy: '', createdAt: new Date().toISOString(), usedBy: null, usedAt: null },
+				{
+					code,
+					createdBy: '',
+					createdAt: new Date().toISOString(),
+					usedBy: null,
+					usedAt: null,
+					revokedAt: null,
+					revokedBy: null
+				},
 				...inviteCodes
 			];
 			toast.success('Invite code created');
@@ -272,6 +280,34 @@
 			toast.success('Copied to clipboard');
 		} catch {
 			toast.error('Failed to copy to clipboard');
+		}
+	}
+
+	let revokingCode = $state<string | null>(null);
+
+	/**
+	 * Withdraws a code. Offered for used codes too: revoking one doesn't
+	 * unmake the account it created, but it records the decision and leaves
+	 * the code dead regardless of what the single-use check does later.
+	 */
+	async function revokeCode(code: string) {
+		revokingCode = code;
+		try {
+			const response = await fetch(`/api/admin/invite-codes/${encodeURIComponent(code)}`, {
+				method: 'DELETE'
+			});
+			if (!response.ok) {
+				toast.error(await apiErrorMessage(response, 'Failed to revoke invite code'));
+				return;
+			}
+			inviteCodes = inviteCodes.map((c) =>
+				c.code === code ? { ...c, revokedAt: new Date().toISOString() } : c
+			);
+			toast.success('Invite code revoked');
+		} catch {
+			toast.error('Failed to revoke invite code');
+		} finally {
+			revokingCode = null;
 		}
 	}
 
@@ -470,17 +506,30 @@
 						<li
 							class="hover:bg-muted flex items-center gap-3 rounded-lg px-2 py-2 transition-colors"
 						>
-							<code class="text-sm">{invite.code}</code>
+							<code class="text-sm {invite.revokedAt ? 'text-muted-foreground line-through' : ''}">
+								{invite.code}
+							</code>
 							<span
-								class="rounded-full px-2 py-0.5 text-xs {invite.usedBy
+								class="rounded-full px-2 py-0.5 text-xs {invite.usedBy || invite.revokedAt
 									? 'text-muted-foreground'
 									: 'text-foreground'}"
 							>
-								{invite.usedBy ? 'Used' : 'Available'}
+								{invite.revokedAt ? 'Revoked' : invite.usedBy ? 'Used' : 'Available'}
 							</span>
 							<span class="text-muted-foreground flex-1 truncate text-xs">
 								{formatDateTime(invite.createdAt)}
 							</span>
+							{#if !invite.revokedAt}
+								<Button
+									variant="ghost"
+									size="icon-sm"
+									disabled={revokingCode === invite.code}
+									aria-label={`Revoke ${invite.code}`}
+									onclick={() => revokeCode(invite.code)}
+								>
+									<Trash2Icon class="size-3.5" />
+								</Button>
+							{/if}
 							<Button variant="ghost" size="icon-sm" onclick={() => copyCode(invite.code)}>
 								<CopyIcon class="size-3.5" />
 							</Button>
