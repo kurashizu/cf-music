@@ -34,6 +34,29 @@ const METADATA_CACHE = METADATA_CACHE_NAME;
 const LIBRARY_CACHE = LIBRARY_CACHE_NAME;
 /** Last good __data.json per route, so client navigation survives offline. */
 const ROUTE_DATA_CACHE = 'route-data-v1';
+/**
+ * Last good HTML for routes that work without a connection.
+ *
+ * These can't be precached at install time the way /offline is — they
+ * render against the user's session, so there is no build-time copy to
+ * ship. But once the user has opened one while online, its shell is worth
+ * keeping: the page's own content is device-local, so replaying that HTML
+ * offline gives back a fully working page rather than the offline
+ * fallback.
+ */
+const PAGE_SHELL_CACHE = 'page-shell-v1';
+
+/**
+ * Routes whose shell is kept for offline use, per PAGE_SHELL_CACHE.
+ *
+ * Settings qualifies because nearly all of it is device-local — skip
+ * silence, clearing downloads, what this browser has cached — and it
+ * degrades gracefully on the one figure that isn't (see
+ * loadAccountUsage). Import and Stats deliberately do not: both are
+ * meaningless without the server, and the offline page already drops them
+ * from navigation.
+ */
+const OFFLINE_CAPABLE_ROUTES = new Set(['/settings']);
 
 /**
  * The page served for any navigation the network can't answer.
@@ -95,7 +118,8 @@ sw.addEventListener('activate', (event) => {
 				COVER_CACHE,
 				METADATA_CACHE,
 				LIBRARY_CACHE,
-				ROUTE_DATA_CACHE
+				ROUTE_DATA_CACHE,
+				PAGE_SHELL_CACHE
 			]);
 			for (const key of await caches.keys()) {
 				if (!KEEP.has(key)) await caches.delete(key);
@@ -122,8 +146,33 @@ sw.addEventListener('fetch', (event) => {
 			event.respondWith(
 				(async () => {
 					try {
-						return await fetch(event.request);
+						const response = await fetch(event.request);
+						// Keep the shell of a route that works offline, so a cold
+						// start with no connection can open the real page instead
+						// of the offline fallback. Only on a clean 200: an error
+						// page or a redirect to the login screen is not a shell
+						// worth replaying later.
+						if (OFFLINE_CAPABLE_ROUTES.has(url.pathname) && response.status === 200) {
+							const copy = response.clone();
+							event.waitUntil(
+								caches.open(PAGE_SHELL_CACHE).then((cache) => cache.put(url.pathname, copy))
+							);
+						}
+						return response;
 					} catch {
+						// A route that works without the server gets its own last
+						// good shell back, rather than the offline page — settings
+						// is almost entirely device-local, so showing the fallback
+						// instead would hide a page that genuinely works.
+						const shellCache = await caches.open(PAGE_SHELL_CACHE);
+						const shell = await shellCache.match(url.pathname);
+						if (shell) {
+							return new Response(await shell.blob(), {
+								status: 200,
+								headers: { 'content-type': 'text/html; charset=utf-8' }
+							});
+						}
+
 						const cache = await caches.open(APP_CACHE);
 						// A route this deploy precached is served as itself:
 						// /settings works with no connection (its cloud figures
