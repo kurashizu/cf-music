@@ -270,11 +270,7 @@ export interface AdminUserSummary {
  * Marked rather than deleted so the row survives to explain itself: who
  * issued it, when, and that it was withdrawn rather than never existing.
  */
-export async function revokeInviteCode(
-	db: Db,
-	code: string,
-	revokedBy: string
-): Promise<void> {
+export async function revokeInviteCode(db: Db, code: string, revokedBy: string): Promise<void> {
 	const invite = await db.query.inviteCodes.findFirst({
 		where: eq(inviteCodes.code, code)
 	});

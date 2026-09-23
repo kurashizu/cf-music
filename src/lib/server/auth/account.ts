@@ -120,11 +120,7 @@ export interface ForceLogoutInput {
 }
 
 /** Ends every session a user holds without changing their password. */
-export async function forceLogout(
-	db: Db,
-	kv: KVNamespace,
-	input: ForceLogoutInput
-): Promise<void> {
+export async function forceLogout(db: Db, kv: KVNamespace, input: ForceLogoutInput): Promise<void> {
 	const user = await getUserOrThrow(db, input.targetUserId);
 
 	await logoutAllSessions(kv, user.id);
