@@ -75,6 +75,20 @@ rather than an auth error.
 A token with `"a":"rw"` grants complete access to the whole database, so
 treat it as a root credential: keep it in a secret, never a var.
 
+## Round trips per request
+
+Against libSQL over HTTP, every query a request makes is its own fetch,
+and a Worker on the free plan may make 50 per invocation. D1 calls count
+against a separate allowance of 1,000, so a request that is fine on D1 can
+fail on libSQL at the 51st query.
+
+The code here keeps every request to a handful of round trips however
+large the library is: set-based statements rather than a query per item,
+and `db.batch()` (`runInOneRequest`) where a write has to be many
+statements. `src/lib/server/subrequest-budget.integration.test.ts` counts
+the round trips of the operations that scale with library size and fails
+if any of them grows — add to it when writing something that loops.
+
 ## Migrating existing data
 
 Export from D1 and load into the new server:
