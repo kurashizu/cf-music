@@ -1,5 +1,6 @@
 import { AwsClient } from 'aws4fetch';
 import { encodeObjectKey } from './object-key';
+import { chunk } from '../../shared/chunk';
 
 export interface S3Config {
 	endpoint: string; // e.g. https://s3api.022025.xyz
@@ -95,20 +96,72 @@ export class S3ObjectStorage implements ObjectStorage {
 		return keys;
 	}
 
+	/**
+	 * Deletes up to a thousand keys per request, through S3's multi-object
+	 * delete.
+	 *
+	 * One DELETE per key used to be enough, until deleting an account meant
+	 * deleting every song only that user had: two objects a song, each a
+	 * fetch, against the 50 a Worker on the free plan may make per request.
+	 * Keys that are already gone are not errors here, same as before.
+	 */
 	async deleteObjects(keys: string[]): Promise<void> {
-		if (keys.length === 0) return;
-
-		// One DELETE per key: simplest correct approach, and MinIO's bulk
-		// delete (POST ?delete) needs an XML body our size doesn't warrant
-		// building/parsing for a private, low-volume app.
-		for (const key of keys) {
-			const url = new URL(`${this.baseUrl}/${encodeObjectKey(key)}`);
-			const response = await this.client.fetch(url, { method: 'DELETE' });
-			if (!response.ok && response.status !== 404) {
+		for (const part of chunk(keys, MAX_KEYS_PER_DELETE_REQUEST)) {
+			const body = buildDeleteRequestBody(part);
+			const url = new URL(this.baseUrl);
+			url.searchParams.set('delete', '');
+			const response = await this.client.fetch(url, {
+				method: 'POST',
+				body,
+				headers: {
+					'Content-Type': 'application/xml',
+					// Required by S3 and MinIO for this operation specifically.
+					'Content-MD5': await contentMd5(body)
+				}
+			});
+			if (!response.ok) {
+				throw new Error(`Failed to delete S3 objects: ${response.status} ${response.statusText}`);
+			}
+			// A 200 can still carry per-key failures; quiet mode lists only those.
+			const failures = parseDeleteErrors(await response.text());
+			if (failures.length > 0) {
 				throw new Error(
-					`Failed to delete S3 object ${key}: ${response.status} ${response.statusText}`
+					`Failed to delete ${failures.length} S3 object(s): ${failures
+						.slice(0, 5)
+						.map((f) => `${f.key} (${f.code})`)
+						.join(', ')}`
 				);
 			}
 		}
 	}
+}
+
+/** S3's own cap on keys per multi-object delete. */
+export const MAX_KEYS_PER_DELETE_REQUEST = 1000;
+
+function escapeXml(value: string): string {
+	return value
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;')
+		.replace(/"/g, '&quot;')
+		.replace(/'/g, '&apos;');
+}
+
+export function buildDeleteRequestBody(keys: string[]): string {
+	const objects = keys.map((key) => `<Object><Key>${escapeXml(key)}</Key></Object>`).join('');
+	return `<?xml version="1.0" encoding="UTF-8"?><Delete><Quiet>true</Quiet>${objects}</Delete>`;
+}
+
+export function parseDeleteErrors(xml: string): { key: string; code: string }[] {
+	return [...xml.matchAll(/<Error>([\s\S]*?)<\/Error>/g)].map((match) => ({
+		key: decodeXmlEntities(match[1].match(/<Key>([\s\S]*?)<\/Key>/)?.[1] ?? ''),
+		code: match[1].match(/<Code>([\s\S]*?)<\/Code>/)?.[1] ?? 'Unknown'
+	}));
+}
+
+/** Base64 MD5 of the body. Workers' crypto.subtle implements MD5, though the standard doesn't. */
+async function contentMd5(body: string): Promise<string> {
+	const digest = await crypto.subtle.digest('MD5', new TextEncoder().encode(body));
+	return btoa(String.fromCharCode(...new Uint8Array(digest)));
 }

@@ -17,13 +17,23 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Trigger smart playlist generation
+        # One page of users per request, following nextAfter until it is
+        # null: each user costs a few database round trips, and a Worker may
+        # only make so many per request, so one call for every user would
+        # stop working at some number of users.
         run: |
-          body='{}'
-          signature="sha256=$(printf '%s' "$body" | openssl dgst -sha256 -hmac "$EMBEDDING_WEBHOOK_SECRET" | sed 's/^.* //')"
-          curl -sf -X POST "$WORKER_BASE_URL/api/smart-playlists/generate" \
-            -H "Content-Type: application/json" \
-            -H "X-Signature-256: $signature" \
-            -d "$body"
+          after=''
+          while :; do
+            if [ -z "$after" ]; then body='{}'; else body=$(jq -cn --arg after "$after" '{after: $after}'); fi
+            signature="sha256=$(printf '%s' "$body" | openssl dgst -sha256 -hmac "$EMBEDDING_WEBHOOK_SECRET" | sed 's/^.* //')"
+            response=$(curl -sS --fail-with-body -X POST "$WORKER_BASE_URL/api/smart-playlists/generate" \
+              -H "Content-Type: application/json" \
+              -H "X-Signature-256: $signature" \
+              -d "$body")
+            echo "$response"
+            after=$(printf '%s' "$response" | jq -r '.nextAfter // empty')
+            [ -n "$after" ] || break
+          done
         env:
           WORKER_BASE_URL: ${{ secrets.WORKER_BASE_URL }}
           EMBEDDING_WEBHOOK_SECRET: ${{ secrets.EMBEDDING_WEBHOOK_SECRET }}

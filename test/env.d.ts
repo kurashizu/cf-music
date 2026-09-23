@@ -7,10 +7,13 @@ declare global {
 	namespace Cloudflare {
 		interface Env {
 			TEST_MIGRATIONS: D1Migration[];
+			/** Tests always run on D1, whichever database a deployment uses. */
+			DB: D1Database;
 		}
 	}
 
 	interface Env {
 		TEST_MIGRATIONS: D1Migration[];
+		DB: D1Database;
 	}
 }

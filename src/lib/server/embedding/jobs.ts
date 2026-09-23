@@ -1,5 +1,5 @@
 import { eq, inArray, sql } from 'drizzle-orm';
-import type { Db } from '../db';
+import { runInOneRequest, type Db } from '../db';
 import { embeddingJobs, songs } from '../db/schema';
 import { chunk } from '../../shared/chunk';
 
@@ -145,11 +145,18 @@ export async function enqueueMissingEmbeddingJobs(db: Db): Promise<number> {
 	`);
 	if (missing.length === 0) return 0;
 
-	for (const batch of chunk(missing, MISSING_JOBS_INSERT_BATCH_SIZE)) {
-		await db
-			.insert(embeddingJobs)
-			.values(batch.map((row) => ({ videoId: row.videoId })))
-			.onConflictDoNothing();
-	}
+	// Chunked for D1's bound-parameter limit, then sent as one batch: a
+	// thousand-song backfill is fifty-odd inserts, which awaited one by one
+	// ran past the 50 fetches a Worker may make against a self-hosted
+	// database.
+	await runInOneRequest(
+		db,
+		chunk(missing, MISSING_JOBS_INSERT_BATCH_SIZE).map((batch) =>
+			db
+				.insert(embeddingJobs)
+				.values(batch.map((row) => ({ videoId: row.videoId })))
+				.onConflictDoNothing()
+		)
+	);
 	return missing.length;
 }

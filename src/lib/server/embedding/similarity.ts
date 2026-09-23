@@ -1,6 +1,6 @@
-import { inArray } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import type { Db } from '../db';
-import { songEmbeddings } from '../db/schema';
+import { playlists, playlistSongs, songEmbeddings } from '../db/schema';
 import { chunk } from '../../shared/chunk';
 import { decodeVector, cosineSimilarity } from './vector-codec';
 import { listUserLibrarySongs, type LibrarySongSummary } from '../library/playlists';
@@ -24,6 +24,35 @@ export async function getVectorsByVideoIds(
 		vectors.set(row.videoId, decodeVector(row.vector));
 	}
 	return vectors;
+}
+
+/**
+ * Every embedding in a user's library (their own playlists), in one query.
+ *
+ * getVectorsByVideoIds needs a query per 90 ids to stay inside D1's
+ * bound-parameter limit — a dozen round trips for a thousand songs, per
+ * user, which on a self-hosted database is a dozen of the 50 fetches a
+ * Worker may make. Selecting by the playlists that hold them instead binds
+ * a single parameter however large the library is.
+ */
+export async function getVectorsForUserLibrary(
+	db: Db,
+	userId: string
+): Promise<Map<string, Float32Array>> {
+	const rows = await db
+		.select({ videoId: songEmbeddings.videoId, vector: songEmbeddings.vector })
+		.from(songEmbeddings)
+		.where(
+			inArray(
+				songEmbeddings.videoId,
+				db
+					.select({ videoId: playlistSongs.videoId })
+					.from(playlistSongs)
+					.innerJoin(playlists, eq(playlistSongs.playlistId, playlists.id))
+					.where(and(eq(playlists.userId, userId), eq(playlists.kind, 'user')))
+			)
+		);
+	return new Map(rows.map((row) => [row.videoId, decodeVector(row.vector)]));
 }
 
 export interface SimilarSong extends LibrarySongSummary {

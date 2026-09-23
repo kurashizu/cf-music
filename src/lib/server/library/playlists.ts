@@ -1,5 +1,5 @@
 import { eq, and, isNull, max, inArray, sql, exists } from 'drizzle-orm';
-import type { Db } from '../db';
+import { runInOneRequest, type Db, type Statement } from '../db';
 import {
 	playlists,
 	playlistSongs,
@@ -315,7 +315,11 @@ export interface LibrarySongSummary {
  * EXISTS only ever needs to find one matching playlist_songs row per song,
  * not enumerate every one, so each song is evaluated exactly once.
  */
-export async function listUserLibrarySongs(db: Db, userId: string): Promise<LibrarySongSummary[]> {
+export async function listUserLibrarySongs(
+	db: Db,
+	userId: string,
+	options: { ownPlaylistsOnly?: boolean } = {}
+): Promise<LibrarySongSummary[]> {
 	const rows = await db
 		.select({
 			videoId: songs.videoId,
@@ -338,7 +342,13 @@ export async function listUserLibrarySongs(db: Db, userId: string): Promise<Libr
 					.select({ one: sql`1` })
 					.from(playlistSongs)
 					.innerJoin(playlists, eq(playlistSongs.playlistId, playlists.id))
-					.where(and(eq(playlists.userId, userId), eq(playlistSongs.videoId, songs.videoId)))
+					.where(
+						and(
+							eq(playlists.userId, userId),
+							eq(playlistSongs.videoId, songs.videoId),
+							options.ownPlaylistsOnly ? eq(playlists.kind, 'user') : undefined
+						)
+					)
 			)
 		);
 	return rows.map((row) => ({ ...row, playCount: row.playCount ?? 0 }));
@@ -631,12 +641,22 @@ export async function reorderPlaylist(
 	// writing the rest back unchanged used to cost one full-playlist-length
 	// batch of UPDATEs (and D1 bills by rows written) for what's usually a
 	// single-item move.
+	//
+	// Sent as one batch rather than awaited per row: a long drag, or the
+	// first reorder of a playlist whose positions have gaps from earlier
+	// removals, changes hundreds of rows, and on a self-hosted database each
+	// awaited UPDATE was a fetch against a limit of 50 per request. A batch
+	// is one, and applies the new order whole or not at all.
+	const updates: Statement[] = [];
 	for (let position = 0; position < orderedVideoIds.length; position++) {
 		const videoId = orderedVideoIds[position];
 		if (currentPositionByVideoId.get(videoId) === position) continue;
-		await db
-			.update(playlistSongs)
-			.set({ position })
-			.where(and(eq(playlistSongs.playlistId, playlistId), eq(playlistSongs.videoId, videoId)));
+		updates.push(
+			db
+				.update(playlistSongs)
+				.set({ position })
+				.where(and(eq(playlistSongs.playlistId, playlistId), eq(playlistSongs.videoId, videoId)))
+		);
 	}
+	await runInOneRequest(db, updates);
 }

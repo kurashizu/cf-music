@@ -1,4 +1,4 @@
-import { eq, and, count } from 'drizzle-orm';
+import { eq, and, count, inArray } from 'drizzle-orm';
 import type { Db } from '../db';
 import { songs, playlists, playlistSongs } from '../db/schema';
 import type { ObjectStorage } from '../storage/s3';
@@ -53,19 +53,22 @@ export async function evictSongForUser(
 	const song = await db.query.songs.findFirst({ where: eq(songs.videoId, videoId) });
 	if (!song) return; // already gone; nothing to do
 
-	// Remove this user's own playlist references to the song.
-	const ownPlaylistIds = (
-		await db.query.playlists.findMany({
-			where: eq(playlists.userId, userId),
-			columns: { id: true }
-		})
-	).map((p) => p.id);
-
-	for (const playlistId of ownPlaylistIds) {
-		await db
-			.delete(playlistSongs)
-			.where(and(eq(playlistSongs.playlistId, playlistId), eq(playlistSongs.videoId, videoId)));
-	}
+	// Remove this user's own playlist references to the song, in one
+	// statement. Deleting per playlist was a round trip for each of them —
+	// auto-generated ones included, so a hundred and more for anyone with a
+	// sizeable library — and on a self-hosted database that ran past the 50
+	// fetches a Worker may make before the song was even reached.
+	await db
+		.delete(playlistSongs)
+		.where(
+			and(
+				eq(playlistSongs.videoId, videoId),
+				inArray(
+					playlistSongs.playlistId,
+					db.select({ id: playlists.id }).from(playlists).where(eq(playlists.userId, userId))
+				)
+			)
+		);
 
 	const [{ remainingReferences }] = await db
 		.select({ remainingReferences: count() })

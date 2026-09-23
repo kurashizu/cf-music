@@ -1,10 +1,21 @@
-import { and, count, eq, ne } from 'drizzle-orm';
+import {
+	and,
+	count,
+	countDistinct,
+	eq,
+	exists,
+	inArray,
+	ne,
+	notExists,
+	notInArray,
+	sql,
+	type SQL
+} from 'drizzle-orm';
 import type { Db } from '../db';
-import { playlists, playlistSongs, userSongs, users } from '../db/schema';
+import { playlists, playlistSongs, songs, userSongs, users } from '../db/schema';
 import { hashPassword, verifyPassword } from './password';
 import { AuthError, logoutAllSessions } from './service';
 import { recordAuditEvent } from '../audit/log';
-import { evictSongForUser } from '../eviction/execute';
 import type { ObjectStorage } from '../storage/s3';
 
 /**
@@ -238,12 +249,17 @@ export interface DeleteUserResult {
 /**
  * Deletes an account and everything that belongs to it.
  *
- * Songs are handed to evictSongForUser one at a time rather than deleted
- * wholesale, because `songs` rows are shared: two users who imported the
- * same video reference one row. That function already drops the row and
- * its stored objects only once no playlist anywhere still points at it,
- * which is exactly the rule wanted here — a departing user takes the songs
- * only they had, and leaves everyone else's alone.
+ * `songs` rows are shared: two users who imported the same video reference
+ * one row. So a departing user takes the songs only they had and leaves
+ * everyone else's alone — the same rule evictSongForUser applies to one
+ * song, applied here to the whole library at once.
+ *
+ * Set-based rather than song by song. Handing each song to
+ * evictSongForUser cost a handful of queries per song plus one per
+ * playlist — tens of thousands for a real library, where a Worker on a
+ * self-hosted database may make 50. And since nothing wrapped them, a
+ * request cut off part way left a half-deleted account behind. Here every
+ * write is one batch, which lands whole or not at all.
  */
 export async function deleteUser(
 	db: Db,
@@ -257,41 +273,45 @@ export async function deleteUser(
 		throw new AuthError('Cannot delete the last admin', 'last_admin');
 	}
 
-	const ownPlaylistIds = (
-		await db.query.playlists.findMany({
-			where: eq(playlists.userId, user.id),
-			columns: { id: true }
-		})
-	).map((p) => p.id);
+	const theirPlaylists = () =>
+		db.select({ id: playlists.id }).from(playlists).where(eq(playlists.userId, user.id));
+	const heldBy = (playlistCondition: SQL) =>
+		db
+			.select({ one: sql`1` })
+			.from(playlistSongs)
+			.where(and(eq(playlistSongs.videoId, songs.videoId), playlistCondition));
 
-	// Distinct video ids across all of this user's playlists. Collected
-	// before anything is deleted, since evictSongForUser decides what to
-	// hard-delete by counting the references that are still there.
-	const videoIds = new Set<string>();
-	for (const playlistId of ownPlaylistIds) {
-		const rows = await db.query.playlistSongs.findMany({
-			where: eq(playlistSongs.playlistId, playlistId),
-			columns: { videoId: true }
-		});
-		for (const row of rows) videoIds.add(row.videoId);
-	}
+	const [{ songsConsidered }] = await db
+		.select({ songsConsidered: countDistinct(playlistSongs.videoId) })
+		.from(playlistSongs)
+		.where(inArray(playlistSongs.playlistId, theirPlaylists()));
 
-	for (const videoId of videoIds) {
-		await evictSongForUser(db, storage, user.id, videoId, 'manual_delete');
-	}
-
-	// Clear the FK first: default_playlist_id was added by ALTER TABLE, so
-	// its `onDelete: 'set null'` is declarative only and would not fire
-	// (see the column's own comment in schema.ts).
-	await db.update(users).set({ defaultPlaylistId: null }).where(eq(users.id, user.id));
-	for (const playlistId of ownPlaylistIds) {
-		await db.delete(playlistSongs).where(eq(playlistSongs.playlistId, playlistId));
-	}
-	await db.delete(playlists).where(eq(playlists.userId, user.id));
-	await db.delete(userSongs).where(eq(userSongs.userId, user.id));
+	const [, deletedSongs] = await db.batch([
+		// Cleared first: default_playlist_id was added by ALTER TABLE, so its
+		// `onDelete: 'set null'` is declarative only and would not fire (see
+		// the column's own comment in schema.ts).
+		db.update(users).set({ defaultPlaylistId: null }).where(eq(users.id, user.id)),
+		// Songs in one of their playlists and nobody else's. Decided inside
+		// the same batch as the deletes rather than read beforehand, so a song
+		// someone else picks up in the meantime is never counted as theirs —
+		// and RETURNING says exactly which rows went, which is what decides
+		// the stored objects deleted below.
+		db
+			.delete(songs)
+			.where(
+				and(
+					exists(heldBy(inArray(playlistSongs.playlistId, theirPlaylists()))),
+					notExists(heldBy(notInArray(playlistSongs.playlistId, theirPlaylists())))
+				)
+			)
+			.returning({ audioKey: songs.audioKey, coverKey: songs.coverKey }),
+		db.delete(playlistSongs).where(inArray(playlistSongs.playlistId, theirPlaylists())),
+		db.delete(playlists).where(eq(playlists.userId, user.id)),
+		db.delete(userSongs).where(eq(userSongs.userId, user.id)),
+		db.delete(users).where(eq(users.id, user.id))
+	]);
 
 	await logoutAllSessions(kv, user.id);
-	await db.delete(users).where(eq(users.id, user.id));
 
 	// Written after the row is gone, and deliberately without userId: the
 	// audit log outlives the account (it has no retention policy by
@@ -306,10 +326,20 @@ export async function deleteUser(
 		detail: {
 			username: user.username,
 			self: input.actorId === user.id,
-			songsConsidered: videoIds.size
+			songsConsidered,
+			songsDeleted: deletedSongs.length
 		},
 		ipAddress: input.ipAddress
 	});
 
-	return { username: user.username, songsConsidered: videoIds.size };
+	// After the rows, never before: a request cut off between the two
+	// leaves stored objects with no row, which the admin orphan scan finds
+	// and removes, rather than rows pointing at objects that are gone.
+	await storage.deleteObjects(
+		deletedSongs.flatMap((song) =>
+			song.coverKey ? [song.audioKey, song.coverKey] : [song.audioKey]
+		)
+	);
+
+	return { username: user.username, songsConsidered };
 }
