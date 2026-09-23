@@ -281,6 +281,30 @@ def test_cookie_validation(tmp_dir: pathlib.Path) -> None:
     check("a JSON export is rejected rather than handed to yt-dlp", not accepted(bad))
 
 
+def test_remux_to_mp4(tmp_dir: pathlib.Path) -> None:
+    import shutil
+    import subprocess
+
+    if not shutil.which("ffmpeg"):
+        print("SKIP  remux (no ffmpeg on PATH)")
+        return
+    webm = tmp_dir / "song.webm"
+    subprocess.run(
+        ["ffmpeg", "-y", "-f", "lavfi", "-i", "sine=duration=2", "-c:a", "libopus", str(webm)],
+        capture_output=True, check=True,
+    )
+    result = m.remux_to_mp4(webm)
+    meta = m.probe_audio(result)
+    check("webm is remuxed to an .m4a file", result.suffix == ".m4a" and result.exists())
+    check("remuxing keeps the Opus stream as it was", meta["codec"] == "opus")
+    check("the probed container follows the new file", meta["container"] == "m4a")
+    check("the original webm is removed so it is never picked up as a thumbnail", not webm.exists())
+
+    m4a = tmp_dir / "already.m4a"
+    m4a.write_bytes(b"x")
+    check("audio already in MP4 is left alone", m.remux_to_mp4(m4a) == m4a)
+
+
 if __name__ == "__main__":
     import tempfile
 
@@ -292,6 +316,7 @@ if __name__ == "__main__":
     with tempfile.TemporaryDirectory() as tmp:
         test_cookie_validation(pathlib.Path(tmp))
         test_per_worker_cookie_copies(pathlib.Path(tmp))
+        test_remux_to_mp4(pathlib.Path(tmp))
 
     print()
     if failures:

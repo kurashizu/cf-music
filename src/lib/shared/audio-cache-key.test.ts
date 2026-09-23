@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
 	audioCacheKey,
+	isCachedAudioOutdated,
 	extractVideoIdFromAudioPath,
 	coverCacheKey,
 	extractVideoIdFromCoverPath
@@ -67,5 +68,31 @@ describe('extractVideoIdFromCoverPath', () => {
 
 	it('returns null for a path with no file extension', () => {
 		expect(extractVideoIdFromCoverPath('/cf-music/covers/abc123')).toBeNull();
+	});
+});
+
+describe('isCachedAudioOutdated', () => {
+	const signed = (key: string) =>
+		`https://s3api.example.com/cf-music/audio/${key}?X-Amz-Signature=abc&X-Amz-Expires=3600`;
+
+	it('flags a WebM copy once the song is requested as MP4', () => {
+		expect(isCachedAudioOutdated(signed('abc123.webm'), signed('abc123.m4a'))).toBe(true);
+	});
+
+	it('keeps a copy in the container being requested', () => {
+		expect(isCachedAudioOutdated(signed('abc123.m4a'), signed('abc123.m4a'))).toBe(false);
+	});
+
+	it('ignores the signature, which differs on every request', () => {
+		const other = signed('abc123.m4a').replace('abc&', 'xyz&');
+		expect(isCachedAudioOutdated(signed('abc123.m4a'), other)).toBe(false);
+	});
+
+	it('compares extensions case-insensitively', () => {
+		expect(isCachedAudioOutdated(signed('abc123.M4A'), signed('abc123.m4a'))).toBe(false);
+	});
+
+	it('keeps an entry with no recorded URL, having nothing to compare', () => {
+		expect(isCachedAudioOutdated('', signed('abc123.m4a'))).toBe(false);
 	});
 });

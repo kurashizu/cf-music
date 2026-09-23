@@ -10,6 +10,7 @@
 import { build, files, prerendered, version } from '$service-worker';
 import {
 	audioCacheKey,
+	isCachedAudioOutdated,
 	extractVideoIdFromAudioPath,
 	coverCacheKey,
 	extractVideoIdFromCoverPath,
@@ -261,6 +262,18 @@ sw.addEventListener('fetch', (event) => {
 			const cache = await caches.open(cacheName);
 			const cached = await cache.match(cacheKey);
 
+			// A copy in the song's old container is passed over while the
+			// network can supply the current one, and served only when it
+			// can't: old bytes still play, just not as well everywhere. The
+			// next full fetch (auto-cache or an explicit download) replaces it.
+			if (audioVideoId && cached && isCachedAudioOutdated(cached.url, url.href)) {
+				try {
+					return await fetch(event.request);
+				} catch {
+					// Offline, so the old copy is better than nothing.
+				}
+			}
+
 			// A browser playing/seeking an <audio> element sends real Range
 			// requests (Range: bytes=...), not just full-file GETs — every
 			// playback triggers at least one. A cached entry is always the
@@ -375,7 +388,10 @@ sw.addEventListener('message', (event) => {
 				try {
 					const cache = await caches.open(AUDIO_CACHE);
 					const cacheKey = audioCacheKey(videoId);
-					if (await cache.match(cacheKey)) {
+					const existing = await cache.match(cacheKey);
+					// Only a copy in the container being asked for counts as
+					// already cached; an old one is replaced below.
+					if (existing && !isCachedAudioOutdated(existing.url, audioUrl)) {
 						port?.postMessage({ ok: true });
 						return;
 					}

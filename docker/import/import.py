@@ -739,6 +739,41 @@ def download_song(video_id_url: str, workdir: Path) -> dict:
     return {"info": info, "audio_path": audio_path}
 
 
+def remux_to_mp4(audio_path: Path) -> Path:
+    """Moves WebM audio into an MP4 container, leaving the stream untouched.
+
+    Safari does not follow a change of output device while playing WebM:
+    switch outputs or unplug headphones and the stream to the old device
+    simply stops, while the element carries on reporting that it is
+    playing — clock advancing, no pause, no error, no event of any kind to
+    react to. The same Opus stream in MP4 moves to the new device like any
+    other media. Measured in Safari 27 against the same file in both
+    containers, with nothing else on the page.
+
+    `-c copy` rewrites the container only, so there is no quality loss and
+    it costs about as much as copying the file. +faststart puts the index
+    at the front, so playback can start from the first range request
+    rather than first fetching the end of the file.
+
+    The muxer is named explicitly because ffmpeg picks one from the output
+    extension, and for .m4a that is "ipod", which refuses Opus outright.
+    """
+    if audio_path.suffix != ".webm":
+        return audio_path
+    remuxed = audio_path.with_suffix(".m4a")
+    subprocess.run(
+        [
+            "ffmpeg", "-y", "-i", str(audio_path),
+            "-map", "0:a:0", "-c", "copy", "-movflags", "+faststart",
+            "-f", "mp4", str(remuxed),
+        ],
+        capture_output=True,
+        check=True,
+    )
+    audio_path.unlink()
+    return remuxed
+
+
 def probe_audio(audio_path: Path) -> dict:
     result = subprocess.run(
         ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", str(audio_path)],
@@ -816,7 +851,7 @@ def download_and_upload_song(entry: dict, s3_client) -> dict:
         video_id = entry["id"]
         downloaded = download_song(entry.get("url") or entry.get("webpage_url") or video_id, workdir)
         info = downloaded["info"]
-        audio_path = downloaded["audio_path"]
+        audio_path = remux_to_mp4(downloaded["audio_path"])
 
         audio_meta = probe_audio(audio_path)
         audio_key = f"audio/{video_id}.{audio_meta['container']}"

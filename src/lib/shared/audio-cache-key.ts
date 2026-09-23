@@ -37,6 +37,27 @@ export function audioCacheKey(videoId: string): string {
 	return `https://audio.cf-music.internal/${videoId}`;
 }
 
+/**
+ * Whether a cached song is in a different container from the one now being
+ * requested.
+ *
+ * The cache is keyed by videoId alone, so a song re-stored in a new
+ * container (WebM moved to MP4 so Safari follows output-device changes)
+ * would otherwise go on being served from its old bytes indefinitely. The
+ * response remembers the URL it was fetched from, and the object key's
+ * extension is the container. An entry with no URL to compare, or either
+ * side without an extension, is taken as current: nothing says otherwise.
+ */
+export function isCachedAudioOutdated(cachedUrl: string, requestedUrl: string): boolean {
+	const extension = (url: string): string | null => {
+		if (!url) return null;
+		return new URL(url).pathname.match(/\.([^./]+)$/)?.[1]?.toLowerCase() ?? null;
+	};
+	const cached = extension(cachedUrl);
+	const requested = extension(requestedUrl);
+	return cached !== null && requested !== null && cached !== requested;
+}
+
 /** MinIO object keys are audio/{videoId}.{ext} — see object-key.ts for the authoritative format. */
 export function extractVideoIdFromAudioPath(pathname: string): string | null {
 	const match = pathname.match(/\/audio\/([^/.]+)\.[^/]+$/);

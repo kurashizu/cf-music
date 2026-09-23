@@ -84,7 +84,7 @@ export const songs = sqliteTable('songs', {
 	tags: text('tags'), // JSON array of strings, yt-dlp's info['tags']/['categories'] combined
 
 	// Audio spec: actual measured values, no fixed-bitrate assumption (YouTube Opus varies ~46-167kbps in practice, not a flat 160kbps)
-	audioKey: text('audio_key').notNull(), // S3 object key, e.g. audio/{video_id}.webm
+	audioKey: text('audio_key').notNull(), // S3 object key, e.g. audio/{video_id}.m4a
 	codec: text('codec').notNull(), // opus / aac / ...
 	container: text('container').notNull(), // webm / m4a / ...
 	bitrateKbps: integer('bitrate_kbps'),
