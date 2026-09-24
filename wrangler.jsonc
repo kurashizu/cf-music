@@ -6,7 +6,15 @@
 	"main": ".svelte-kit/cloudflare/_worker.js",
 	"assets": {
 		"binding": "ASSETS",
-		"directory": ".svelte-kit/cloudflare"
+		"directory": ".svelte-kit/cloudflare",
+		// Pages render in the browser (see src/routes/+layout.ts), so the
+		// Worker is only needed for data: the API, and the __data.json each
+		// page's server load answers through. Everything else is a file, or
+		// else gets the adapter's app shell -- straight from the asset
+		// server, never waking the Worker, which also leaves scanners
+		// probing for /wp-login.php and the like nothing to cost CPU on.
+		"not_found_handling": "single-page-application",
+		"run_worker_first": ["/api/*", "/*__data.json"]
 	},
 	"workers_dev": true,
 	"preview_urls": true,

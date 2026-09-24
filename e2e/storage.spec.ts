@@ -144,6 +144,9 @@ test.describe('manage storage page', () => {
 		await setUpLibrary(page, 'Sort Test Playlist', 3);
 
 		await page.goto('/settings/storage');
+		// The page renders in the browser once its data arrives, so wait for
+		// it: isVisible() below doesn't, and would read the toggle as absent.
+		await expect(page.getByText(/^E2E Track \d+$/).first()).toBeVisible();
 		// On a phone the sort and filter controls start collapsed behind a
 		// toggle, so the list isn't crowded out; open it before reaching for
 		// them. The toggle isn't rendered at all from `sm:` up.
