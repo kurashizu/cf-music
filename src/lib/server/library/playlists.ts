@@ -393,6 +393,7 @@ export interface PlaylistMembership {
 	id: string;
 	name: string;
 	kind: string;
+	createdAt: string;
 	videoIds: string[];
 }
 
@@ -408,7 +409,12 @@ export async function listPlaylistMemberships(
 	userId: string
 ): Promise<PlaylistMembership[]> {
 	const userPlaylists = await db
-		.select({ id: playlists.id, name: playlists.name, kind: playlists.kind })
+		.select({
+			id: playlists.id,
+			name: playlists.name,
+			kind: playlists.kind,
+			createdAt: playlists.createdAt
+		})
 		.from(playlists)
 		.where(eq(playlists.userId, userId));
 	if (userPlaylists.length === 0) return [];

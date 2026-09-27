@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { formatDateTime, formatDuration } from '$lib/shared/format';
+	import { formatDateTime, formatDuration, formatRelativeTime } from '$lib/shared/format';
 	import { apiErrorMessage } from '$lib/client/api-error';
 	import SearchField from '$lib/components/search-field.svelte';
 	import { invalidateAll } from '$app/navigation';
@@ -342,8 +342,10 @@
 		<div class="mt-8 mb-3 flex flex-wrap items-baseline gap-x-2 sm:mt-10 sm:mb-4">
 			<h2 class="text-muted-foreground text-sm font-medium">Smart Playlists</h2>
 			{#if data.smartPlaylistsUpdatedAt}
-				<span class="text-muted-foreground/70 text-xs"
-					>Last updated {formatDateTime(data.smartPlaylistsUpdatedAt)}</span
+				<span
+					class="text-muted-foreground/70 text-xs"
+					title={formatDateTime(data.smartPlaylistsUpdatedAt)}
+					>Last updated {formatRelativeTime(data.smartPlaylistsUpdatedAt)}</span
 				>
 			{/if}
 		</div>

@@ -51,19 +51,43 @@ export function formatCompactDuration(totalSeconds: number): string {
 }
 
 /**
- * A timestamp in the reader's own locale and timezone.
- *
- * Accepts SQLite's own `current_timestamp` format ("YYYY-MM-DD HH:MM:SS")
- * as well as ISO strings. That format is UTC but carries no zone marker,
- * and `new Date()` reads a zoneless date-time as local time — so without
- * the "Z" every column defaulting to current_timestamp would be off by the
+ * Parses SQLite's own `current_timestamp` format ("YYYY-MM-DD HH:MM:SS") as
+ * well as ISO strings. That format is UTC but carries no zone marker, and
+ * `new Date()` reads a zoneless date-time as local time — so without the
+ * "Z" every column defaulting to current_timestamp would be off by the
  * reader's UTC offset.
  */
-export function formatDateTime(timestamp: string): string {
+function parseTimestamp(timestamp: string): Date {
 	const iso = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(timestamp)
 		? timestamp.replace(' ', 'T') + 'Z'
 		: timestamp;
-	return new Date(iso).toLocaleString();
+	return new Date(iso);
+}
+
+/** A timestamp in the reader's own locale and timezone. */
+export function formatDateTime(timestamp: string): string {
+	return parseTimestamp(timestamp).toLocaleString();
+}
+
+const RELATIVE_TIME_UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
+	['year', 365 * 24 * 60 * 60],
+	['month', 30 * 24 * 60 * 60],
+	['week', 7 * 24 * 60 * 60],
+	['day', 24 * 60 * 60],
+	['hour', 60 * 60],
+	['minute', 60]
+];
+const relativeTimeFormat = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
+
+/** How long ago a timestamp was — "3 hours ago", "yesterday" — or "just now" under a minute. */
+export function formatRelativeTime(timestamp: string, now: Date = new Date()): string {
+	const elapsedSeconds = (now.getTime() - parseTimestamp(timestamp).getTime()) / 1000;
+	for (const [unit, seconds] of RELATIVE_TIME_UNITS) {
+		if (elapsedSeconds >= seconds) {
+			return relativeTimeFormat.format(-Math.floor(elapsedSeconds / seconds), unit);
+		}
+	}
+	return 'just now';
 }
 
 /** `codec · Nkbps`, dropping the bitrate when it isn't recorded. */

@@ -102,6 +102,8 @@ export interface CachedPlaylist {
 	id: string;
 	name: string;
 	kind: string;
+	/** Absent from snapshots stored before it was added. */
+	createdAt?: string;
 	videoIds: string[];
 }
 

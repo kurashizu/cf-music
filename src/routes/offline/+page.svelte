@@ -6,6 +6,7 @@
 	import { listCachedTracks, cachedCoverUrl, readLibrarySnapshot } from '$lib/client/offline-cache';
 	import type { CachedPlaylist, CachedTrackMetadata } from '$lib/shared/audio-cache-key';
 	import { PLAYLIST_MOSAIC_COVER_COUNT } from '$lib/shared/playlist-cover';
+	import { formatDateTime, formatRelativeTime } from '$lib/shared/format';
 	import AppShell from '$lib/components/app-shell.svelte';
 	import SongRow from '$lib/components/song-row.svelte';
 	import SongCard from '$lib/components/song-card.svelte';
@@ -52,6 +53,14 @@
 
 	const userPlaylists = $derived(availablePlaylists.filter((p) => p.kind === 'user'));
 	const smartPlaylists = $derived(availablePlaylists.filter((p) => p.kind !== 'user'));
+	// Regeneration replaces every smart playlist at once, so their shared
+	// created_at is when they were last updated — same as the online library.
+	const smartPlaylistsUpdatedAt = $derived(
+		smartPlaylists
+			.map((p) => p.createdAt)
+			.filter((t): t is string => t !== undefined)
+			.reduce<string | null>((latest, t) => (latest === null || t > latest ? t : latest), null)
+	);
 
 	const openPlaylist = $derived(
 		availablePlaylists.find((playlist) => playlist.id === openPlaylistId) ?? null
@@ -346,7 +355,16 @@
 			{/if}
 
 			{#if matchingSmartPlaylists.length > 0}
-				<h2 class="text-muted-foreground mb-4 text-sm font-medium">Smart Playlists</h2>
+				<div class="mb-4 flex flex-wrap items-baseline gap-x-2">
+					<h2 class="text-muted-foreground text-sm font-medium">Smart Playlists</h2>
+					{#if smartPlaylistsUpdatedAt}
+						<span
+							class="text-muted-foreground/70 text-xs"
+							title={formatDateTime(smartPlaylistsUpdatedAt)}
+							>Last updated {formatRelativeTime(smartPlaylistsUpdatedAt)}</span
+						>
+					{/if}
+				</div>
 				<div class="mb-8">
 					{@render playlistGrid(matchingSmartPlaylists)}
 				</div>
