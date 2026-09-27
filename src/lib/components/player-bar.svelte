@@ -221,16 +221,16 @@
 				{#snippet child({ props })}
 					<Button
 						{...props}
-						size="icon-sm"
+						size="icon-lg"
 						class="rounded-full"
 						disabled={!player.currentTrack || player.isLoading}
 						onclick={() => player.togglePlayPause()}
 						aria-label={player.isPlaying ? 'Pause' : 'Play'}
 					>
 						{#if player.isPlaying}
-							<PauseIcon class="size-4" />
+							<PauseIcon class="size-5" />
 						{:else}
-							<PlayIcon class="size-4" />
+							<PlayIcon class="size-5" />
 						{/if}
 					</Button>
 				{/snippet}
