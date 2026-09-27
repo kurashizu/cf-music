@@ -100,3 +100,17 @@ describe('formatBytes at the scales a quota is set in', () => {
 		expect(formatBytes(5 * 1024 * 1024 * 1024)).toBe('5.0 GB');
 	});
 });
+
+describe('formatDateTime', () => {
+	it("reads SQLite's zoneless current_timestamp as UTC", () => {
+		expect(formatDateTime('2026-09-27 03:00:00')).toBe(
+			new Date('2026-09-27T03:00:00Z').toLocaleString()
+		);
+	});
+
+	it('leaves ISO strings as they are', () => {
+		expect(formatDateTime('2026-09-27T03:00:00.000Z')).toBe(
+			new Date('2026-09-27T03:00:00Z').toLocaleString()
+		);
+	});
+});

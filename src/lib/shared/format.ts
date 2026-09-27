@@ -50,8 +50,19 @@ export function formatCompactDuration(totalSeconds: number): string {
 	return hours === 0 ? `${minutes}m` : `${hours}h ${minutes}m`;
 }
 
-/** A timestamp in the reader's own locale and timezone. */
-export function formatDateTime(iso: string): string {
+/**
+ * A timestamp in the reader's own locale and timezone.
+ *
+ * Accepts SQLite's own `current_timestamp` format ("YYYY-MM-DD HH:MM:SS")
+ * as well as ISO strings. That format is UTC but carries no zone marker,
+ * and `new Date()` reads a zoneless date-time as local time — so without
+ * the "Z" every column defaulting to current_timestamp would be off by the
+ * reader's UTC offset.
+ */
+export function formatDateTime(timestamp: string): string {
+	const iso = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(timestamp)
+		? timestamp.replace(' ', 'T') + 'Z'
+		: timestamp;
 	return new Date(iso).toLocaleString();
 }
 

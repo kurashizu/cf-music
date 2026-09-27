@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { formatDuration } from '$lib/shared/format';
+	import { formatDateTime, formatDuration } from '$lib/shared/format';
 	import { apiErrorMessage } from '$lib/client/api-error';
 	import SearchField from '$lib/components/search-field.svelte';
 	import { invalidateAll } from '$app/navigation';
@@ -339,9 +339,14 @@
 	{/if}
 
 	{#if filteredRecommendedPlaylists.length > 0}
-		<h2 class="text-muted-foreground mt-8 mb-3 text-sm font-medium sm:mt-10 sm:mb-4">
-			Smart Playlists
-		</h2>
+		<div class="mt-8 mb-3 flex flex-wrap items-baseline gap-x-2 sm:mt-10 sm:mb-4">
+			<h2 class="text-muted-foreground text-sm font-medium">Smart Playlists</h2>
+			{#if data.smartPlaylistsUpdatedAt}
+				<span class="text-muted-foreground/70 text-xs"
+					>Last updated {formatDateTime(data.smartPlaylistsUpdatedAt)}</span
+				>
+			{/if}
+		</div>
 		<div
 			class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7"
 		>
